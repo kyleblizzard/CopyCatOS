@@ -22,9 +22,12 @@
 // It captures the pointer so all mouse events go to the menu, and
 // dismisses itself when the user clicks outside or selects an item.
 
+#define _GNU_SOURCE  // For M_PI in math.h under strict C11
+
 #include "contextmenu.h"
 
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include <pango/pangocairo.h>

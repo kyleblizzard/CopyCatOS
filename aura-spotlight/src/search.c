@@ -22,9 +22,12 @@
 // [Desktop Entry] section that contains keys like Name, Exec,
 // Icon, etc.
 
+#define _GNU_SOURCE  // For strcasecmp under strict C11
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <ctype.h>
 #include <dirent.h>
 #include <sys/types.h>

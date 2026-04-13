@@ -38,6 +38,7 @@ math_dep = cc.find_library('m', required: true)
 sources = [
   'src/main.c',
   'src/dock.c',
+  'src/config.c',
   'src/shelf.c',
   'src/magnify.c',
   'src/bounce.c',
@@ -45,6 +46,10 @@ sources = [
   'src/indicator.c',
   'src/launch.c',
   'src/menu.c',
+  'src/dnd.c',
+  'src/poof.c',
+  'src/tooltip.c',
+  'src/stacks.c',
 ]
 
 # --- Build the executable ---

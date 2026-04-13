@@ -22,12 +22,15 @@
 //    to focus a specific window).
 // ============================================================================
 
+#define _GNU_SOURCE  // For strcasecmp and strncasecmp under strict C11
+
 #include "launch.h"
 #include "bounce.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/wait.h>
@@ -202,55 +205,80 @@ void launch_check_running(DockItem *items, int count)
 {
     // Run `ps -eo comm=` which outputs just the command name of every running
     // process, one per line. The `=` after `comm` suppresses the header line.
-    FILE *fp = popen("ps -eo comm=", "r");
+    // We redirect stderr to /dev/null to avoid noise from ps on some systems.
+    FILE *fp = popen("ps -eo comm= 2>/dev/null", "r");
     if (!fp) return;
 
     // Read all process names into a buffer so we can search it efficiently.
-    // A typical system might have a few hundred processes, so 64KB is plenty.
-    char buffer[65536];
-    size_t total_read = 0;
-    size_t chunk;
+    // We read line-by-line with fgets so we can handle each process name
+    // individually. A typical system has a few hundred processes.
+    char all_procs[8192];
+    size_t total = 0;
+    char line[256];
+    all_procs[0] = '\0';
 
-    while ((chunk = fread(buffer + total_read, 1,
-                          sizeof(buffer) - total_read - 1, fp)) > 0) {
-        total_read += chunk;
+    while (fgets(line, sizeof(line), fp)) {
+        // Strip trailing newline and whitespace
+        size_t len = strlen(line);
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r' ||
+                           line[len - 1] == ' ')) {
+            line[--len] = '\0';
+        }
+        if (len == 0) continue;
+
+        // Append to buffer with newline separator
+        if (total + len + 2 < sizeof(all_procs)) {
+            memcpy(all_procs + total, line, len);
+            total += len;
+            all_procs[total++] = '\n';
+            all_procs[total] = '\0';
+        }
     }
-    buffer[total_read] = '\0';
     pclose(fp);
 
-    // Check each dock item's process name against the running processes.
-    // We search for the process name as a substring within each line.
+    // Check each dock item against the process list.
+    // For each item, we scan every line in the buffer and compare the
+    // basename (after the last '/') against the item's process_name.
+    // We use case-insensitive EXACT matching to avoid false positives
+    // (e.g., "kate" should not match "katepart").
     for (int i = 0; i < count; i++) {
         bool was_running = items[i].running;
-
-        // Search through the process list for a match
         items[i].running = false;
-        const char *line = buffer;
 
-        while (*line) {
+        // Skip items with no process name set
+        if (items[i].process_name[0] == '\0') continue;
+
+        // Walk through each line in the buffer
+        char *p = all_procs;
+        while (*p) {
             // Find the end of this line
-            const char *eol = strchr(line, '\n');
-            if (!eol) eol = line + strlen(line);
+            char *nl = strchr(p, '\n');
+            if (!nl) break;
 
-            // Get just the base command name (after the last '/')
-            // ps sometimes gives full paths like /usr/bin/dolphin
-            const char *basename = line;
-            for (const char *p = line; p < eol; p++) {
-                if (*p == '/') basename = p + 1;
-            }
+            // Temporarily null-terminate this line so we can use string functions
+            *nl = '\0';
 
-            // Compare the base name with our process name
-            size_t proc_len = strlen(items[i].process_name);
-            size_t base_len = (size_t)(eol - basename);
+            // Get just the basename in case ps returned a full path
+            // (e.g., "/usr/bin/dolphin" -> "dolphin")
+            char *base = strrchr(p, '/');
+            base = base ? base + 1 : p;
 
-            if (base_len >= proc_len &&
-                strncasecmp(basename, items[i].process_name, proc_len) == 0) {
+            // Case-insensitive exact match against our process name
+            if (strcasecmp(base, items[i].process_name) == 0) {
                 items[i].running = true;
+                *nl = '\n';  // Restore the newline before breaking
                 break;
             }
 
-            // Move to next line
-            line = (*eol) ? eol + 1 : eol;
+            // Restore the newline and advance to the next line
+            *nl = '\n';
+            p = nl + 1;
+        }
+
+        // Log state changes so we can debug process detection
+        if (items[i].running != was_running) {
+            fprintf(stderr, "[aura-dock] %s is now %s\n",
+                    items[i].name, items[i].running ? "running" : "stopped");
         }
 
         // If an app just started running, stop its bounce animation

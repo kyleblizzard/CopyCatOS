@@ -15,6 +15,8 @@
 // style rounded rectangle with a search bar at the top, a
 // list of results below, and a highlighted selection row.
 
+#define _GNU_SOURCE  // For M_PI in math.h under strict C11
+
 #include <math.h>
 #include <string.h>
 #include <pango/pangocairo.h>

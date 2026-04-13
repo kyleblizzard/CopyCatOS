@@ -18,16 +18,20 @@
 // If no wallpaper image is found, we fall back to a solid color
 // matching Snow Leopard's default blue (#3A6EA5).
 
-#include "wallpaper.h"
+#define _GNU_SOURCE  // For strcasecmp and M_PI under strict C11
 
-#include <cairo/cairo.h>
-#include <jpeglib.h>
+#include "wallpaper.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include <stdint.h>
 #include <math.h>
 #include <setjmp.h>
+
+#include <cairo/cairo.h>
+#include <jpeglib.h>
 
 // ── Module state ────────────────────────────────────────────────────
 

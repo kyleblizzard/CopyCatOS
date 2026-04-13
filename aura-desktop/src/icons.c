@@ -20,6 +20,8 @@
 // The grid layout mimics Finder from Mac OS X: icons start in the
 // top-right corner and fill downward column by column, moving left.
 
+#define _GNU_SOURCE  // For M_PI in math.h under strict C11
+
 #include "icons.h"
 
 #include <X11/Xlib.h>
@@ -212,9 +214,13 @@ static cairo_surface_t *load_theme_icon(const char *icon_name,
     const char *home = getenv("HOME");
     if (!home) return NULL;
 
-    // Search paths in priority order
+    // Search paths in priority order — try 128x128 first for crisp scaling
+    // to 96px, then fall back to 64x64 which will be upscaled.
     char path[1024];
     const char *search_dirs[] = {
+        "%s/.local/share/icons/AquaKDE-icons/128x128/%s/%s.png",
+        "%s/.local/share/icons/hicolor/128x128/%s/%s.png",
+        "/usr/share/icons/hicolor/128x128/%s/%s.png",
         "%s/.local/share/icons/AquaKDE-icons/64x64/%s/%s.png",
         "%s/.local/share/icons/hicolor/64x64/%s/%s.png",
         "/usr/share/icons/hicolor/64x64/%s/%s.png",
@@ -468,9 +474,9 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
             cairo_fill(cr);
         }
 
-        // Draw the 64x64 icon image
+        // Draw the icon image (scaled to ICON_SIZE)
         if (icon->icon) {
-            // Scale the icon to ICON_SIZE if it's not already 64x64
+            // Scale the icon to ICON_SIZE if it doesn't match
             int src_w = cairo_image_surface_get_width(icon->icon);
             int src_h = cairo_image_surface_get_height(icon->icon);
 
@@ -491,7 +497,7 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
         }
 
         // Draw the icon label below the icon image.
-        // Uses Pango for proper text layout and ellipsization.
+        // Uses Pango for proper text layout, centering, and ellipsization.
         int label_y = img_y + ICON_SIZE + 4;  // 4px gap below icon
 
         // Create a Pango layout for the label text.
@@ -499,29 +505,38 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
         PangoLayout *layout = pango_cairo_create_layout(cr);
         pango_layout_set_text(layout, icon->name, -1);
 
-        // Set the font (Lucida Grande 11pt matches Snow Leopard)
+        // Set the font — real Snow Leopard uses Lucida Grande 12pt
         PangoFontDescription *font = pango_font_description_from_string(
             ICON_LABEL_FONT);
         pango_layout_set_font_description(layout, font);
         pango_font_description_free(font);
 
-        // Truncate long names with "..." (ellipsis)
-        pango_layout_set_width(layout, ICON_MAX_LABEL_WIDTH * PANGO_SCALE);
-        pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+        // Set max width, center alignment, ellipsis for long names,
+        // and word-char wrapping so names like "Screenshot 2026..." wrap
+        // at word boundaries but break mid-word if necessary.
+        pango_layout_set_width(layout, ICON_CELL_W * PANGO_SCALE);
         pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
+        pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+        pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
 
-        // Get the actual text size so we can center it
+        // Get the actual text size so we can center it horizontally
         int text_w, text_h;
         pango_layout_get_pixel_size(layout, &text_w, &text_h);
         int text_x = icon->x + (ICON_CELL_W - text_w) / 2;
 
-        // Draw text shadow first (1px offset, semi-transparent black).
-        // This makes the white text readable on any wallpaper.
-        cairo_move_to(cr, text_x + 1, label_y + 1);
-        cairo_set_source_rgba(cr, 0, 0, 0, 0.6);
-        pango_cairo_show_layout(cr, layout);
+        // Draw text shadow: multiple passes to create the dark halo
+        // effect used by real Snow Leopard. This makes white text
+        // readable against any wallpaper — light, dark, or busy.
+        for (int dy = -1; dy <= 2; dy++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if (dx == 0 && dy == 0) continue;  // Skip center (white text goes there)
+                cairo_move_to(cr, text_x + dx, label_y + dy);
+                cairo_set_source_rgba(cr, 0, 0, 0, 0.6);
+                pango_cairo_show_layout(cr, layout);
+            }
+        }
 
-        // Draw the actual text in white
+        // Draw the actual white text on top of the shadow halo
         cairo_move_to(cr, text_x, label_y);
         cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
         pango_cairo_show_layout(cr, layout);

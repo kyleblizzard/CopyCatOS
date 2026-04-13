@@ -19,6 +19,8 @@
 // (for mouse/keyboard/expose events) and the inotify fd (for changes
 // to ~/Desktop files).
 
+#define _GNU_SOURCE  // For M_PI in math.h under strict C11
+
 #include "desktop.h"
 #include "wallpaper.h"
 #include "icons.h"
@@ -26,6 +28,7 @@
 
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
+#include <X11/Xutil.h>
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 

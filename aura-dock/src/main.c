@@ -18,10 +18,15 @@
 // animations, icon reflections, and running indicators.
 // ============================================================================
 
+#define _GNU_SOURCE  // For lockf(), F_TLOCK
 #include "dock.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
 
 // Global pointer to the dock state so the signal handler can access it.
 // This is needed for clean shutdown when the user presses Ctrl+C.
@@ -39,11 +44,56 @@ static void signal_handler(int sig)
     }
 }
 
+// ---------------------------------------------------------------------------
+// Single-instance lock using a lock file.
+// If another aura-dock process is already running, this prevents a second
+// copy from starting — which would cause both to fight over the same screen
+// space and produce the "double startup" / flickering symptom.
+// Returns the lock file descriptor (>= 0) on success, or -1 if locked.
+// ---------------------------------------------------------------------------
+static int acquire_instance_lock(void)
+{
+    const char *home = getenv("HOME");
+    if (!home) home = "/tmp";
+
+    char lock_path[512];
+    snprintf(lock_path, sizeof(lock_path), "%s/.cache/aura-dock.lock", home);
+
+    int fd = open(lock_path, O_CREAT | O_RDWR, 0600);
+    if (fd < 0) return -1;
+
+    // Try to get an exclusive lock without blocking.
+    // If another instance holds the lock, lockf returns -1 immediately.
+    if (lockf(fd, F_TLOCK, 0) < 0) {
+        close(fd);
+        return -1;
+    }
+
+    // Write our PID so debugging tools can identify the lock holder
+    char pid_str[32];
+    int len = snprintf(pid_str, sizeof(pid_str), "%d\n", (int)getpid());
+    if (ftruncate(fd, 0) == 0) {
+        (void)write(fd, pid_str, len);
+    }
+
+    // Keep fd open — closing it releases the lock
+    return fd;
+}
+
 int main(int argc, char *argv[])
 {
     // Suppress unused parameter warnings — we don't use command-line args yet
     (void)argc;
     (void)argv;
+
+    // Prevent two instances from running simultaneously.
+    // A second copy would fight the first for X events and screen space,
+    // causing flickering, double redraws, and duplicate log messages.
+    int lock_fd = acquire_instance_lock();
+    if (lock_fd < 0) {
+        fprintf(stderr, "AuraDock: another instance is already running.\n");
+        return EXIT_FAILURE;
+    }
 
     printf("AuraDock v0.1.0 starting...\n");
 
@@ -73,6 +123,11 @@ int main(int argc, char *argv[])
 
     // Clean up all resources (surfaces, X connection, etc.)
     dock_cleanup(&state);
+
+    // Release the single-instance lock
+    if (lock_fd >= 0) {
+        close(lock_fd);
+    }
 
     printf("AuraDock exited cleanly.\n");
     return EXIT_SUCCESS;

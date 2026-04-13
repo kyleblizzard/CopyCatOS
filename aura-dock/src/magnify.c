@@ -19,6 +19,8 @@
 // gives 100% boost at distance=0 and 0% boost at distance=range.
 // ============================================================================
 
+#define _GNU_SOURCE  // For M_PI in math.h under strict C11
+
 #include "magnify.h"
 #include <math.h>
 

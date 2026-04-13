@@ -196,6 +196,45 @@ for f in "$MAC/Dock"/indicator_*_simple.png; do
 done
 
 # ---------------------------------------------------------------------------
+# 3b. Stack popup assets (nine-patch backgrounds for folder stacks)
+# ---------------------------------------------------------------------------
+header "Stack popup assets"
+mkdir -p "$ASSET_DST/dock/stacks"
+
+# Aqua nine-patch popup background (13 pieces)
+for f in eccl_top_left.png eccl_top.png eccl_top_right.png \
+         eccl_left.png eccl_center.png eccl_right.png \
+         eccl_bottom_left.png eccl_bottom.png eccl_bottom_right.png \
+         eccl_callout_top.png eccl_callout_bottom.png \
+         eccl_callout_left.png eccl_callout_right.png; do
+    copy_file "$MAC/Dock/$f" "$ASSET_DST/dock/stacks/$f"
+done
+
+# Alternative stack backgrounds
+for f in "$MAC/Dock"/stackbackground-*.png; do
+    [ -f "$f" ] || continue
+    copy_file "$f" "$ASSET_DST/dock/stacks/$(basename "$f")"
+done
+
+# Stack UI controls
+for f in closebox.png closebox_pressed.png \
+         back-button.png back-button-pressed.png \
+         pileArrow.png pileLeftArrow.png pileRightArrow.png \
+         stackitemshadow.png; do
+    copy_file "$MAC/Dock/$f" "$ASSET_DST/dock/stacks/$f"
+done
+
+# Selection highlights and scrollbar parts for stack popups
+for f in ecfl_selected.png ecfl_title_background.png ecfl_title_background_selected.png \
+         ecm_checkmark.png ecm_checkmark_disabled.png \
+         ecm_selection_blue.png ecm_selection_graphite.png \
+         ecsbl_thumb_top.png ecsbl_thumb_center.png ecsbl_thumb_bottom.png \
+         ecsbl_thumb_pressed_top.png ecsbl_thumb_pressed_center.png ecsbl_thumb_pressed_bottom.png \
+         ecsbl_track_top.png ecsbl_track_center.png ecsbl_track_bottom.png; do
+    copy_file "$MAC/Dock/$f" "$ASSET_DST/dock/stacks/$f"
+done
+
+# ---------------------------------------------------------------------------
 # 4. Menu bar assets
 # ---------------------------------------------------------------------------
 header "Menu bar assets"

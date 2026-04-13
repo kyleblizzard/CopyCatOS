@@ -20,6 +20,8 @@
 //   5. Also try .svg and .xpm extensions at each location.
 //   6. Fallback: a programmatically-drawn generic app icon.
 
+#define _GNU_SOURCE  // For M_PI in math.h under strict C11
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

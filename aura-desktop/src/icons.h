@@ -25,20 +25,20 @@
 // Grid layout constants — these control how icons are spaced and sized.
 // The grid starts at the top-right and fills downward, then moves left
 // (column by column), just like Finder in Mac OS X.
-#define ICON_CELL_W         90   // Width of each grid cell in pixels
-#define ICON_CELL_H         90   // Height of each grid cell in pixels
-#define ICON_SIZE           64   // Size of the icon image (64x64)
-#define ICON_LABEL_FONT     "Lucida Grande 11"  // Pango font description
+#define ICON_CELL_W         120  // Width of each grid cell in pixels
+#define ICON_CELL_H         120  // Height of each grid cell in pixels
+#define ICON_SIZE           96   // Size of the icon image (96x96 — closer to real SL)
+#define ICON_LABEL_FONT     "Lucida Grande 12"  // Pango font description (SL uses 12pt)
 #define ICON_TOP_MARGIN     40   // Pixels below the top edge (room for menubar)
 #define ICON_RIGHT_MARGIN   20   // Pixels from the right edge of screen
-#define ICON_MAX_LABEL_WIDTH 80  // Max pixel width before truncating with "..."
+#define ICON_MAX_LABEL_WIDTH 110 // Max pixel width before truncating with "..."
 
 // Represents a single desktop icon. Each file or folder in ~/Desktop
 // gets one of these structs.
 typedef struct {
     char name[256];              // Display name (filename, possibly without extension)
     char path[1024];             // Full filesystem path to the file
-    cairo_surface_t *icon;       // Pre-loaded 64x64 icon surface
+    cairo_surface_t *icon;       // Pre-loaded icon surface (scaled to ICON_SIZE)
     int grid_col, grid_row;      // Position in the logical grid
     int x, y;                    // Pixel position on screen (computed from grid)
     bool selected;               // Whether this icon is currently highlighted

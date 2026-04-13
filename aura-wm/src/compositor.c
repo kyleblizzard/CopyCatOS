@@ -4,6 +4,8 @@
 // via any medium, is strictly prohibited.
 //
 // AuraOS Window Manager — XComposite compositor for Snow Leopard shadows
+
+#define _GNU_SOURCE  // Ensure M_PI is available from <math.h>
 //
 // This file implements the compositing layer that gives AuraOS its realistic
 // drop shadows. The approach is:
@@ -44,6 +46,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdbool.h>
 
 // ── Module-level state ──
@@ -376,13 +379,17 @@ bool compositor_init(AuraWM *wm)
     fprintf(stderr, "[aura-wm] XRender found\n");
 
     // ── Redirect all subwindows of root ──
-    // CompositeRedirectManual means:
-    //   - All child windows of root are rendered to off-screen storage
-    //   - WE are responsible for compositing them onto the screen
-    //   - (as opposed to CompositeRedirectAutomatic, where the X server
-    //     does it but we can still grab the pixmaps)
-    XCompositeRedirectSubwindows(wm->dpy, wm->root, CompositeRedirectManual);
-    fprintf(stderr, "[aura-wm] Redirected subwindows to off-screen pixmaps\n");
+    // CompositeRedirectAutomatic means:
+    //   - The X server handles compositing windows onto the screen
+    //   - We can still use ARGB visuals for our frame windows (shadows)
+    //   - We do NOT need to manually composite every window every frame
+    //
+    // We originally used CompositeRedirectManual, but that requires the WM
+    // to paint every window's pixmap onto the root — a full compositor.
+    // Automatic mode gives us ARGB support (transparent shadow regions)
+    // while letting X handle the actual window compositing.
+    XCompositeRedirectSubwindows(wm->dpy, wm->root, CompositeRedirectAutomatic);
+    fprintf(stderr, "[aura-wm] Composite redirect set (automatic mode)\n");
 
     // ── Find a 32-bit ARGB visual ──
     // A "visual" in X11 describes the pixel format of a window. Most windows
@@ -418,7 +425,7 @@ bool compositor_create_argb_visual(AuraWM *wm, Visual **out_visual,
     XVisualInfo templ;
     templ.screen = wm->screen;
     templ.depth = 32;
-    templ.c_class = TrueColor;
+    templ.class = TrueColor;
 
     int num_visuals = 0;
     XVisualInfo *visuals = XGetVisualInfo(wm->dpy,
@@ -449,48 +456,55 @@ bool compositor_create_argb_visual(AuraWM *wm, Visual **out_visual,
 void compositor_paint_shadow(AuraWM *wm, Client *c, cairo_t *cr)
 {
     if (!wm || !c || !cr) return;
-    if (!compositor_active) return;
 
-    // Calculate the chrome dimensions (the visible window frame, without shadow)
-    // This matches how frame.c sizes the frame: client size + borders + title bar
+    // Shadow parameters tuned to match Snow Leopard's appearance.
+    // Focused windows get a larger, darker shadow; unfocused windows
+    // get a subtler one. The y_offset simulates light from above,
+    // pushing the shadow downward — giving windows a "floating" feel.
+    bool active = c->focused;
+    int radius = active ? 22 : 16;
+    double peak_alpha = active ? 0.45 : 0.22;
+    int y_offset = 4;  // Light from above pushes shadow down
+
+    // The chrome area within the frame (offset by shadow padding)
+    int sl = SHADOW_LEFT;
+    int st = SHADOW_TOP;
     int chrome_w = c->w + 2 * BORDER_WIDTH;
     int chrome_h = c->h + TITLEBAR_HEIGHT + BORDER_WIDTH;
 
-    // Choose shadow parameters based on whether this window is focused.
-    // Active windows get a stronger, wider shadow to make them "pop" visually
-    // (Snow Leopard uses this to indicate which window has keyboard focus).
-    bool active = c->focused;
-    int blur_radius = active ? SHADOW_RADIUS : SHADOW_RADIUS_INACTIVE;
-    double alpha = active ? SHADOW_ALPHA_ACTIVE : SHADOW_ALPHA_INACTIVE;
+    // Draw shadow as concentric rounded rectangles with decreasing alpha.
+    // Each layer is 2px larger than the previous, creating a soft falloff.
+    // Using the full radius count for layers gives a smoother gradient
+    // than the previous radius/2 approach — more layers = finer steps.
+    int layers = radius;
 
-    // Render the blurred shadow image.
-    // This creates a Cairo image surface with the shadow already blurred
-    // and alpha-composited. We just need to paint it onto the frame.
-    cairo_surface_t *shadow = render_shadow(chrome_w, chrome_h,
-                                            blur_radius, alpha);
-    if (!shadow) return;
+    for (int i = layers; i >= 1; i--) {
+        double t = (double)i / layers;  // 1.0 = outermost, 0.0 = innermost
+        // Cubic falloff: softer edges with a stronger center, closely
+        // matching the diffuse shadow look of real Snow Leopard windows.
+        double alpha = peak_alpha * (1.0 - t) * (1.0 - t) * (1.0 - t);
+        int expand = i * 2;
+        double corner_r = 3.0 + i * 0.5;
 
-    // Paint the shadow onto the frame window's Cairo context.
-    // The shadow surface is the same size as the entire frame (including
-    // shadow padding), so we paint it at position (0, 0).
-    //
-    // The frame window is sized as:
-    //   width  = SHADOW_LEFT + chrome_w + SHADOW_RIGHT
-    //   height = SHADOW_TOP + chrome_h + SHADOW_BOTTOM
-    //
-    // And the shadow image is exactly that size, with the blurred rectangle
-    // centered where the chrome will be drawn.
-    cairo_save(cr);
+        double sx = sl - expand;
+        double sy = st - expand + y_offset;
+        double sw = chrome_w + expand * 2;
+        double sh = chrome_h + expand * 2;
 
-    // Use OVER compositing: the shadow's alpha blends with whatever is behind.
-    // Since the frame window has an ARGB visual with a transparent background,
-    // the shadow will show through to the desktop/windows behind.
-    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
-    cairo_set_source_surface(cr, shadow, 0, 0);
-    cairo_paint(cr);
+        // Skip if dimensions are negative (shouldn't happen, but be safe)
+        if (sw <= 0 || sh <= 0) continue;
 
-    cairo_restore(cr);
-    cairo_surface_destroy(shadow);
+        cairo_set_source_rgba(cr, 0, 0, 0, alpha);
+
+        // Draw a rounded rectangle using four arcs at the corners
+        cairo_new_sub_path(cr);
+        cairo_arc(cr, sx + sw - corner_r, sy + corner_r, corner_r, -M_PI/2, 0);
+        cairo_arc(cr, sx + sw - corner_r, sy + sh - corner_r, corner_r, 0, M_PI/2);
+        cairo_arc(cr, sx + corner_r, sy + sh - corner_r, corner_r, M_PI/2, M_PI);
+        cairo_arc(cr, sx + corner_r, sy + corner_r, corner_r, M_PI, 3*M_PI/2);
+        cairo_close_path(cr);
+        cairo_fill(cr);
+    }
 }
 
 void compositor_set_input_shape(AuraWM *wm, Client *c)
@@ -591,7 +605,7 @@ void compositor_shutdown(AuraWM *wm)
         // without doing this, the screen might go blank until another
         // compositor takes over.
         XCompositeUnredirectSubwindows(wm->dpy, wm->root,
-                                       CompositeRedirectManual);
+                                       CompositeRedirectAutomatic);
         fprintf(stderr, "[aura-wm] Compositor: unredirected subwindows\n");
     }
 

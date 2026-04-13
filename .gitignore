@@ -1,0 +1,29 @@
+# Build artifacts
+build/
+*.o
+*.so
+*.a
+
+# System files
+.DS_Store
+__pycache__/
+*.pyc
+
+# Don't upload Apple assets (511MB, copyrighted)
+snowleopardaura/
+
+# Don't upload screenshots (development artifacts)
+screenshots/
+
+# Don't upload backups
+*.zip
+
+# Don't upload Claude/AI config
+CLAUDE.md
+memory/
+.claude/
+changelogforkyle.txt
+
+# Don't upload SSH/secret files
+*.pem
+*.key

@@ -1,58 +1,60 @@
-<img src="https://github.com/vinceliuice/Sierra-gtk-theme/blob/imgs/logo.png" alt="Logo" align="right" /> SnowLeopard KDE Theme
-======
+# AuraOS
 
-SnowLeopard kde is a MacOS big sur like theme for KDE Plasma desktop.
+A custom Linux desktop environment that recreates Mac OS X Snow Leopard.
 
-In this repository you'll find:
+Not a theme. Not a skin. A complete desktop environment built from scratch in C — custom window manager, custom compositor, custom dock, custom menu bar, custom desktop, custom search overlay. Every pixel measured against a real Snow Leopard machine.
 
-- Aurorae Theme
-- Kvantum Theme
-- Wallpaper Theme
-- Plasma Color Scheme
-- Plasma Desktop Theme
-- Plasma Global Theme
+## What's Here
 
-## Installation
+- **aura-wm** — X11 reparenting window manager with Crystal Compositor (OpenGL). Handles window framing, decoration painting, shadows, compositing, keyboard shortcuts, strut reservation.
+- **aura-dock** — The dock. Glass shelf, parabolic magnification, two-phase bounce animation, icon reflections, running indicators, drag-and-drop with poof removal, folder stacks with grid popup, config persistence, enhanced context menus with submenus.
+- **aura-menubar** — 22px translucent global menu bar. Apple logo, bold app name, per-app menu sets, system tray (clock, battery, volume), Spotlight search icon. Wallpaper bleeds through the gradient.
+- **aura-desktop** — Wallpaper surface with JPEG loading, desktop icon grid with inotify file watching, drag-and-drop snap-to-grid, Cairo-rendered context menus.
+- **aura-spotlight** — Ctrl+Space search overlay. Scans .desktop files, real-time substring search, icon caching, keyboard navigation.
+- **breeze-aqua** — Qt6 QStyle plugin that renders Aqua scrollbars, buttons, checkboxes, and other widgets inside Qt applications using real Snow Leopard PNG assets.
 
-```sh
-./install.sh
+## Architecture
+
+- **Language:** C (shell components), C++ (Qt style plugin only)
+- **Display server:** X11 via XLibre
+- **Rendering:** Cairo + Pango (2D), OpenGL via GLX (compositor)
+- **Target:** Nobara Linux (Fedora-based) on Lenovo Legion Go
+- **No KDE/Plasma dependencies** in the shell. Qt is used only inside applications via breeze-aqua.
+
+## Building
+
+```bash
+# Install dependencies (Fedora/Nobara)
+sudo dnf install gcc meson cmake qt6-qtbase-devel \
+  cairo-devel pango-devel libpng-devel libjpeg-turbo-devel \
+  libX11-devel libXcomposite-devel libXdamage-devel libXfixes-devel \
+  libXext-devel libXrender-devel libXrandr-devel libXcursor-devel \
+  mesa-libGL-devel extra-cmake-modules
+
+# Build all components
+bash scripts/build-all.sh
+
+# Install assets
+bash scripts/install-assets.sh
 ```
 
-install sharp aurorae windows manager theme:
+## Running
 
-```sh
-./install.sh --sharp
+Select "AuraOS" at the display manager login screen, or:
+
+```bash
+DISPLAY=:1 startx /usr/local/bin/aura-session.sh -- :1
 ```
 
-install opaque theme version:
+## Why
 
-```sh
-./install.sh --opaque
-```
+I grew up with Snow Leopard. It was the last version of macOS where every pixel served a purpose and nothing was decorative for its own sake. The gloss on a button said "I'm raised and pressable." The shadow under a window said "I'm floating." The blue in a scrollbar said "I'm interactive."
 
-## Recommendations
+I wanted to see if I could build that experience on Linux. Not approximate it — recreate it. Using the real assets, the real measurements, the real Human Interface Guidelines. Comparing against a real Snow Leopard machine pixel by pixel.
 
-- For better looking please use this pack with [Kvantum engine](https://github.com/tsujan/Kvantum/blob/master/Kvantum/INSTALL.md#distributions).
-
-  Run `kvantummanager` to choose and apply **SnowLeopard** (or any other SnowLeopard) theme.
-
-- Install [SnowLeopard icon theme](https://github.com/vinceliuice/SnowLeopard-icon-theme) for a more consistent and beautiful experience.
-
-- Install [SnowLeopard cursors theme](https://github.com/vinceliuice/SnowLeopard-cursors) for a more consistent and beautiful experience.
-
-## Donate
-
-If you like my project, you can donate at:
-
-<span class="paypal"><a href="https://www.paypal.me/vinceliuice" title="Donate to this project using Paypal"><img src="https://www.paypalobjects.com/webstatic/mktg/Logo/pp-logo-100px.png" alt="PayPal donate button" /></a></span>
+This is what I built.
 
 ## License
 
-GNU GPL v3
-
-## preview
-
-![light](preview.png)
-![dark](preview-dark.png)
-
-
+Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
+See [LICENSE](LICENSE) for details.

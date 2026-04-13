@@ -130,7 +130,7 @@ static Visual *find_argb_visual(Display *dpy, int screen, int *depth_out) {
     XVisualInfo tpl;
     tpl.screen = screen;
     tpl.depth  = 32;
-    tpl.c_class = TrueColor;
+    tpl.class = TrueColor;
 
     int count = 0;
     XVisualInfo *infos = XGetVisualInfo(dpy,

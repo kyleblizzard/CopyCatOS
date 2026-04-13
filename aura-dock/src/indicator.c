@@ -21,7 +21,7 @@
 #include <string.h>
 
 // How far from the bottom of the dock window to place the indicator center
-#define INDICATOR_BOTTOM_OFFSET 4
+#define INDICATOR_BOTTOM_OFFSET 6  // Sits on the shelf surface, 6px from dock bottom
 
 bool indicator_load(DockState *state)
 {

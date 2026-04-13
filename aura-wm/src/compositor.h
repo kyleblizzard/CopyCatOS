@@ -33,16 +33,16 @@
 // The top extent is smaller because the shadow is pushed down; the bottom
 // extent is larger for the same reason.
 
-#define SHADOW_RADIUS        20
-#define SHADOW_Y_OFFSET       3
+#define SHADOW_RADIUS        22
+#define SHADOW_Y_OFFSET       4
 
 // How far the shadow extends beyond the window chrome on each side.
 // Top is reduced by the Y-offset (shadow shifts down, so less above).
 // Bottom is increased by the Y-offset (shadow shifts down, so more below).
-#define SHADOW_TOP           (SHADOW_RADIUS - SHADOW_Y_OFFSET)   // 17
-#define SHADOW_BOTTOM        (SHADOW_RADIUS + SHADOW_Y_OFFSET)   // 23
-#define SHADOW_LEFT           SHADOW_RADIUS                       // 20
-#define SHADOW_RIGHT          SHADOW_RADIUS                       // 20
+#define SHADOW_TOP           (SHADOW_RADIUS - SHADOW_Y_OFFSET)   // 18
+#define SHADOW_BOTTOM        (SHADOW_RADIUS + SHADOW_Y_OFFSET)   // 26
+#define SHADOW_LEFT           SHADOW_RADIUS                       // 22
+#define SHADOW_RIGHT          SHADOW_RADIUS                       // 22
 
 // Peak alpha for the shadow blur (0.0 = invisible, 1.0 = fully opaque).
 // Active (focused) windows get a stronger shadow; inactive get a softer one.

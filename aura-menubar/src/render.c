@@ -15,6 +15,8 @@
 // or stroke them. Pango handles the complex job of text shaping and
 // font rendering on top of Cairo.
 
+#define _GNU_SOURCE  // For M_PI in math.h under strict C11
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -74,18 +76,19 @@ void render_background(MenuBar *mb, cairo_t *cr)
         cairo_fill(cr);
         cairo_pattern_destroy(pattern);
     } else {
-        // Gradient fallback — a subtle vertical gradient that mimics
-        // Snow Leopard's brushed-metal-lite appearance.
-        // Four color stops from top to bottom:
-        //   #F2F2F2 -> #E8E8E8 -> #D7D7D7 -> #D2D2D2
+        // Gradient fallback — mimics Snow Leopard's translucent menu bar.
+        // Real SL measurements: brightness 245 at top, ~201 at middle,
+        // 170 at bottom. The wallpaper bleeds through at 12% (alpha 0.88),
+        // giving the bar its warm tint (purple from Aurora wallpaper).
+        // Three color stops from top to bottom:
+        //   0.96 (≈245/255) -> 0.85 (≈217/255) -> 0.72 (≈184/255)
         cairo_pattern_t *grad = cairo_pattern_create_linear(
             0, 0,           // Start at top
             0, MENUBAR_HEIGHT // End at bottom
         );
-        cairo_pattern_add_color_stop_rgb(grad, 0.0,  0.949, 0.949, 0.949); // #F2F2F2
-        cairo_pattern_add_color_stop_rgb(grad, 0.33, 0.910, 0.910, 0.910); // #E8E8E8
-        cairo_pattern_add_color_stop_rgb(grad, 0.66, 0.843, 0.843, 0.843); // #D7D7D7
-        cairo_pattern_add_color_stop_rgb(grad, 1.0,  0.824, 0.824, 0.824); // #D2D2D2
+        cairo_pattern_add_color_stop_rgba(grad, 0.0,  0.96, 0.96, 0.96, 0.88);
+        cairo_pattern_add_color_stop_rgba(grad, 0.5,  0.85, 0.85, 0.85, 0.88);
+        cairo_pattern_add_color_stop_rgba(grad, 1.0,  0.72, 0.72, 0.72, 0.88);
 
         cairo_set_source(cr, grad);
         cairo_rectangle(cr, 0, 0, mb->screen_w, MENUBAR_HEIGHT);
@@ -93,9 +96,10 @@ void render_background(MenuBar *mb, cairo_t *cr)
         cairo_pattern_destroy(grad);
     }
 
-    // 1px bottom border — a subtle dark line separating the menu bar
-    // from the content below. #A8A8A8 is a medium gray.
-    cairo_set_source_rgb(cr, 0.659, 0.659, 0.659); // #A8A8A8
+    // 1px bottom border — a dark line separating the menu bar from
+    // the content below. Real Snow Leopard measures RGB(38,13,37) here:
+    // nearly black with a slight warm/purple tint from wallpaper bleed.
+    cairo_set_source_rgba(cr, 38/255.0, 13/255.0, 37/255.0, 1.0);
     cairo_set_line_width(cr, 1.0);
     // Draw the line at y = MENUBAR_HEIGHT - 0.5 so it renders as a
     // crisp 1px line. Cairo draws lines centered on the path, so

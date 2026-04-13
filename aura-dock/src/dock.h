@@ -26,14 +26,14 @@
 // These define every pixel measurement, timing value, and limit in the dock.
 // ---------------------------------------------------------------------------
 
-#define BASE_ICON_SIZE      54      // Default icon size in pixels (no magnification)
-#define MAX_ICON_SIZE       82      // Largest an icon gets when mouse is directly over it
+#define BASE_ICON_SIZE      64      // Default icon size in pixels (no magnification) — real SL uses ~64px
+#define MAX_ICON_SIZE       96      // Largest an icon gets when mouse is directly over it
 #define MAGNIFICATION_RANGE 3       // How many icon slots away magnification reaches
-#define ICON_SPACING        6       // Pixels of gap between adjacent icons
+#define ICON_SPACING        10      // Pixels of gap between adjacent icons — real SL has more breathing room
 #define SEPARATOR_WIDTH     12      // Width of the separator between dock sections
-#define SHELF_HEIGHT        42      // Height of the glass shelf at the bottom
-#define DOCK_HEIGHT         130     // Total dock window height (icons + shelf + reflections)
-#define SHELF_PADDING       35      // Extra pixels on each side of the shelf beyond icons
+#define SHELF_HEIGHT        48      // Height of the glass shelf at the bottom — taller for larger icons
+#define DOCK_HEIGHT         160     // Total dock window height (icons + shelf + reflections + room for reflections below icons)
+#define SHELF_PADDING       60      // Extra pixels on each side of the shelf beyond icons (generous shelf extension)
 #define INDICATOR_SIZE      8       // Diameter of the "running" dot below icons
 #define BOUNCE_AMPLITUDE    26      // Max pixels an icon bounces upward
 #define BOUNCE_CYCLE_MS     720     // Duration of one full bounce cycle in milliseconds
@@ -54,7 +54,12 @@ typedef struct {
     char name[128];               // Human-readable app name (e.g., "Finder")
     char exec_path[512];          // Command to launch the app (e.g., "dolphin")
     char icon_path[512];          // Resolved filesystem path to the icon PNG
+    char icon_name[256];          // Original icon theme name (e.g., "org.kde.dolphin")
+                                  // Stored so we can write it back to the config file
     char process_name[128];       // Process name to look for in `ps` output
+
+    bool is_folder;               // True if this is a folder stack item (not an app)
+    char folder_path[512];        // Filesystem path to the folder (for stacks, e.g., ~/Downloads)
 
     cairo_surface_t *icon;        // The loaded icon image (128x128 typically)
 
@@ -117,6 +122,8 @@ typedef struct {
 
     // Event loop control
     bool running_loop;            // Set to false to exit the main loop
+
+    // (Drag-and-drop state is managed by dnd.c using a local DndState variable)
 } DockState;
 
 // ---------------------------------------------------------------------------
@@ -140,6 +147,9 @@ int dock_calculate_total_width(DockState *state);
 // Get the X coordinate of a specific icon's center, accounting for
 // all icons' current scales and spacing.
 double dock_get_icon_center_x(DockState *state, int index);
+
+// Hit test: return the index of the icon under (local_x, local_y), or -1
+int dock_hit_test(DockState *state, int local_x, int local_y);
 
 // Clean up all resources (surfaces, X connection, etc.)
 void dock_cleanup(DockState *state);

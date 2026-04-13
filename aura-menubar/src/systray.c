@@ -18,6 +18,8 @@
 //   - Volume: PulseAudio via `pactl` command
 //   - Battery: Linux sysfs (/sys/class/power_supply/)
 
+#define _GNU_SOURCE  // For M_PI in math.h under strict C11
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -238,7 +240,42 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
     // an 8px margin.
     int cursor = right_edge - 8;
 
-    // ── Clock (rightmost) ───────────────────────────────────────
+    // ── Spotlight magnifying glass (rightmost) ──────────────────
+    // Real Snow Leopard has a Spotlight search icon at the far right
+    // of the menu bar. We draw a simple magnifying glass: a circle
+    // (stroked, not filled) for the lens and a diagonal line for
+    // the handle. Color is dark grey (#4A4A4A), size ~14x14px.
+    {
+        double icon_size = 14.0;
+        double ix = cursor - icon_size;          // x position
+        double iy = (MENUBAR_HEIGHT - icon_size) / 2.0; // vertically centered
+
+        cairo_set_source_rgb(cr, 0.29, 0.29, 0.29); // #4A4A4A
+        cairo_set_line_width(cr, 1.6);
+
+        // Lens: a circle in the upper-left area of the 14x14 box
+        double lens_cx = ix + 5.5;   // center x of the lens circle
+        double lens_cy = iy + 5.5;   // center y of the lens circle
+        double lens_r  = 4.0;        // radius of the lens
+
+        cairo_arc(cr, lens_cx, lens_cy, lens_r, 0, 2 * M_PI);
+        cairo_stroke(cr);
+
+        // Handle: a diagonal line from the lower-right of the lens
+        // outward toward the bottom-right corner of the icon box
+        double handle_start_x = lens_cx + lens_r * cos(M_PI / 4);
+        double handle_start_y = lens_cy + lens_r * sin(M_PI / 4);
+        cairo_move_to(cr, handle_start_x, handle_start_y);
+        cairo_line_to(cr, ix + 13.0, iy + 13.0);
+        cairo_stroke(cr);
+
+        cursor -= (int)icon_size;
+    }
+
+    // Gap between Spotlight icon and clock
+    cursor -= 10;
+
+    // ── Clock ───────────────────────────────────────────────────
     // Format the current time as "Tue 3:58 PM"
     time_t now = time(NULL);
     struct tm *tm_info = localtime(&now);

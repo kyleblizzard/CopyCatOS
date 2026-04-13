@@ -17,7 +17,10 @@
 //   - Handling mouse motion, clicks, and enter/leave events
 // ============================================================================
 
+#define _GNU_SOURCE  // For M_PI in math.h under strict C11
+
 #include "dock.h"
+#include "config.h"
 #include "shelf.h"
 #include "magnify.h"
 #include "bounce.h"
@@ -25,10 +28,15 @@
 #include "indicator.h"
 #include "launch.h"
 #include "menu.h"
+#include "dnd.h"
+#include "poof.h"
+#include "tooltip.h"
+#include "stacks.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <math.h>
 #include <time.h>
 #include <unistd.h>
@@ -40,32 +48,9 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 
-// ---------------------------------------------------------------------------
-// Hardcoded dock items — same as the Python prototype.
-// Each entry: {name, exec_path, icon_name, process_name, separator_after}
-// ---------------------------------------------------------------------------
-typedef struct {
-    const char *name;
-    const char *exec_path;
-    const char *icon_name;
-    const char *process_name;
-    bool separator_after;
-} DockItemDef;
-
-static const DockItemDef default_items[] = {
-    {"Finder",              "dolphin",        "system-file-manager",  "dolphin",        false},
-    {"Brave",               "brave-browser",  "brave-browser",        "brave",          false},
-    {"Kate",                "kate",           "kate",                 "kate",           false},
-    {"Terminal",            "konsole",        "utilities-terminal",   "konsole",        false},
-    {"Strawberry",          "strawberry",     "strawberry",           "strawberry",     true },
-    {"Krita",               "krita",          "krita",                "krita",          false},
-    {"GIMP",                "gimp",           "gimp",                 "gimp",           false},
-    {"Inkscape",            "inkscape",       "inkscape",             "inkscape",       false},
-    {"Kdenlive",            "kdenlive",       "kdenlive",             "kdenlive",       false},
-    {"System Preferences",  "systemsettings", "preferences-system",   "systemsettings", false},
-};
-
-#define DEFAULT_ITEM_COUNT (sizeof(default_items) / sizeof(default_items[0]))
+// NOTE: The default dock items list and icon resolution logic have been moved
+// to config.c. See config_set_defaults() for the default item list and
+// config_resolve_and_load_icon() for the icon loading pipeline.
 
 // ---------------------------------------------------------------------------
 // Helper: get current monotonic time in seconds.
@@ -79,115 +64,9 @@ static double get_time(void)
     return ts.tv_sec + ts.tv_nsec / 1000000000.0;
 }
 
-// ---------------------------------------------------------------------------
-// Icon resolution — find an icon file on disk
-//
-// We search multiple locations in order of preference:
-// 1. AquaKDE custom theme (the project's own icon set)
-// 2. hicolor theme (the freedesktop standard fallback)
-// 3. pixmaps directory (legacy location for app icons)
-//
-// We prefer larger sizes (128, 64, 48) because we load once and scale
-// down for display. This gives us crisp rendering even at magnified sizes.
-// ---------------------------------------------------------------------------
-static bool resolve_icon_path(const char *icon_name, char *out_path, size_t out_size)
-{
-    const char *home = getenv("HOME");
-    if (!home) home = "/tmp";
-
-    // Sizes to try, from largest to smallest
-    static const int sizes[] = {128, 64, 48};
-    static const int size_count = 3;
-
-    char path[1024];
-
-    // Search 1: AquaKDE custom icon theme
-    for (int i = 0; i < size_count; i++) {
-        snprintf(path, sizeof(path),
-                 "%s/.local/share/icons/AquaKDE-icons/%dx%d/apps/%s.png",
-                 home, sizes[i], sizes[i], icon_name);
-        if (access(path, R_OK) == 0) {
-            snprintf(out_path, out_size, "%s", path);
-            return true;
-        }
-    }
-
-    // Search 2: hicolor theme (standard freedesktop location)
-    for (int i = 0; i < size_count; i++) {
-        snprintf(path, sizeof(path),
-                 "/usr/share/icons/hicolor/%dx%d/apps/%s.png",
-                 sizes[i], sizes[i], icon_name);
-        if (access(path, R_OK) == 0) {
-            snprintf(out_path, out_size, "%s", path);
-            return true;
-        }
-    }
-
-    // Search 3: pixmaps directory (legacy fallback)
-    snprintf(path, sizeof(path), "/usr/share/pixmaps/%s.png", icon_name);
-    if (access(path, R_OK) == 0) {
-        snprintf(out_path, out_size, "%s", path);
-        return true;
-    }
-
-    // Also try .svg -> .png conversion might exist as just the name
-    snprintf(path, sizeof(path), "/usr/share/pixmaps/%s.svg", icon_name);
-    if (access(path, R_OK) == 0) {
-        // Cairo can't load SVG directly without librsvg, so skip for now
-    }
-
-    return false;
-}
-
-// ---------------------------------------------------------------------------
-// Create a fallback icon: a rounded rectangle with a gradient.
-// Used when we can't find the real icon file on disk.
-// ---------------------------------------------------------------------------
-static cairo_surface_t *create_fallback_icon(const char *name)
-{
-    int size = 128;
-    cairo_surface_t *surf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
-                                                        size, size);
-    cairo_t *cr = cairo_create(surf);
-
-    // Draw a rounded rectangle with a blue-to-purple gradient
-    double r = 24;  // Corner radius
-    double x = 4, y = 4, w = size - 8, h = size - 8;
-
-    // Rounded rectangle path
-    cairo_new_sub_path(cr);
-    cairo_arc(cr, x + w - r, y + r, r, -M_PI / 2, 0);
-    cairo_arc(cr, x + w - r, y + h - r, r, 0, M_PI / 2);
-    cairo_arc(cr, x + r, y + h - r, r, M_PI / 2, M_PI);
-    cairo_arc(cr, x + r, y + r, r, M_PI, 3 * M_PI / 2);
-    cairo_close_path(cr);
-
-    // Gradient fill
-    cairo_pattern_t *grad = cairo_pattern_create_linear(0, 0, 0, size);
-    cairo_pattern_add_color_stop_rgb(grad, 0.0, 0.3, 0.5, 0.9);
-    cairo_pattern_add_color_stop_rgb(grad, 1.0, 0.2, 0.2, 0.6);
-    cairo_set_source(cr, grad);
-    cairo_fill(cr);
-    cairo_pattern_destroy(grad);
-
-    // Draw the first letter of the app name in white
-    cairo_set_source_rgba(cr, 1, 1, 1, 0.9);
-    cairo_select_font_face(cr, "sans-serif",
-                           CAIRO_FONT_SLANT_NORMAL, CAIRO_FONT_WEIGHT_BOLD);
-    cairo_set_font_size(cr, 64);
-
-    // Center the letter
-    char letter[2] = {name[0], '\0'};
-    cairo_text_extents_t ext;
-    cairo_text_extents(cr, letter, &ext);
-    cairo_move_to(cr, (size - ext.width) / 2 - ext.x_bearing,
-                      (size - ext.height) / 2 - ext.y_bearing);
-    cairo_show_text(cr, letter);
-
-    cairo_destroy(cr);
-    cairo_surface_flush(surf);
-    return surf;
-}
+// NOTE: resolve_icon_path() and create_fallback_icon() have been moved to
+// config.c. They are accessed through config_resolve_and_load_icon() which
+// is declared in config.h.
 
 // ---------------------------------------------------------------------------
 // Find a 32-bit ARGB visual for transparent windows.
@@ -292,41 +171,12 @@ bool dock_init(DockState *state)
     state->colormap = XCreateColormap(state->dpy, state->root,
                                        state->visual, AllocNone);
 
-    // --- Initialize dock items from the hardcoded list ---
-    state->item_count = (int)DEFAULT_ITEM_COUNT;
-    if (state->item_count > MAX_DOCK_ITEMS) {
-        state->item_count = MAX_DOCK_ITEMS;
-    }
-
-    for (int i = 0; i < state->item_count; i++) {
-        DockItem *item = &state->items[i];
-        const DockItemDef *def = &default_items[i];
-
-        strncpy(item->name, def->name, sizeof(item->name) - 1);
-        strncpy(item->exec_path, def->exec_path, sizeof(item->exec_path) - 1);
-        strncpy(item->process_name, def->process_name, sizeof(item->process_name) - 1);
-        item->separator_after = def->separator_after;
-        item->scale = 1.0;
-        item->bounce_offset = 0;
-        item->running = false;
-        item->bouncing = false;
-
-        // Try to find the icon file on disk
-        if (resolve_icon_path(def->icon_name, item->icon_path,
-                              sizeof(item->icon_path))) {
-            // Load the icon as a Cairo image surface
-            item->icon = cairo_image_surface_create_from_png(item->icon_path);
-            if (cairo_surface_status(item->icon) != CAIRO_STATUS_SUCCESS) {
-                fprintf(stderr, "Warning: Failed to load icon %s\n",
-                        item->icon_path);
-                cairo_surface_destroy(item->icon);
-                item->icon = create_fallback_icon(item->name);
-            }
-        } else {
-            fprintf(stderr, "Warning: Icon not found for '%s', using fallback\n",
-                    item->name);
-            item->icon = create_fallback_icon(item->name);
-        }
+    // --- Load dock items from config file, or use defaults on first launch ---
+    // config_load() reads ~/.config/aura-dock/dock.conf. If the file doesn't
+    // exist yet (first launch), it returns false and we fall back to the
+    // hardcoded default item list via config_set_defaults().
+    if (!config_load(state)) {
+        config_set_defaults(state);
     }
 
     // --- Calculate initial dock window size ---
@@ -359,6 +209,12 @@ bool dock_init(DockState *state)
         &attrs
     );
 
+    // Explicitly set background to None so X doesn't fill it with garbage.
+    // With a 32-bit ARGB visual, background_pixel=0 should be transparent,
+    // but some X servers still fill with the default background. Setting
+    // BackPixmap to None tells X "don't paint anything — I'll handle it."
+    XSetWindowBackgroundPixmap(state->dpy, state->win, None);
+
     // Set the window title (shows up in window lists and debugging tools)
     XStoreName(state->dpy, state->win, "AuraDock");
 
@@ -377,6 +233,9 @@ bool dock_init(DockState *state)
     // --- Load assets ---
     shelf_load_assets(state);
     indicator_load(state);
+    poof_load(state);
+    tooltip_init();
+    stacks_load_assets(state);
 
     // --- Show the window ---
     XMapWindow(state->dpy, state->win);
@@ -422,7 +281,7 @@ double dock_get_icon_center_x(DockState *state, int index)
 // ---------------------------------------------------------------------------
 // Figure out which dock item the mouse is over (or -1 if none)
 // ---------------------------------------------------------------------------
-static int dock_hit_test(DockState *state, int mx, int my)
+int dock_hit_test(DockState *state, int mx, int my)
 {
     int total_w = dock_calculate_total_width(state);
     double x = (state->win_w - total_w) / 2.0;
@@ -430,9 +289,10 @@ static int dock_hit_test(DockState *state, int mx, int my)
     for (int i = 0; i < state->item_count; i++) {
         double icon_size = BASE_ICON_SIZE * state->items[i].scale;
 
-        // The icon's Y position: bottom-aligned to the shelf top
-        double shelf_top = state->win_h - SHELF_HEIGHT;
-        double icon_y = shelf_top - icon_size + state->items[i].bounce_offset;
+        // The icon's Y position: bottom at 10px above the dock window bottom,
+        // matching the rendering in dock_paint().
+        double icon_bottom = state->win_h - 12;
+        double icon_y = icon_bottom - icon_size + state->items[i].bounce_offset;
 
         if (mx >= x && mx < x + icon_size &&
             my >= icon_y && my < icon_y + icon_size) {
@@ -450,9 +310,19 @@ static int dock_hit_test(DockState *state, int mx, int my)
 
 void dock_paint(DockState *state)
 {
-    cairo_t *cr = state->cr;
+    // --- Double-buffering: paint to an off-screen image first ---
+    // Drawing directly to the X window surface causes flicker because each
+    // individual draw operation (clear, shelf, icons) becomes visible to the
+    // compositor as a separate frame. Instead, we:
+    //   1. Create an off-screen image buffer (in CPU memory)
+    //   2. Paint everything to that buffer
+    //   3. Blit the finished frame to the window in one operation
+    // This eliminates flicker completely.
+    cairo_surface_t *buffer = cairo_image_surface_create(
+        CAIRO_FORMAT_ARGB32, state->win_w, state->win_h);
+    cairo_t *cr = cairo_create(buffer);
 
-    // --- Clear the entire surface to fully transparent ---
+    // --- Clear the entire buffer to fully transparent ---
     // CAIRO_OPERATOR_SOURCE replaces pixels instead of blending,
     // so painting with alpha=0 makes everything invisible.
     cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
@@ -463,22 +333,62 @@ void dock_paint(DockState *state)
     cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
     // --- Draw the glass shelf ---
+    // Temporarily swap the state's cairo context so shelf_draw and friends
+    // render into our off-screen buffer instead of the window surface.
+    cairo_t *orig_cr = state->cr;
+    state->cr = cr;
+
     int total_w = dock_calculate_total_width(state);
     int shelf_width = total_w + 2 * SHELF_PADDING;
     shelf_draw(state, shelf_width);
 
-    // --- Draw icons, reflections, separators, and indicators ---
-    // Start position: center the icon row in the dock window
+    // --- Draw reflections, icons, separators, and indicators ---
+    //
+    // Draw order matters for correct Snow Leopard appearance:
+    //   1. Shelf (already drawn above)
+    //   2. Reflections — painted ON the shelf surface, behind icons
+    //   3. Icons — sit on top of the shelf, partially overlapping it
+    //   4. Indicators — running-app dots on the shelf, below icons
+    //   5. Separators — divider lines on the shelf
+    //
+    // We do two passes over the icon list: first reflections, then icons
+    // and overlays. This ensures reflections are behind the icons.
+
     double x = (state->win_w - total_w) / 2.0;
-    double shelf_top = state->win_h - SHELF_HEIGHT;
+
+    // --- Pass 1: Draw reflections on the shelf surface ---
+    for (int i = 0; i < state->item_count; i++) {
+        DockItem *item = &state->items[i];
+        double icon_size = BASE_ICON_SIZE * item->scale;
+
+        double icon_bottom = state->win_h - 12;
+        double icon_y = icon_bottom - icon_size + item->bounce_offset;
+        double icon_x = x;
+
+        // Only draw reflections when the icon isn't bouncing (looks odd mid-bounce)
+        if (item->icon && !item->bouncing) {
+            reflect_draw(cr, item->icon, icon_x, icon_y, icon_size);
+        }
+
+        x += icon_size;
+        if (i < state->item_count - 1) {
+            x += item->separator_after ? SEPARATOR_WIDTH : ICON_SPACING;
+        }
+    }
+
+    // --- Pass 2: Draw icons, indicators, and separators on top ---
+    x = (state->win_w - total_w) / 2.0;
 
     for (int i = 0; i < state->item_count; i++) {
         DockItem *item = &state->items[i];
         double icon_size = BASE_ICON_SIZE * item->scale;
 
-        // Bottom-align icons to the shelf surface, with bounce offset.
-        // bounce_offset is negative when the icon is bouncing up.
-        double icon_y = shelf_top - icon_size + item->bounce_offset;
+        // Icons rest ON the shelf surface. In real Snow Leopard, the
+        // icon bottom is about 12px above the dock window's bottom edge,
+        // placing icons firmly on the glass with the bottom ~20% overlapping
+        // the shelf area. bounce_offset is negative when bouncing up.
+        double icon_bottom = state->win_h - 12;  // 12px above dock bottom
+        double icon_y = icon_bottom - icon_size + item->bounce_offset;
         double icon_x = x;
 
         // --- Draw the icon ---
@@ -500,12 +410,6 @@ void dock_paint(DockState *state)
             cairo_restore(cr);
         }
 
-        // --- Draw the reflection ---
-        // Only draw reflections when the icon isn't bouncing (looks weird mid-bounce)
-        if (item->icon && !item->bouncing) {
-            reflect_draw(cr, item->icon, icon_x, icon_y, icon_size);
-        }
-
         // --- Draw running indicator ---
         if (item->running) {
             double center_x = icon_x + icon_size / 2.0;
@@ -525,18 +429,39 @@ void dock_paint(DockState *state)
         }
     }
 
+    // Restore the original cairo context on the state
+    state->cr = orig_cr;
+
+    // --- Blit the finished buffer to the window in one operation ---
+    // This is the key to eliminating flicker: the compositor only ever sees
+    // one complete frame, never a half-drawn intermediate state.
+    cairo_set_operator(orig_cr, CAIRO_OPERATOR_SOURCE);
+    cairo_set_source_surface(orig_cr, buffer, 0, 0);
+    cairo_paint(orig_cr);
+
+    // Clean up the off-screen buffer
+    cairo_destroy(cr);
+    cairo_surface_destroy(buffer);
+
     // Flush the Cairo surface so X11 sees the updated pixels
     cairo_surface_flush(state->surface);
     XFlush(state->dpy);
 }
 
+// Module-level drag-and-drop state (used across event handlers)
+static DndState _dnd;
+
 void dock_run(DockState *state)
 {
-    // Get the file descriptor for the X11 connection.
-    // We'll use select() to wait for either X events or a timer expiration.
     int x_fd = ConnectionNumber(state->dpy);
+    bool needs_repaint = false;
+
+    // Initialize drag-and-drop state
+    dnd_init(&_dnd);
 
     while (state->running_loop) {
+        needs_repaint = false;
+
         // --- Process all pending X events ---
         while (XPending(state->dpy)) {
             XEvent ev;
@@ -549,15 +474,30 @@ void dock_run(DockState *state)
             case Expose:
                 // The window needs to be redrawn (e.g., was uncovered)
                 if (ev.xexpose.count == 0) {
-                    dock_paint(state);
+                    needs_repaint = true;
                 }
                 break;
 
             case MotionNotify:
-                // Mouse moved inside the dock — update magnification
                 state->mouse_x = ev.xmotion.x;
                 state->mouse_y = ev.xmotion.y;
+
+                // Check if a drag is in progress
+                {
+                    DndState *dnd = &_dnd;
+                    if (dnd_handle_motion(state, dnd, ev.xmotion.x_root, ev.xmotion.y_root)) {
+                        // Drag is active — skip magnification
+                        needs_repaint = true;
+                        break;
+                    }
+                }
+
+                // Normal mouse motion — update magnification and tooltip
                 magnify_update(state);
+                {
+                    int hit = dock_hit_test(state, state->mouse_x, state->mouse_y);
+                    tooltip_update_hover(state, hit);
+                }
 
                 // Resize the dock window if magnification changed the total width
                 {
@@ -572,7 +512,7 @@ void dock_run(DockState *state)
                                                      state->win_w, state->win_h);
                     }
                 }
-                dock_paint(state);
+                needs_repaint = true;
                 break;
 
             case EnterNotify:
@@ -581,13 +521,14 @@ void dock_run(DockState *state)
                 state->mouse_x = ev.xcrossing.x;
                 state->mouse_y = ev.xcrossing.y;
                 magnify_update(state);
-                dock_paint(state);
+                needs_repaint = true;
                 break;
 
             case LeaveNotify:
-                // Mouse left the dock window — reset all magnification
+                // Mouse left the dock window — reset magnification and hide tooltip
                 state->mouse_in_dock = false;
                 magnify_update(state);
+                tooltip_hide(state);
 
                 // Shrink the dock window back to base width
                 {
@@ -602,17 +543,35 @@ void dock_run(DockState *state)
                                                      state->win_w, state->win_h);
                     }
                 }
-                dock_paint(state);
+                needs_repaint = true;
                 break;
 
             case ButtonPress:
+                tooltip_hide(state);  // Dismiss tooltip on any click
+
+                // If stacks popup is open, let it handle events first
+                if (stacks_is_open() && stacks_handle_event(state, &ev)) {
+                    needs_repaint = true;
+                    break;
+                }
+
                 if (ev.xbutton.button == 1) {
-                    // Left click — launch or activate the clicked app
-                    int idx = dock_hit_test(state, ev.xbutton.x, ev.xbutton.y);
-                    if (idx >= 0) {
-                        launch_app(state, &state->items[idx]);
-                        dock_paint(state);
+                    // Left click — check if it's a folder (opens stack popup)
+                    int click_idx = dock_hit_test(state, ev.xbutton.x, ev.xbutton.y);
+                    if (click_idx >= 0 && state->items[click_idx].is_folder) {
+                        double cx = state->win_x + dock_get_icon_center_x(state, click_idx);
+                        stacks_show(state, &state->items[click_idx], cx);
+                        needs_repaint = true;
+                        break;
                     }
+
+                    // Not a folder — start potential drag, or launch on release
+                    DndState *dnd = &_dnd;
+                    if (!dnd_handle_button_press(state, dnd, ev.xbutton.button,
+                                                 ev.xbutton.x_root, ev.xbutton.y_root)) {
+                        // Not on an icon — ignore
+                    }
+                    // Don't launch here — wait for ButtonRelease
                 } else if (ev.xbutton.button == 3) {
                     // Right click — show context menu
                     int idx = dock_hit_test(state, ev.xbutton.x, ev.xbutton.y);
@@ -621,6 +580,25 @@ void dock_run(DockState *state)
                         int screen_x = state->win_x + ev.xbutton.x;
                         int screen_y = state->win_y + ev.xbutton.y;
                         menu_show(state, &state->items[idx], screen_x, screen_y);
+                    }
+                }
+                break;
+
+            case ButtonRelease:
+                if (ev.xbutton.button == 1) {
+                    DndState *dnd = &_dnd;
+                    if (dnd_handle_button_release(state, dnd, ev.xbutton.x_root, ev.xbutton.y_root)) {
+                        // Drop completed (reorder or removal) — don't launch
+                        needs_repaint = true;
+                    } else if (dnd->pending) {
+                        // Was a normal click (no drag) — launch the app now
+                        int idx = dnd->icon_idx;
+                        dnd_cleanup(dnd);
+                        dnd_init(dnd);
+                        if (idx >= 0 && idx < state->item_count) {
+                            launch_app(state, &state->items[idx]);
+                            needs_repaint = true;
+                        }
                     }
                 }
                 break;
@@ -652,33 +630,68 @@ void dock_run(DockState *state)
         if (now - state->last_process_check >= PROCESS_CHECK_INTERVAL) {
             launch_check_running(state->items, state->item_count);
             state->last_process_check = now;
-            dock_paint(state);  // Indicators may have changed
+            needs_repaint = true;  // Indicators may have changed
         }
 
-        // Advance bounce animations
-        if (state->any_bouncing || bounce_update_all(state)) {
+        // Debug: count running apps so we can verify process detection works
+        {
+            int n_running = 0;
+            for (int i = 0; i < state->item_count; i++) {
+                if (state->items[i].running) n_running++;
+            }
+            if (n_running > 0) {
+                // Only print when the count changes to avoid log spam
+                static int last_count = -1;
+                if (n_running != last_count) {
+                    fprintf(stderr, "[aura-dock] %d apps detected as running\n", n_running);
+                    last_count = n_running;
+                }
+            }
+        }
+
+        // Advance bounce animations — only call when something is bouncing
+        if (state->any_bouncing) {
+            if (bounce_update_all(state)) {
+                needs_repaint = true;
+            }
+        }
+
+        // Advance poof animation if active
+        if (poof_is_active()) {
+            poof_update(state);
+        }
+
+        // --- Only repaint when something actually changed ---
+        if (needs_repaint) {
             dock_paint(state);
         }
 
         // --- Wait for next event or timeout ---
         // select() lets us wait for either:
         //   - An X event arriving on the X file descriptor
-        //   - A timeout (BOUNCE_FRAME_MS = 16ms for ~60fps animation)
+        //   - A timeout expiration
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(x_fd, &fds);
 
         // If animations are running, use a short timeout for smooth frames.
-        // Otherwise, use a longer timeout to save CPU.
+        // Otherwise, use a long timeout — we only need to wake up for the
+        // periodic process check (every 3 seconds). The old 500ms timeout
+        // caused ~2 repaints/sec even when idle, wasting CPU cycles.
         struct timeval tv;
-        if (state->any_bouncing) {
-            // ~60fps for smooth bounce animation
+        if (state->any_bouncing || poof_is_active()) {
+            // ~60fps for smooth animation (bounce or poof)
             tv.tv_sec = 0;
             tv.tv_usec = BOUNCE_FRAME_MS * 1000;
-        } else {
-            // No animations — check every 500ms (for process monitoring)
+        } else if (tooltip_is_visible() || _dnd.pending) {
+            // Responsive timer for tooltip hover delay and drag threshold
             tv.tv_sec = 0;
-            tv.tv_usec = 500000;
+            tv.tv_usec = 100000;  // 100ms
+        } else {
+            // No animations — sleep until the next process check.
+            // X events will wake us immediately via the file descriptor.
+            tv.tv_sec = (int)PROCESS_CHECK_INTERVAL;
+            tv.tv_usec = 0;
         }
 
         select(x_fd + 1, &fds, NULL, NULL, &tv);
@@ -698,9 +711,13 @@ void dock_cleanup(DockState *state)
         }
     }
 
-    // Free shelf and indicator assets
+    // Free shelf, indicator, poof, tooltip, and DnD resources
     shelf_cleanup(state);
     indicator_cleanup(state);
+    poof_cleanup(state);
+    tooltip_cleanup(state);
+    stacks_cleanup(state);
+    dnd_cleanup(&_dnd);
 
     // Free Cairo resources
     if (state->cr) {

@@ -23,9 +23,12 @@
 //    In the future, these could send commands to the active application
 //    via D-Bus or custom X11 messages.
 
+#define _GNU_SOURCE  // For M_PI and strcasecmp under strict C11
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <ctype.h>
 #include <math.h>
 

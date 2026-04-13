@@ -12,6 +12,7 @@
 //   3. Hands control to the spotlight module which creates the overlay
 //      window and enters the event loop.
 
+#define _GNU_SOURCE  // For SA_RESTART in signal.h under strict C11
 #include <stdio.h>
 #include <stdlib.h>
 #include <signal.h>

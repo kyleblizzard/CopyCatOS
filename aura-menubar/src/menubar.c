@@ -23,6 +23,7 @@
 
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
+#include <X11/Xutil.h>
 
 #include "menubar.h"
 #include "render.h"
@@ -67,14 +68,54 @@ bool menubar_init(MenuBar *mb)
     mb->atom_wm_class                = XInternAtom(mb->dpy, "WM_CLASS", False);
     mb->atom_utf8_string             = XInternAtom(mb->dpy, "UTF8_STRING", False);
 
+    // ── Find 32-bit ARGB visual for translucency ─────────────────
+    // A 32-bit visual includes an alpha channel, which lets the menubar
+    // be slightly transparent so the wallpaper bleeds through — matching
+    // the Snow Leopard translucent menubar effect. Without this, the bar
+    // is forced to be fully opaque.
+    Visual *visual = NULL;
+    Colormap colormap = 0;
+    int depth = CopyFromParent;
+    XVisualInfo tpl;
+    tpl.screen = mb->screen;
+    tpl.depth = 32;
+    tpl.class = TrueColor;
+    int n_visuals = 0;
+    XVisualInfo *vis_list = XGetVisualInfo(mb->dpy,
+        VisualScreenMask | VisualDepthMask | VisualClassMask,
+        &tpl, &n_visuals);
+    for (int i = 0; i < n_visuals; i++) {
+        // Look for a visual with the standard ARGB channel layout
+        if (vis_list[i].red_mask == 0x00FF0000 &&
+            vis_list[i].green_mask == 0x0000FF00 &&
+            vis_list[i].blue_mask == 0x000000FF) {
+            visual = vis_list[i].visual;
+            depth = 32;
+            colormap = XCreateColormap(mb->dpy, mb->root, visual, AllocNone);
+            break;
+        }
+    }
+    if (vis_list) XFree(vis_list);
+
+    // If no ARGB visual was found, fall back to the default visual.
+    // The bar will be opaque but otherwise functional.
+    if (!visual) {
+        visual = DefaultVisual(mb->dpy, mb->screen);
+        depth = DefaultDepth(mb->dpy, mb->screen);
+        colormap = DefaultColormap(mb->dpy, mb->screen);
+    }
+
     // ── Create the menu bar window ──────────────────────────────
     // It spans the full screen width and is MENUBAR_HEIGHT pixels tall,
-    // positioned at the very top of the screen.
+    // positioned at the very top of the screen. We use the ARGB visual
+    // and its matching colormap so Cairo can paint with alpha.
     XSetWindowAttributes attrs;
     attrs.override_redirect = False;  // Let the WM manage us (as a dock)
     attrs.event_mask = ExposureMask | ButtonPressMask | PointerMotionMask
                      | LeaveWindowMask | StructureNotifyMask;
-    attrs.background_pixel = WhitePixel(mb->dpy, mb->screen);
+    attrs.background_pixel = 0;       // Transparent black (alpha=0)
+    attrs.colormap = colormap;
+    attrs.border_pixel = 0;           // Required when using non-default visual
 
     mb->win = XCreateWindow(
         mb->dpy, mb->root,
@@ -82,12 +123,17 @@ bool menubar_init(MenuBar *mb)
         (unsigned int)mb->screen_w,        // Full screen width
         MENUBAR_HEIGHT,                    // 22 pixels tall
         0,                                 // No border
-        CopyFromParent,                    // Use parent's depth
+        depth,                             // 32-bit for ARGB translucency
         InputOutput,                       // Normal window (not InputOnly)
-        CopyFromParent,                    // Use parent's visual
-        CWOverrideRedirect | CWEventMask | CWBackPixel,
+        visual,                            // ARGB visual for alpha support
+        CWOverrideRedirect | CWEventMask | CWBackPixel | CWColormap | CWBorderPixel,
         &attrs
     );
+
+    // Tell X not to use a background pixmap — we paint every pixel ourselves.
+    // Without this, the window manager may fill with a solid color before our
+    // paint runs, causing flicker.
+    XSetWindowBackgroundPixmap(mb->dpy, mb->win, None);
 
     // ── Set window type to DOCK ─────────────────────────────────
     // This tells the window manager "I'm a panel/dock, not a regular
@@ -377,13 +423,26 @@ void menubar_run(MenuBar *mb)
 void menubar_paint(MenuBar *mb)
 {
     // Create a Cairo surface that draws directly onto our X window.
-    // This is the bridge between Cairo's drawing API and the X display.
+    // We use XGetWindowAttributes to get the actual visual assigned to
+    // this window (which is our 32-bit ARGB visual), rather than the
+    // default screen visual. This is critical for translucency to work.
+    XWindowAttributes wa;
+    XGetWindowAttributes(mb->dpy, mb->win, &wa);
     cairo_surface_t *surface = cairo_xlib_surface_create(
         mb->dpy, mb->win,
-        DefaultVisual(mb->dpy, mb->screen),
+        wa.visual,
         mb->screen_w, MENUBAR_HEIGHT
     );
     cairo_t *cr = cairo_create(surface);
+
+    // Clear to fully transparent before painting. With an ARGB visual,
+    // any pixels we don't paint would show stale data. CAIRO_OPERATOR_SOURCE
+    // replaces the destination rather than blending, so this wipes the
+    // entire surface to transparent black.
+    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+    cairo_set_source_rgba(cr, 0, 0, 0, 0);
+    cairo_paint(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
     // ── Background ──────────────────────────────────────────────
     render_background(mb, cr);

@@ -15,6 +15,8 @@
 // at $HOME/.local/share/aqua-widgets/menubar/apple_logo.png (and the
 // _selected variant).
 
+#define _GNU_SOURCE  // For M_PI in math.h under strict C11
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

@@ -22,6 +22,8 @@
 // By mapping each phase to a 0-to-pi range, we get a nice up-and-back motion.
 // ============================================================================
 
+#define _GNU_SOURCE  // For M_PI in math.h under strict C11
+
 #include "bounce.h"
 #include <math.h>
 #include <time.h>
