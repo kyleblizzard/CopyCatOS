@@ -34,12 +34,8 @@
 #include "crystal.h"
 #include "decor.h"
 
-// Forward declaration from compositor.h — we avoid including it directly
-// because both headers define SHADOW_* macros (crystal.h's values are
-// the authoritative ones for Crystal). We only need this one function
-// as a fallback for ARGB visual discovery.
-bool compositor_create_argb_visual(AuraWM *wm, Visual **out_visual,
-                                   Colormap *out_colormap);
+// Forward declaration removed — compositor.c is no longer linked.
+// crystal_create_argb_visual() now handles fallback internally.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -534,12 +530,11 @@ bool crystal_init(AuraWM *wm)
     }
 
     // ── Step 11: Set up XComposite redirection ──
-    // CompositeRedirectManual tells the X server: "Don't draw ANY windows to
-    // the screen. Give me their pixmaps and I'll handle compositing myself."
-    // This is different from the old compositor's Automatic mode — we are now
-    // fully responsible for what appears on screen.
-    XCompositeRedirectSubwindows(wm->dpy, wm->root, CompositeRedirectManual);
-    fprintf(stderr, "[crystal] XComposite redirect set (manual mode)\n");
+    // Using Automatic mode during development — picom handles the actual
+    // compositing for now while Crystal's rendering pipeline is completed.
+    // When Crystal Phase 1 is fully working, this switches to Manual.
+    XCompositeRedirectSubwindows(wm->dpy, wm->root, CompositeRedirectAutomatic);
+    fprintf(stderr, "[crystal] XComposite redirect set (automatic mode — picom fallback)\n");
 
     // ── Step 12: Find ARGB visual ──
     // Needed for frame windows that want semi-transparent shadow regions.
@@ -1309,8 +1304,37 @@ bool crystal_create_argb_visual(AuraWM *wm, Visual **out_visual,
         return true;
     }
 
-    // Fall back to searching for one (same as old compositor)
-    return compositor_create_argb_visual(wm, out_visual, out_colormap);
+    // Fall back to searching for a 32-bit ARGB visual manually.
+    // This is the same logic that was in the old compositor.c — look for
+    // a TrueColor visual with 32-bit depth on the default screen.
+    if (!wm || !wm->dpy) return false;
+
+    XVisualInfo templ;
+    templ.screen = wm->screen;
+    templ.depth = 32;
+    templ.class = TrueColor;
+
+    int num_visuals = 0;
+    XVisualInfo *visuals = XGetVisualInfo(wm->dpy,
+                                          VisualScreenMask | VisualDepthMask |
+                                          VisualClassMask,
+                                          &templ, &num_visuals);
+
+    if (!visuals || num_visuals == 0) {
+        if (visuals) XFree(visuals);
+        return false;
+    }
+
+    // Use the first matching 32-bit TrueColor visual
+    *out_visual = visuals[0].visual;
+
+    // X11 requires a colormap for every visual. AllocNone means we don't
+    // need to allocate color cells (TrueColor uses direct RGB encoding).
+    *out_colormap = XCreateColormap(wm->dpy, wm->root,
+                                    *out_visual, AllocNone);
+
+    XFree(visuals);
+    return true;
 }
 
 // ────────────────────────────────────────────────────────────────────────

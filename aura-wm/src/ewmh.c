@@ -5,7 +5,7 @@
 // _NET_CLIENT_LIST, _NET_ACTIVE_WINDOW, etc.
 
 #include "ewmh.h"
-#include "compositor.h"
+#include "crystal.h"
 #include <stdio.h>
 #include <string.h>
 

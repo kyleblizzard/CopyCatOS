@@ -88,8 +88,8 @@ WM_PID=$!
 sleep 0.5
 
 # ─── Compositor for ARGB transparency ───
-# picom handles compositing so transparent windows (dock, menubar, spotlight)
-# actually show the desktop behind them. Without this, ARGB = black background.
+# Crystal Compositor (Phase 1) initializes but rendering pipeline is WIP.
+# Using picom as compositor until Crystal's window tracking is complete.
 picom --config ~/AuraOS/aura-wm/session/picom.conf -b
 sleep 0.3
 

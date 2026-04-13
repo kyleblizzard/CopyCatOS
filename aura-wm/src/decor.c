@@ -20,7 +20,7 @@
 #define _GNU_SOURCE  // For M_PI
 #include "decor.h"
 #include "assets.h"
-#include "compositor.h"
+#include "crystal.h"
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include <pango/pangocairo.h>
@@ -69,16 +69,16 @@ void decor_paint(AuraWM *wm, Client *c)
         wm->dpy, c->frame, visual, frame_w, frame_h);
     cairo_t *cr = cairo_create(surface);
 
-    // ── Shadow (compositor must be active for ARGB visuals) ──
+    // ── Compositor-aware frame clearing ──
     if (compositor_active) {
-        // Clear the entire frame to transparent first (ARGB visual)
+        // Clear frame to transparent for ARGB visual
         cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
         cairo_set_source_rgba(cr, 0, 0, 0, 0);
         cairo_paint(cr);
         cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
-
-        // Paint the drop shadow in the transparent padding around the chrome
-        compositor_paint_shadow(wm, c, cr);
+        // NOTE: Shadow rendering moved to Crystal compositor.
+        // crystal_composite() draws GL shadows in the compositing pass,
+        // so we don't paint Cairo shadows here anymore.
     }
 
     // All chrome painting is offset by (sl, st) to account for shadow padding.

@@ -12,7 +12,7 @@
 #include "events.h"
 #include "decor.h"
 #include "input.h"
-#include "compositor.h"
+#include "crystal.h"
 #include "struts.h"
 #include <stdio.h>
 #include <signal.h>
@@ -48,10 +48,10 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // Initialize the compositor for window shadows (optional — degrades
-    // gracefully if XComposite/XDamage aren't available)
-    if (!compositor_init(&wm)) {
-        fprintf(stderr, "[aura-wm] Compositor unavailable — no window shadows\n");
+    // Initialize the Crystal compositor for OpenGL compositing and window
+    // shadows (optional — degrades gracefully if GLX/XComposite aren't available)
+    if (!crystal_init(&wm)) {
+        fprintf(stderr, "[aura-wm] Crystal compositor unavailable — no window shadows\n");
     }
 
     // Set up strut handling so dock/menubar can reserve screen edges
@@ -68,6 +68,7 @@ int main(int argc, char *argv[])
 
     // Clean shutdown — unframe all windows so apps survive restart
     decor_shutdown();
+    crystal_shutdown(&wm);
     wm_shutdown(&wm);
 
     return 0;

@@ -38,7 +38,7 @@ aura_wm_sources = [
   'src/assets.c',
   'src/ewmh.c',
   'src/input.c',
-  'src/compositor.c',
+  'src/crystal.c',
   'src/struts.c',
   'src/resize.c',
 ]

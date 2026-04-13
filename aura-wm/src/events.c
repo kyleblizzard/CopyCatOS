@@ -6,7 +6,7 @@
 #include "frame.h"
 #include "ewmh.h"
 #include "input.h"
-#include "compositor.h"
+#include "crystal.h"
 #include "struts.h"
 #include "resize.h"
 #include <stdio.h>
@@ -61,12 +61,20 @@ void events_run(AuraWM *wm)
         XEvent ev;
         XNextEvent(wm->dpy, &ev);
 
-        if (ev.type < LASTEvent && handlers[ev.type]) {
+        // Let Crystal handle extension events (XDamage, etc.) first.
+        // crystal_handle_event() returns true if it consumed the event.
+        if (crystal_handle_event(wm, &ev)) {
+            // Crystal handled this event (e.g., DamageNotify) — skip
+            // normal dispatch so we don't process it twice.
+        } else if (ev.type < LASTEvent && handlers[ev.type]) {
             handlers[ev.type](wm, &ev);
-        } else {
-            // Events with type >= LASTEvent are extension events
-            // (e.g., XDamage notifications). Forward to the compositor.
-            compositor_damage_notify(wm, &ev);
+        }
+
+        // Composite all windows onto the screen. This is the Crystal
+        // compositor's main render pass — it draws every window with
+        // shadows and effects via OpenGL.
+        if (crystal_is_active()) {
+            crystal_composite(wm);
         }
     }
 }

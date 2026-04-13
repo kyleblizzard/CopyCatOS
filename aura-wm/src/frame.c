@@ -4,7 +4,7 @@
 #include "frame.h"
 #include "decor.h"
 #include "ewmh.h"
-#include "compositor.h"
+#include "crystal.h"
 #include "struts.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,7 +57,7 @@ void frame_window(AuraWM *wm, Window client)
         // Get 32-bit ARGB visual for transparent shadow regions
         Visual *argb_visual = NULL;
         Colormap argb_cmap;
-        if (compositor_create_argb_visual(wm, &argb_visual, &argb_cmap)) {
+        if (crystal_create_argb_visual(wm, &argb_visual, &argb_cmap)) {
             frame_visual = argb_visual;
             frame_depth = 32;
             attrs.colormap = argb_cmap;
@@ -121,7 +121,7 @@ void frame_window(AuraWM *wm, Window client)
 
     // Set input shape so clicks in the shadow region pass through
     if (compositor_active) {
-        compositor_set_input_shape(wm, c);
+        crystal_set_input_shape(wm, c);
     }
 
     // Update EWMH client list

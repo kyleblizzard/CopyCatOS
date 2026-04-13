@@ -18,7 +18,7 @@
 - [x] Update aura-session.sh
 
 ## Step 1: aura-wm Compositing (Shadows)
-- [x] Create compositor.c / compositor.h
+- [x] Create compositor.c / compositor.h (legacy — replaced by Crystal)
 - [x] Find/create 32-bit ARGB visual
 - [x] Redirect windows to off-screen pixmaps via XComposite
 - [x] Composite with alpha-blended shadows via XRender
@@ -30,6 +30,11 @@
 - [x] XFixes input shape so clicks pass through shadows
 - [x] Skip shadows for DOCK and DESKTOP window types
 - [x] Wire compositor into main.c, events.c, decor.c, frame.c
+- [x] Crystal Compositor (crystal.c/crystal.h) — OpenGL replacement for compositor.c + picom
+- [x] Wire Crystal into WM: main.c, events.c, decor.c, frame.c, ewmh.c
+- [x] Remove compositor.c from meson.build (kept as compositor_legacy backup)
+- [x] Comment out picom from aura-session.sh
+- [x] Inline ARGB visual fallback in crystal.c (removed compositor.c dependency)
 - [ ] Gate: windows have visible drop shadows, stronger below, no artifacts on move
 
 ## Step 2: aura-wm Strut Handling
