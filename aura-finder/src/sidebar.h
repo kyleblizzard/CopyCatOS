@@ -21,12 +21,12 @@
 //     Music          → ~/Music
 //     Pictures       → ~/Pictures
 //
-// Visual style:
-//   - Background: #DFE5ED (the distinctive Snow Leopard blue-grey)
-//   - Section headers: ALL CAPS, #8C8C8C, bold 11pt
-//   - Items: Lucida Grande 13pt, #1A1A1A
-//   - Selected item: #3875D7 fill with white text (Aqua highlight)
-//   - 1px separator line on the right edge (#B8B8B8)
+// Visual style (measured from real Snow Leopard):
+//   - Background: #DDE4EA — RGB(221,228,234)
+//   - Section headers: ALL CAPS, #8C8C8C, bold 9pt
+//   - Items: Lucida Grande 11pt, #1A1A1A
+//   - Selected item: gradient #5A96C8 → #386C9D with white text
+//   - 1px separator line on the right edge (#A9A9A9)
 
 #ifndef AURA_SIDEBAR_H
 #define AURA_SIDEBAR_H

@@ -22,8 +22,8 @@
 //     Pictures       → ~/Pictures
 //
 // The sidebar has the distinctive Snow Leopard blue-grey background
-// (#DFE5ED), section headers in small caps, and Aqua-blue selection
-// highlighting (#3875D7).
+// (#DDE4EA), section headers in small caps, and selection highlighting
+// using a gradient from #5A96C8 (top) to #386C9D (bottom).
 
 #define _GNU_SOURCE  // For M_PI
 
@@ -39,9 +39,11 @@
 
 // ── Sidebar layout constants ────────────────────────────────────────
 
-#define SB_BG_R  (0xDF / 255.0)  // Background red   (#DFE5ED)
-#define SB_BG_G  (0xE5 / 255.0)  // Background green
-#define SB_BG_B  (0xED / 255.0)  // Background blue
+// Real Snow Leopard sidebar background: RGB(221,228,234) = #DDE4EA
+// Measured from actual Snow Leopard machine
+#define SB_BG_R  (221 / 255.0)   // Background red   (#DDE4EA)
+#define SB_BG_G  (228 / 255.0)   // Background green
+#define SB_BG_B  (234 / 255.0)   // Background blue
 
 #define SB_PAD_LEFT   12   // Left padding for item text
 #define SB_ITEM_H     24   // Height of each sidebar item row
@@ -49,15 +51,20 @@
 #define SB_ICON_SIZE   16  // Size of the small icon next to each item
 #define SB_ICON_PAD     6  // Gap between the icon and the text
 
-// Aqua selection highlight color (#3875D7)
-#define SB_SEL_R  (0x38 / 255.0)
-#define SB_SEL_G  (0x75 / 255.0)
-#define SB_SEL_B  (0xD7 / 255.0)
+// Real Snow Leopard selection gradient (measured from actual machine)
+// Top of selection row: lighter blue RGB(90,150,200) = #5A96C8
+#define SB_SEL_TOP_R  (90  / 255.0)
+#define SB_SEL_TOP_G  (150 / 255.0)
+#define SB_SEL_TOP_B  (200 / 255.0)
+// Bottom of selection row: darker blue RGB(56,108,157) = #386C9D
+#define SB_SEL_BOT_R  (56  / 255.0)
+#define SB_SEL_BOT_G  (108 / 255.0)
+#define SB_SEL_BOT_B  (157 / 255.0)
 
-// Separator line on the right edge (#B8B8B8)
-#define SB_SEP_R  (0xB8 / 255.0)
-#define SB_SEP_G  (0xB8 / 255.0)
-#define SB_SEP_B  (0xB8 / 255.0)
+// Real Snow Leopard separator line on the right edge: RGB(169,169,169) = #A9A9A9
+#define SB_SEP_R  (169 / 255.0)
+#define SB_SEP_G  (169 / 255.0)
+#define SB_SEP_B  (169 / 255.0)
 
 // ── Sidebar item data ───────────────────────────────────────────────
 
@@ -360,7 +367,7 @@ void sidebar_paint(FinderState *fs)
     // ── 1. Blue-grey background ─────────────────────────────────
     //
     // This is THE defining visual feature of the Snow Leopard sidebar.
-    // The color #DFE5ED is distinctive and immediately recognizable.
+    // The color #DDE4EA is measured from a real Snow Leopard machine.
     cairo_rectangle(cr, 0, tb_h, sb_w, win_h - tb_h);
     cairo_set_source_rgb(cr, SB_BG_R, SB_BG_G, SB_BG_B);
     cairo_fill(cr);
@@ -415,13 +422,16 @@ void sidebar_paint(FinderState *fs)
 
             // Draw selection highlight if this item is selected
             if (i == selected_index) {
-                // Aqua blue rounded rectangle highlight
+                // Real Snow Leopard selection: gradient from lighter
+                // blue at top to darker blue at bottom, with a subtle
+                // rounded rectangle shape.
                 double rx = 4;
                 double ry = y;
                 double rw = sb_w - 8;
                 double rh = SB_ITEM_H;
                 double rr = 4;  // Small corner radius
 
+                // Build the rounded rectangle path
                 cairo_new_sub_path(cr);
                 cairo_arc(cr, rx + rw - rr, ry + rr,      rr, -M_PI / 2, 0);
                 cairo_arc(cr, rx + rw - rr, ry + rh - rr, rr, 0,          M_PI / 2);
@@ -429,8 +439,16 @@ void sidebar_paint(FinderState *fs)
                 cairo_arc(cr, rx + rr,      ry + rr,      rr, M_PI,        3 * M_PI / 2);
                 cairo_close_path(cr);
 
-                cairo_set_source_rgb(cr, SB_SEL_R, SB_SEL_G, SB_SEL_B);
+                // Selection gradient — lighter at top, darker at bottom
+                cairo_pattern_t *sel = cairo_pattern_create_linear(
+                    0, ry, 0, ry + rh);
+                cairo_pattern_add_color_stop_rgb(sel, 0.0,
+                    SB_SEL_TOP_R, SB_SEL_TOP_G, SB_SEL_TOP_B);
+                cairo_pattern_add_color_stop_rgb(sel, 1.0,
+                    SB_SEL_BOT_R, SB_SEL_BOT_G, SB_SEL_BOT_B);
+                cairo_set_source(cr, sel);
                 cairo_fill(cr);
+                cairo_pattern_destroy(sel);
             }
 
             // Draw the icon (16x16, positioned to the left of the text)

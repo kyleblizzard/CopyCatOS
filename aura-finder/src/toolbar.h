@@ -12,24 +12,15 @@
 //   - Path breadcrumb: "Macintosh HD > Users > home > Documents"
 //   - Search field: rounded rectangle on the right side
 //
-// The toolbar has a subtle gradient background matching the real
-// Snow Leopard Finder toolbar (#D8D8D8 at top → #C0C0C0 at bottom).
+// The toolbar has a multi-stop gradient background measured from a real
+// Snow Leopard Finder: 191 (top) → 154 (separator) → 170→168 (bottom).
 
 #ifndef AURA_TOOLBAR_H
 #define AURA_TOOLBAR_H
 
 #include "finder.h"
 
-// View mode enumeration — controls how the content area displays files.
-// Phase 1 only implements ICON view; the others are drawn as buttons
-// but not yet functional.
-typedef enum {
-    VIEW_MODE_ICON    = 0,  // Grid of 64x64 icons
-    VIEW_MODE_LIST    = 1,  // Rows with file details
-    VIEW_MODE_COLUMN  = 2,  // Miller columns (like Finder column view)
-    VIEW_MODE_CFLOW   = 3,  // Cover Flow (preview + list)
-    VIEW_MODE_COUNT   = 4   // Total number of view modes
-} ViewMode;
+// ViewMode is defined in finder.h (shared root header).
 
 // Get the currently active view mode.
 ViewMode toolbar_get_view_mode(void);

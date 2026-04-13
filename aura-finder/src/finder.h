@@ -26,10 +26,22 @@
 // These define the fixed dimensions of the Finder's three zones:
 // toolbar (top), sidebar (left), and content area (remaining space).
 
+// ── View modes ─────────────────────────────────────────────────────
+// Defined here (root header) so toolbar.h and content.h share the same enum.
+typedef enum {
+    VIEW_MODE_ICON   = 0,   // Grid of icons
+    VIEW_MODE_LIST   = 1,   // Rows with columns
+    VIEW_MODE_COLUMN = 2,   // Miller columns
+    VIEW_MODE_CFLOW  = 3,   // Cover Flow
+    VIEW_MODE_COUNT  = 4
+} ViewMode;
+
 #define FINDER_DEFAULT_W   700   // Default window width in pixels
 #define FINDER_DEFAULT_H   500   // Default window height in pixels
 #define FINDER_TOOLBAR_H    30   // Height of the toolbar area (top)
 #define FINDER_SIDEBAR_W   200   // Width of the sidebar (left)
+#define FINDER_STATUSBAR_H  20   // Height of the status bar (bottom, above path bar)
+#define FINDER_PATHBAR_H    22   // Height of the path bar (very bottom)
 
 // ── Core state struct ───────────────────────────────────────────────
 
@@ -49,6 +61,8 @@ typedef struct {
     // module can access them from the FinderState pointer.
     int toolbar_h;         // Height of toolbar (FINDER_TOOLBAR_H)
     int sidebar_w;         // Width of sidebar (FINDER_SIDEBAR_W)
+    int statusbar_h;       // Height of status bar (FINDER_STATUSBAR_H)
+    int pathbar_h;         // Height of path bar (FINDER_PATHBAR_H)
 
     // Current directory path being displayed in the content area.
     // Starts at the user's home directory by default.

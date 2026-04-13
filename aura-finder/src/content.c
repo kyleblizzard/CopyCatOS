@@ -3,21 +3,23 @@
 // Unauthorized copying, forking, or distribution of this file,
 // via any medium, is strictly prohibited.
 
-// content.c — Finder content area (file icon grid)
+// content.c — Finder content area (icon grid / list view / column view)
 //
 // The content area is the main panel of the Finder — everything to the
 // right of the sidebar and below the toolbar. It displays the contents
-// of the current directory as an icon grid.
+// of the current directory in icon grid or list view mode.
 //
-// Each file/folder is shown as a 64x64 icon in a 90x90 grid cell, with
-// a filename label below. Icons are loaded from the AquaKDE theme or
-// fall back to Cairo-drawn generic icons.
+// Icon view: Each file/folder is shown as a 64x64 icon in a 90x90 grid
+// cell, with a filename label below. Selected items get a blue rounded
+// rect highlight (Snow Leopard style).
 //
-// The content area has a white background (#FFFFFF) and supports:
-//   - Directory scanning with opendir/readdir
-//   - Icon resolution by file extension → theme icon name
-//   - Grid layout filling left-to-right, top-to-bottom
-//   - Click to select, double-click to open/navigate
+// List view: Files are shown as rows in a columnar table with headers
+// (Name, Date Modified, Size, Kind). Rows alternate between white and
+// light blue (#D8E6F5) per the Apple HIG. Selected rows get a full-width
+// blue highlight (#386C9D).
+//
+// Icons are loaded from the AquaKDE theme or fall back to Cairo-drawn
+// generic icons. The content area has a white background (#FFFFFF).
 
 #define _GNU_SOURCE  // For M_PI and strcasecmp
 
@@ -34,12 +36,16 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <math.h>
+#include <time.h>
 
 // ── Module state ────────────────────────────────────────────────────
 
 // Array of files in the current directory
 static ContentFile files[CONTENT_MAX_FILES];
 static int file_count = 0;
+
+// Current view mode — defaults to icon grid
+static ViewMode current_view_mode = VIEW_MODE_ICON;
 
 // ── Icon resolution ─────────────────────────────────────────────────
 //
@@ -285,6 +291,10 @@ void content_scan(const char *dir_path)
             cairo_surface_destroy(files[i].icon);
             files[i].icon = NULL;
         }
+        if (files[i].icon_small) {
+            cairo_surface_destroy(files[i].icon_small);
+            files[i].icon_small = NULL;
+        }
     }
     file_count = 0;
 
@@ -309,14 +319,17 @@ void content_scan(const char *dir_path)
         // Build the full path
         snprintf(f->path, sizeof(f->path), "%s/%s", dir_path, entry->d_name);
 
-        // Check if it's a directory
+        // Stat the file to determine type, size, and modification time
         struct stat st;
         if (stat(f->path, &st) == 0) {
             f->is_directory = S_ISDIR(st.st_mode);
+            f->file_size    = st.st_size;
+            f->mod_time     = st.st_mtime;
         }
 
-        // Load the icon
+        // Load the icon (64x64 for icon view; list view uses scaled version)
         f->icon = resolve_icon(f->path, f->is_directory);
+        f->icon_small = NULL;  // Lazily created when list view paints
 
         file_count++;
     }
@@ -341,7 +354,7 @@ void content_paint(FinderState *fs)
     int ox = fs->sidebar_w;           // Left edge of content area
     int oy = fs->toolbar_h;           // Top edge of content area
     int cw = fs->win_w - ox;          // Available width
-    int ch = fs->win_h - oy;          // Available height
+    int ch = fs->win_h - oy - fs->statusbar_h - fs->pathbar_h;  // Height minus bottom bars
 
     cairo_save(cr);
 

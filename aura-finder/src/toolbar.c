@@ -12,10 +12,11 @@
 //   2. Path breadcrumb in the center
 //   3. Search field (rounded rect with placeholder) on the right
 //
-// The visual style matches the real Snow Leopard Finder toolbar:
-//   - Gradient background from #D8D8D8 (top) to #C0C0C0 (bottom)
-//   - 1px bottom border line (#A0A0A0)
-//   - Recessed button style for view mode toggles
+// The visual style matches the real Snow Leopard Finder toolbar,
+// measured from an actual machine:
+//   - Multi-stop gradient: 191 (top) → 154 (separator dip) → 170→168 (bottom)
+//   - 1px dark bottom separator (brightness 140)
+//   - Rounded-rect view mode buttons (~20x18px each)
 //   - Rounded-rect search field with magnifying glass icon
 
 #define _GNU_SOURCE  // For M_PI
@@ -37,18 +38,21 @@ static ViewMode current_mode = VIEW_MODE_ICON;
 
 // ── View mode button dimensions ─────────────────────────────────────
 
-// Each view button is a small square in a button group on the left side
-#define BTN_SIZE   22    // Width and height of each view button
+// Each view button is a small rounded rect in a button group on the left side.
+// Real Snow Leopard buttons are ~20x18px each, grouped tightly.
+#define BTN_W      20    // Width of each view button
+#define BTN_H      18    // Height of each view button
 #define BTN_GAP     0    // Gap between buttons (0 = touching, grouped)
 #define BTN_LEFT   10    // Left margin before the first button
-#define BTN_TOP     4    // Top margin within the toolbar
+#define BTN_TOP     6    // Top margin within the toolbar
+#define BTN_RADIUS  3    // Corner radius for button rounded rects
 
 // ── Search field dimensions ─────────────────────────────────────────
 
 #define SEARCH_W    180  // Width of the search field
-#define SEARCH_H     20  // Height of the search field
+#define SEARCH_H     22  // Height of the search field (measured from real SL)
 #define SEARCH_RIGHT 10  // Right margin from window edge
-#define SEARCH_RADIUS 10 // Corner radius (makes it pill-shaped)
+#define SEARCH_RADIUS 11 // Corner radius (pill shape, half of height)
 
 // ── Helper: Draw a rounded rectangle path ───────────────────────────
 //
@@ -81,8 +85,8 @@ static void draw_view_icon(cairo_t *cr, int bx, int by, ViewMode mode)
     cairo_set_line_width(cr, 1.0);
 
     // Center point of the button
-    double cx = bx + BTN_SIZE / 2.0;
-    double cy = by + BTN_SIZE / 2.0;
+    double cx = bx + BTN_W / 2.0;
+    double cy = by + BTN_H / 2.0;
 
     switch (mode) {
     case VIEW_MODE_ICON:
@@ -166,7 +170,7 @@ static void draw_breadcrumb(FinderState *fs)
     }
 
     // Calculate position: after the view buttons, before the search field
-    int text_x = BTN_LEFT + (BTN_SIZE * VIEW_MODE_COUNT) + 15;
+    int text_x = BTN_LEFT + (BTN_W * VIEW_MODE_COUNT) + 15;
     int text_y = 8;  // Vertically centered-ish in the 30px toolbar
 
     // Create a Pango layout for the breadcrumb text
@@ -212,14 +216,23 @@ void toolbar_paint(FinderState *fs)
 
     // ── 1. Gradient background ──────────────────────────────────
     //
-    // The Snow Leopard Finder toolbar has a subtle vertical gradient
-    // from light grey at the top to slightly darker grey at the bottom.
-    // This gives it the brushed-metal look.
+    // Snow Leopard Finder toolbar gradient measured from a real machine:
+    //   y=0:  brightness 191 (top of toolbar)
+    //   y=2:  brightness 190
+    //   y=3:  brightness 154 (1px dark separator dip)
+    //   y=85%: brightness 170 (lower body)
+    //   y=100%: brightness 168 (very bottom, blends into frame body)
     cairo_pattern_t *grad = cairo_pattern_create_linear(0, 0, 0, h);
     cairo_pattern_add_color_stop_rgb(grad, 0.0,
-        0xD8 / 255.0, 0xD8 / 255.0, 0xD8 / 255.0);  // #D8D8D8 top
+        191 / 255.0, 191 / 255.0, 191 / 255.0);  // top
+    cairo_pattern_add_color_stop_rgb(grad, 0.1,
+        190 / 255.0, 190 / 255.0, 190 / 255.0);
+    cairo_pattern_add_color_stop_rgb(grad, 0.15,
+        154 / 255.0, 154 / 255.0, 154 / 255.0);  // separator dip
+    cairo_pattern_add_color_stop_rgb(grad, 0.85,
+        170 / 255.0, 170 / 255.0, 170 / 255.0);  // bottom body
     cairo_pattern_add_color_stop_rgb(grad, 1.0,
-        0xC0 / 255.0, 0xC0 / 255.0, 0xC0 / 255.0);  // #C0C0C0 bottom
+        168 / 255.0, 168 / 255.0, 168 / 255.0);  // very bottom
 
     cairo_rectangle(cr, 0, 0, w, h);
     cairo_set_source(cr, grad);
@@ -228,9 +241,9 @@ void toolbar_paint(FinderState *fs)
 
     // ── 2. Bottom border line ───────────────────────────────────
     //
-    // A 1px darker line at the bottom separates the toolbar from
-    // the content/sidebar below it.
-    cairo_set_source_rgb(cr, 0xA0 / 255.0, 0xA0 / 255.0, 0xA0 / 255.0);
+    // A 1px dark separator at the very bottom of the toolbar, measured
+    // brightness ~140 from the real Snow Leopard Finder.
+    cairo_set_source_rgb(cr, 140 / 255.0, 140 / 255.0, 140 / 255.0);
     cairo_set_line_width(cr, 1.0);
     cairo_move_to(cr, 0, h - 0.5);
     cairo_line_to(cr, w, h - 0.5);
@@ -238,30 +251,35 @@ void toolbar_paint(FinderState *fs)
 
     // ── 3. View mode buttons ────────────────────────────────────
     //
-    // Four small buttons in a group on the left side of the toolbar.
-    // The active button is drawn with a darker/pressed appearance.
+    // Four small rounded-rect buttons (~20x18px each) grouped on the
+    // left side. The active button has a darker pressed appearance.
+    // Matches the real Snow Leopard Finder view toggle group.
     for (int i = 0; i < VIEW_MODE_COUNT; i++) {
-        int bx = BTN_LEFT + i * (BTN_SIZE + BTN_GAP);
+        int bx = BTN_LEFT + i * (BTN_W + BTN_GAP);
         int by = BTN_TOP;
 
         // Button background: pressed (active) or normal
         if (i == (int)current_mode) {
-            // Active button: darker inset appearance
-            cairo_set_source_rgb(cr, 0xA0 / 255.0, 0xA0 / 255.0, 0xA0 / 255.0);
+            // Active button: darker inset appearance (brightness ~101)
+            cairo_set_source_rgb(cr, 101 / 255.0, 101 / 255.0, 101 / 255.0);
         } else {
-            // Inactive button: slightly lighter than toolbar
-            cairo_set_source_rgb(cr, 0xC8 / 255.0, 0xC8 / 255.0, 0xC8 / 255.0);
+            // Inactive button: slightly lighter than toolbar body
+            cairo_set_source_rgb(cr, 170 / 255.0, 170 / 255.0, 170 / 255.0);
         }
-        cairo_rectangle(cr, bx, by, BTN_SIZE, BTN_SIZE);
+        rounded_rect(cr, bx, by, BTN_W, BTN_H, BTN_RADIUS);
         cairo_fill(cr);
 
-        // Button border
-        cairo_set_source_rgb(cr, 0x90 / 255.0, 0x90 / 255.0, 0x90 / 255.0);
+        // Button border: subtle 1px outline
+        cairo_set_source_rgb(cr, 120 / 255.0, 120 / 255.0, 120 / 255.0);
         cairo_set_line_width(cr, 1.0);
-        cairo_rectangle(cr, bx + 0.5, by + 0.5, BTN_SIZE - 1, BTN_SIZE - 1);
+        rounded_rect(cr, bx + 0.5, by + 0.5, BTN_W - 1, BTN_H - 1, BTN_RADIUS);
         cairo_stroke(cr);
 
-        // Draw the mode icon inside the button
+        // Draw the mode icon inside the button.
+        // Use white icons on the active (dark) button, dark icons otherwise.
+        if (i == (int)current_mode) {
+            cairo_set_source_rgb(cr, 0.9, 0.9, 0.9);
+        }
         draw_view_icon(cr, bx, by, (ViewMode)i);
     }
 
@@ -318,11 +336,11 @@ bool toolbar_handle_click(FinderState *fs, int x, int y)
 
     // Check if the click landed on one of the view mode buttons
     for (int i = 0; i < VIEW_MODE_COUNT; i++) {
-        int bx = BTN_LEFT + i * (BTN_SIZE + BTN_GAP);
+        int bx = BTN_LEFT + i * (BTN_W + BTN_GAP);
         int by = BTN_TOP;
 
-        if (x >= bx && x < bx + BTN_SIZE &&
-            y >= by && y < by + BTN_SIZE) {
+        if (x >= bx && x < bx + BTN_W &&
+            y >= by && y < by + BTN_H) {
             // Switch to this view mode
             current_mode = (ViewMode)i;
             fprintf(stderr, "[toolbar] View mode changed to %d\n", i);

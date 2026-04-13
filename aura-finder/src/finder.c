@@ -35,11 +35,15 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 
+#include <pango/pangocairo.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <time.h>
+#include <math.h>
+#include <sys/statvfs.h>
 
 // ── Helper: Recreate Cairo surface ──────────────────────────────────
 //
@@ -121,8 +125,10 @@ bool finder_init(FinderState *fs, const char *initial_path)
 
     // Set layout constants — stored in the struct so every module
     // can access them via the FinderState pointer
-    fs->toolbar_h = FINDER_TOOLBAR_H;
-    fs->sidebar_w = FINDER_SIDEBAR_W;
+    fs->toolbar_h   = FINDER_TOOLBAR_H;
+    fs->sidebar_w   = FINDER_SIDEBAR_W;
+    fs->statusbar_h = FINDER_STATUSBAR_H;
+    fs->pathbar_h   = FINDER_PATHBAR_H;
 
     // Set the initial path. Default to $HOME if nothing specified.
     if (initial_path) {
@@ -217,10 +223,247 @@ bool finder_init(FinderState *fs, const char *initial_path)
     return true;
 }
 
+// ── Status Bar Painting ─────────────────────────────────────────────
+//
+// The status bar sits between the content area and the path bar at the
+// bottom of the window. It shows the item count and available disk
+// space, matching Snow Leopard Finder's "X items, Y GB available" text.
+
+static void statusbar_paint(FinderState *fs)
+{
+    cairo_t *cr = fs->cr;
+    int win_w = fs->win_w;
+    int sidebar_w = fs->sidebar_w;
+    int content_w = win_w - sidebar_w;
+
+    // The status bar sits directly below the content area.
+    // content_h = total height minus toolbar, status bar, and path bar.
+    int content_h = fs->win_h - fs->toolbar_h - fs->statusbar_h - fs->pathbar_h;
+    int status_y = fs->toolbar_h + content_h;
+
+    // ── Light grey background (#ECECEC) ─────────────────────────
+    cairo_set_source_rgb(cr, 236 / 255.0, 236 / 255.0, 236 / 255.0);
+    cairo_rectangle(cr, sidebar_w, status_y, content_w, fs->statusbar_h);
+    cairo_fill(cr);
+
+    // ── 1px top border to separate from content ─────────────────
+    cairo_set_source_rgb(cr, 180 / 255.0, 180 / 255.0, 180 / 255.0);
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, sidebar_w, status_y + 0.5);
+    cairo_line_to(cr, win_w, status_y + 0.5);
+    cairo_stroke(cr);
+
+    // ── Build status text: "X items, Y GB available" ────────────
+    //
+    // Get the number of items from the content module and the
+    // available disk space from statvfs on the current path.
+    int item_count = content_get_count();
+    char status_text[128];
+
+    struct statvfs vfs;
+    if (statvfs(fs->path, &vfs) == 0) {
+        // Calculate available space in GB (using f_bavail for non-root)
+        double avail_gb = (double)vfs.f_bavail * vfs.f_frsize / (1024.0 * 1024.0 * 1024.0);
+        if (avail_gb >= 1.0) {
+            snprintf(status_text, sizeof(status_text),
+                     "%d items, %.1f GB available", item_count, avail_gb);
+        } else {
+            // Show MB if less than 1 GB
+            double avail_mb = (double)vfs.f_bavail * vfs.f_frsize / (1024.0 * 1024.0);
+            snprintf(status_text, sizeof(status_text),
+                     "%d items, %.0f MB available", item_count, avail_mb);
+        }
+    } else {
+        snprintf(status_text, sizeof(status_text), "%d items", item_count);
+    }
+
+    // ── Draw the status text centered in the status bar ─────────
+    PangoLayout *layout = pango_cairo_create_layout(cr);
+    pango_layout_set_text(layout, status_text, -1);
+
+    PangoFontDescription *font = pango_font_description_from_string(
+        "Lucida Grande 11");
+    pango_layout_set_font_description(layout, font);
+    pango_font_description_free(font);
+
+    int text_w, text_h;
+    pango_layout_get_pixel_size(layout, &text_w, &text_h);
+
+    // Center the text horizontally within the content area, vertically in the bar
+    int text_x = sidebar_w + (content_w - text_w) / 2;
+    int text_y = status_y + (fs->statusbar_h - text_h) / 2;
+
+    cairo_move_to(cr, text_x, text_y);
+    cairo_set_source_rgb(cr, 0x66 / 255.0, 0x66 / 255.0, 0x66 / 255.0);
+    pango_cairo_show_layout(cr, layout);
+    g_object_unref(layout);
+}
+
+// ── Path Bar Painting ───────────────────────────────────────────────
+//
+// The path bar is the bottommost strip of the Finder window. It shows
+// a breadcrumb trail of the current directory path, with each component
+// rendered as a clickable-looking pill. A ">" separator sits between
+// components. Matches the real Snow Leopard Finder path bar appearance.
+
+static void pathbar_paint(FinderState *fs)
+{
+    cairo_t *cr = fs->cr;
+    int win_w = fs->win_w;
+
+    // The path bar sits at the very bottom of the window, spanning full width
+    int path_y = fs->win_h - fs->pathbar_h;
+
+    // ── Gradient background (light grey, like the toolbar) ──────
+    cairo_pattern_t *path_grad = cairo_pattern_create_linear(
+        0, path_y, 0, path_y + fs->pathbar_h);
+    cairo_pattern_add_color_stop_rgb(path_grad, 0.0,
+        210 / 255.0, 210 / 255.0, 210 / 255.0);
+    cairo_pattern_add_color_stop_rgb(path_grad, 1.0,
+        190 / 255.0, 190 / 255.0, 190 / 255.0);
+    cairo_set_source(cr, path_grad);
+    cairo_rectangle(cr, 0, path_y, win_w, fs->pathbar_h);
+    cairo_fill(cr);
+    cairo_pattern_destroy(path_grad);
+
+    // ── 1px top border ──────────────────────────────────────────
+    cairo_set_source_rgb(cr, 165 / 255.0, 165 / 255.0, 165 / 255.0);
+    cairo_set_line_width(cr, 1.0);
+    cairo_move_to(cr, 0, path_y + 0.5);
+    cairo_line_to(cr, win_w, path_y + 0.5);
+    cairo_stroke(cr);
+
+    // ── Split the current path into components ──────────────────
+    //
+    // For path "/home/user/Documents", we produce:
+    //   ["Macintosh HD", "home", "user", "Documents"]
+    //
+    // The root "/" is displayed as "Macintosh HD" to match the Mac style.
+    // The user's home directory component is displayed as "Home".
+    char path_copy[1024];
+    strncpy(path_copy, fs->path, sizeof(path_copy) - 1);
+    path_copy[sizeof(path_copy) - 1] = '\0';
+
+    // Collect path components into an array
+    const char *components[64];
+    int comp_count = 0;
+
+    // Always start with "Macintosh HD" representing the root
+    components[comp_count++] = "Macintosh HD";
+
+    // Tokenize the rest of the path (skip empty tokens from leading '/')
+    if (strcmp(path_copy, "/") != 0) {
+        char *token = strtok(path_copy, "/");
+        while (token && comp_count < 64) {
+            components[comp_count++] = token;
+            token = strtok(NULL, "/");
+        }
+    }
+
+    // Check if the user's home directory is in the path so we can
+    // replace that component with "Home" for friendlier display.
+    const char *home = getenv("HOME");
+    char home_basename[256] = "";
+    if (home) {
+        const char *hb = strrchr(home, '/');
+        if (hb && hb[1]) {
+            strncpy(home_basename, hb + 1, sizeof(home_basename) - 1);
+        }
+    }
+
+    // ── Draw each component as a pill with ">" separators ───────
+    int draw_x = 12;  // Starting X offset (left padding)
+    int text_y_offset = (fs->pathbar_h - 12) / 2;  // Vertically center ~12px text
+
+    for (int i = 0; i < comp_count; i++) {
+        // Determine display name — replace home dir username with "Home"
+        const char *display = components[i];
+        if (i > 0 && home_basename[0] && strcmp(display, home_basename) == 0) {
+            display = "Home";
+        }
+
+        // Draw the ">" separator before each component except the first
+        if (i > 0) {
+            PangoLayout *sep_layout = pango_cairo_create_layout(cr);
+            pango_layout_set_text(sep_layout, " \xE2\x96\xB8 ", -1);  // Unicode right-pointing small triangle
+
+            PangoFontDescription *sep_font = pango_font_description_from_string(
+                "Lucida Grande 9");
+            pango_layout_set_font_description(sep_layout, sep_font);
+            pango_font_description_free(sep_font);
+
+            int sep_w, sep_h;
+            pango_layout_get_pixel_size(sep_layout, &sep_w, &sep_h);
+            (void)sep_h;
+
+            cairo_move_to(cr, draw_x, path_y + text_y_offset);
+            cairo_set_source_rgb(cr, 0x88 / 255.0, 0x88 / 255.0, 0x88 / 255.0);
+            pango_cairo_show_layout(cr, sep_layout);
+            g_object_unref(sep_layout);
+
+            draw_x += sep_w;
+        }
+
+        // Measure the component text
+        PangoLayout *layout = pango_cairo_create_layout(cr);
+        pango_layout_set_text(layout, display, -1);
+
+        PangoFontDescription *font = pango_font_description_from_string(
+            "Lucida Grande 11");
+        pango_layout_set_font_description(layout, font);
+        pango_font_description_free(font);
+
+        int text_w, text_h;
+        pango_layout_get_pixel_size(layout, &text_w, &text_h);
+        (void)text_h;
+
+        // ── Draw the pill background behind the component ───────
+        //
+        // Each path component gets a subtle rounded pill shape,
+        // slightly darker than the path bar background.
+        double pill_x = draw_x - 4;
+        double pill_y = path_y + 2;
+        double pill_w = text_w + 8;
+        double pill_h = fs->pathbar_h - 4;
+        double pill_r = 3;
+
+        cairo_new_sub_path(cr);
+        cairo_arc(cr, pill_x + pill_w - pill_r, pill_y + pill_r,
+                  pill_r, -M_PI / 2, 0);
+        cairo_arc(cr, pill_x + pill_w - pill_r, pill_y + pill_h - pill_r,
+                  pill_r, 0, M_PI / 2);
+        cairo_arc(cr, pill_x + pill_r, pill_y + pill_h - pill_r,
+                  pill_r, M_PI / 2, M_PI);
+        cairo_arc(cr, pill_x + pill_r, pill_y + pill_r,
+                  pill_r, M_PI, 3 * M_PI / 2);
+        cairo_close_path(cr);
+
+        // Subtle fill: slightly lighter than the gradient behind it
+        cairo_set_source_rgba(cr, 230 / 255.0, 230 / 255.0, 230 / 255.0, 0.6);
+        cairo_fill_preserve(cr);
+        // Subtle border
+        cairo_set_source_rgba(cr, 160 / 255.0, 160 / 255.0, 160 / 255.0, 0.5);
+        cairo_set_line_width(cr, 0.5);
+        cairo_stroke(cr);
+
+        // ── Draw the component text ─────────────────────────────
+        cairo_move_to(cr, draw_x, path_y + text_y_offset);
+        cairo_set_source_rgb(cr, 0x33 / 255.0, 0x33 / 255.0, 0x33 / 255.0);
+        pango_cairo_show_layout(cr, layout);
+        g_object_unref(layout);
+
+        draw_x += text_w + 2;
+
+        // Stop drawing if we've run past the window edge
+        if (draw_x > win_w - 20) break;
+    }
+}
+
 // ── Painting ────────────────────────────────────────────────────────
 //
 // Paint the entire Finder window by calling each zone's paint function
-// in order: toolbar (top), sidebar (left), content (remaining area).
+// in order: toolbar (top), sidebar (left), content (remaining area),
+// then the status bar and path bar at the bottom.
 
 void finder_paint(FinderState *fs)
 {
@@ -236,6 +479,12 @@ void finder_paint(FinderState *fs)
     toolbar_paint(fs);
     sidebar_paint(fs);
     content_paint(fs);
+
+    // Paint the bottom bars after content so they draw on top.
+    // Status bar shows item count and disk space; path bar shows
+    // the breadcrumb navigation trail.
+    statusbar_paint(fs);
+    pathbar_paint(fs);
 
     // Flush Cairo's drawing commands to the X server so they
     // actually appear on screen.

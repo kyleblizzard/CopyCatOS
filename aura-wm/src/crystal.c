@@ -24,7 +24,7 @@
 //      GLX_EXT_texture_from_pixmap extension (or a CPU fallback if unavailable).
 //   3. Every frame, we draw textured quads (rectangles) for each window at its
 //      screen position, back-to-front, with alpha blending for transparency.
-//   4. Shadows are drawn as concentric rectangles behind each window (Phase 1).
+//   4. Shadows use a cached Gaussian blur (3-pass box blur approximation).
 //   5. Double-buffered via GLX — we draw to a back buffer, then swap it to the
 //      screen, preventing flicker.
 //   6. VSync keeps us locked to the monitor's refresh rate (typically 60 Hz),
@@ -103,6 +103,15 @@ struct WindowTexture {
     bool dirty;             // True if the texture needs refreshing (contents changed)
     bool has_alpha;         // True if the window uses a 32-bit ARGB visual (transparency)
     bool bound;             // True if the texture is currently bound to a pixmap
+
+    // ── Cached Gaussian shadow texture (Phase 2) ──
+    // Instead of re-computing the blurred shadow every frame, we cache the
+    // result as an OpenGL texture. The shadow only needs to be regenerated
+    // when the window is resized. shadow_tex_w/h store the dimensions the
+    // shadow was generated for, so we can detect when it's stale.
+    GLuint shadow_tex;       // OpenGL texture holding the pre-blurred shadow
+    int shadow_tex_w;        // Width the shadow was generated at (includes padding)
+    int shadow_tex_h;        // Height the shadow was generated at (includes padding)
 };
 
 // ────────────────────────────────────────────────────────────────────────
@@ -177,6 +186,7 @@ static struct {
 // ────────────────────────────────────────────────────────────────────────
 
 static void draw_window_shadow(struct WindowTexture *wt, bool focused);
+static void generate_shadow_texture(struct WindowTexture *wt, bool focused);
 static void refresh_window_texture(AuraWM *wm, struct WindowTexture *wt);
 static void refresh_window_texture_fallback(AuraWM *wm, struct WindowTexture *wt);
 static void release_window_texture(AuraWM *wm, struct WindowTexture *wt);
@@ -802,6 +812,14 @@ static void release_window_texture(AuraWM *wm, struct WindowTexture *wt)
         wt->bound = false;
     }
 
+    // Destroy the cached shadow texture (Phase 2 Gaussian blur cache)
+    if (wt->shadow_tex) {
+        glDeleteTextures(1, &wt->shadow_tex);
+        wt->shadow_tex = 0;
+        wt->shadow_tex_w = 0;
+        wt->shadow_tex_h = 0;
+    }
+
     // Destroy the OpenGL texture on the GPU
     if (wt->texture) {
         glDeleteTextures(1, &wt->texture);
@@ -977,6 +995,15 @@ void crystal_window_resized(AuraWM *wm, Client *c)
 
     if (size_changed) {
         wt->dirty = true;
+
+        // Invalidate the cached shadow texture so it gets regenerated at
+        // the new size on the next composite pass.
+        if (wt->shadow_tex) {
+            glDeleteTextures(1, &wt->shadow_tex);
+            wt->shadow_tex = 0;
+            wt->shadow_tex_w = 0;
+            wt->shadow_tex_h = 0;
+        }
     }
 }
 
@@ -1123,80 +1150,307 @@ static void sync_tracked_windows(AuraWM *wm)
 }
 
 // ────────────────────────────────────────────────────────────────────────
-// SECTION: Shadow rendering (Phase 1 — concentric rectangles)
+// SECTION: Shadow rendering (Phase 2 — Gaussian blur via box blur)
 // ────────────────────────────────────────────────────────────────────────
 //
-// Phase 1 uses the same shadow technique as the old Cairo-based compositor:
-// concentric rectangles with decreasing alpha, creating a soft gradient
-// that approximates a Gaussian blur.
+// Phase 2 replaces the old concentric-rectangle shadows with a real
+// Gaussian blur, producing the soft, diffuse shadows seen in Snow Leopard.
 //
-// In Phase 2, this will be replaced with a real GPU-accelerated Gaussian
-// blur for much better visual quality and performance.
+// How it works:
+//   A true Gaussian blur is expensive (O(n^2) per pixel for radius n).
+//   However, a well-known trick in graphics is that applying a box blur
+//   (simple averaging filter) three times in succession closely approximates
+//   a Gaussian blur. Each box blur pass is O(1) per pixel when implemented
+//   as a sliding window (running sum).
+//
+//   The algorithm:
+//     1. Create a grayscale buffer the size of the window plus padding.
+//     2. Fill in a solid white rectangle where the window sits.
+//     3. Run 3 passes of separable box blur (horizontal, then vertical).
+//        "Separable" means we blur in one direction at a time — this turns
+//        a 2D blur into two 1D blurs, which is much faster.
+//     4. The resulting buffer is a smooth alpha mask — bright in the center
+//        (under the window) and fading smoothly to zero at the edges.
+//     5. Upload the mask as an OpenGL texture and draw it as a semi-
+//        transparent black quad behind the window.
+//
+//   The shadow texture is cached per-window and only regenerated when the
+//   window is resized, so the CPU cost is near-zero during normal operation.
+
+// ── generate_shadow_texture ──
+// Builds the blurred shadow alpha mask on the CPU and uploads it to an
+// OpenGL texture. Called once when a window is first composited and again
+// whenever the window is resized.
+//
+// Parameters:
+//   wt      — the window to generate a shadow for
+//   focused — whether the window is focused (focused windows get larger,
+//             darker shadows to make them "pop" visually)
+
+static void generate_shadow_texture(struct WindowTexture *wt, bool focused)
+{
+    if (!wt || wt->w <= 0 || wt->h <= 0) return;
+
+    // ── Shadow parameters ──
+    // radius:     how far the shadow extends from the window edge.
+    //             Focused windows get a larger radius for emphasis.
+    // peak_alpha: maximum opacity of the shadow directly under the window.
+    //             Focused = darker (0.45), unfocused = lighter (0.22).
+    // pad:        extra pixels around the window rect to give the blur room
+    //             to fade out. We use 2x the radius to avoid clipping.
+    int radius = focused ? SHADOW_RADIUS : SHADOW_RADIUS_INACTIVE;
+    float peak_alpha = focused ? (float)SHADOW_ALPHA_ACTIVE
+                               : (float)SHADOW_ALPHA_INACTIVE;
+
+    // The chrome is the visible window area (excluding shadow padding in the
+    // frame). The shadow is generated around this chrome rectangle.
+    int chrome_w = wt->w - SHADOW_LEFT - SHADOW_RIGHT;
+    int chrome_h = wt->h - SHADOW_TOP - SHADOW_BOTTOM;
+    if (chrome_w <= 0 || chrome_h <= 0) return;
+
+    int pad = radius * 2;
+    int shadow_w = chrome_w + pad * 2;
+    int shadow_h = chrome_h + pad * 2;
+
+    // ── Step 1: Create the shadow shape ──
+    // Allocate a single-channel (grayscale) buffer. Start with all zeros
+    // (fully transparent). calloc zero-initializes memory for us.
+    unsigned char *shadow = calloc((size_t)shadow_w * shadow_h, 1);
+    if (!shadow) return;
+
+    // Fill in a solid white rectangle where the chrome would be. This is
+    // the "seed" shape that the blur will spread outward from.
+    // The rectangle is centered in the buffer (offset by 'pad' on all sides).
+    for (int y = pad; y < pad + chrome_h; y++) {
+        // memset is faster than a pixel-by-pixel loop for filling a row
+        memset(&shadow[y * shadow_w + pad], 255, (size_t)chrome_w);
+    }
+
+    // ── Step 2: Three-pass separable box blur ──
+    //
+    // A box blur averages all pixels within a fixed radius of each pixel.
+    // By itself, a box blur looks blocky (square edges). But repeating it
+    // 3 times produces a smooth bell-curve falloff that closely matches a
+    // true Gaussian distribution. This is a well-known approximation used
+    // in real compositors (e.g., CSS blur, Photoshop Gaussian blur).
+    //
+    // Each pass uses radius/3 — three passes of radius R/3 approximate one
+    // Gaussian blur of radius R. We cap the minimum at 1 to avoid a no-op.
+    int blur_radius = radius / 3;
+    if (blur_radius < 1) blur_radius = 1;
+
+    // The "kernel width" is the number of pixels in the averaging window:
+    // from -blur_radius to +blur_radius inclusive = (2*blur_radius + 1).
+    int kernel_width = blur_radius * 2 + 1;
+
+    // Temporary buffer for intermediate blur results. We ping-pong between
+    // shadow[] and temp[] across the horizontal and vertical passes.
+    unsigned char *temp = calloc((size_t)shadow_w * shadow_h, 1);
+    if (!temp) { free(shadow); return; }
+
+    for (int pass = 0; pass < 3; pass++) {
+        // ── Horizontal blur pass ──
+        // For each row, slide a window of width kernel_width across the
+        // row, keeping a running sum. This makes each pixel the average
+        // of its horizontal neighbors — O(1) per pixel regardless of radius.
+        for (int y = 0; y < shadow_h; y++) {
+            // Build the initial sum for the window centered at x=0.
+            // Pixels outside the buffer are handled by clamping to the edge
+            // (this is equivalent to "extend edge" boundary mode).
+            int sum = 0;
+            for (int k = -blur_radius; k <= blur_radius; k++) {
+                // Clamp: if the index would go out of bounds, use the
+                // nearest valid pixel instead
+                int sx = k < 0 ? 0 : (k >= shadow_w ? shadow_w - 1 : k);
+                sum += shadow[y * shadow_w + sx];
+            }
+            temp[y * shadow_w + 0] = (unsigned char)(sum / kernel_width);
+
+            // Slide the window one pixel to the right for each subsequent x.
+            // Add the new pixel entering on the right, remove the old pixel
+            // leaving on the left. This keeps the sum accurate in O(1) time.
+            for (int x = 1; x < shadow_w; x++) {
+                int add_x = x + blur_radius;
+                if (add_x >= shadow_w) add_x = shadow_w - 1;
+                sum += shadow[y * shadow_w + add_x];
+
+                int rem_x = x - blur_radius - 1;
+                if (rem_x < 0) rem_x = 0;
+                sum -= shadow[y * shadow_w + rem_x];
+
+                temp[y * shadow_w + x] = (unsigned char)(sum / kernel_width);
+            }
+        }
+
+        // ── Vertical blur pass ──
+        // Same sliding-window technique, but operating on columns instead
+        // of rows. Reads from temp[] (horizontal result) into shadow[].
+        for (int x = 0; x < shadow_w; x++) {
+            int sum = 0;
+            for (int k = -blur_radius; k <= blur_radius; k++) {
+                int sy = k < 0 ? 0 : (k >= shadow_h ? shadow_h - 1 : k);
+                sum += temp[sy * shadow_w + x];
+            }
+            shadow[0 * shadow_w + x] = (unsigned char)(sum / kernel_width);
+
+            for (int y = 1; y < shadow_h; y++) {
+                int add_y = y + blur_radius;
+                if (add_y >= shadow_h) add_y = shadow_h - 1;
+                sum += temp[add_y * shadow_w + x];
+
+                int rem_y = y - blur_radius - 1;
+                if (rem_y < 0) rem_y = 0;
+                sum -= temp[rem_y * shadow_w + x];
+
+                shadow[y * shadow_w + x] = (unsigned char)(sum / kernel_width);
+            }
+        }
+    }
+    free(temp);
+
+    // ── Step 3: Upload as an OpenGL texture ──
+    //
+    // The blur result is a single-channel alpha mask (0 = transparent,
+    // 255 = fully opaque). We need to convert it to RGBA for OpenGL.
+    // The RGB channels are all 0 (black), and the alpha channel carries
+    // the blurred shadow value scaled by peak_alpha.
+
+    // Delete old shadow texture if it exists (e.g., regenerating after resize)
+    if (wt->shadow_tex) {
+        glDeleteTextures(1, &wt->shadow_tex);
+        wt->shadow_tex = 0;
+    }
+
+    GLuint tex;
+    glGenTextures(1, &tex);
+    glBindTexture(GL_TEXTURE_2D, tex);
+
+    // GL_LINEAR filtering smooths the texture when it's drawn slightly
+    // scaled, preventing any remaining pixelation at the shadow edges.
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    // Clamp to edge so the shadow doesn't wrap around at the borders
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    // Build the RGBA pixel buffer. Each pixel is (0, 0, 0, blurred_alpha).
+    unsigned char *rgba = calloc((size_t)shadow_w * shadow_h * 4, 1);
+    if (!rgba) { free(shadow); glDeleteTextures(1, &tex); return; }
+
+    for (int i = 0; i < shadow_w * shadow_h; i++) {
+        // Scale the blur value by peak_alpha to get the final shadow opacity.
+        // A pixel directly under the window will be ~255 after blurring, so
+        // its alpha becomes peak_alpha * 255. Edge pixels fade toward zero.
+        float a = (shadow[i] / 255.0f) * peak_alpha;
+
+        // Pre-multiply the alpha into the color channels. Our blend mode
+        // (GL_ONE, GL_ONE_MINUS_SRC_ALPHA) expects pre-multiplied alpha:
+        //   final = src_color * 1 + dst_color * (1 - src_alpha)
+        // For a black shadow (R=G=B=0), pre-multiplied RGB stays 0.
+        unsigned char alpha_byte = (unsigned char)(a * 255.0f);
+        rgba[i * 4 + 0] = 0;           // R — black
+        rgba[i * 4 + 1] = 0;           // G — black
+        rgba[i * 4 + 2] = 0;           // B — black
+        rgba[i * 4 + 3] = alpha_byte;  // A — the blurred shadow
+    }
+
+    // Upload the RGBA data to the GPU. After this call, the texture lives
+    // in video memory and we can free the CPU-side buffers.
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, shadow_w, shadow_h, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, rgba);
+
+    free(rgba);
+    free(shadow);
+
+    // Unbind texture to leave GL state clean
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // Cache the texture handle and dimensions so we can reuse it every
+    // frame without recomputing. The shadow only needs regeneration when
+    // the window is resized (handled in crystal_window_resized).
+    wt->shadow_tex = tex;
+    wt->shadow_tex_w = shadow_w;
+    wt->shadow_tex_h = shadow_h;
+}
+
+// ── draw_window_shadow ──
+// Draws the pre-computed Gaussian blur shadow behind a window. If the
+// shadow texture hasn't been generated yet (first frame) or the window
+// was resized, it regenerates the texture first.
+//
+// The shadow quad is positioned behind the window chrome with a slight
+// downward offset (SHADOW_Y_OFFSET) to simulate a light source above.
 
 static void draw_window_shadow(struct WindowTexture *wt, bool focused)
 {
-    // Shadow parameters — these match the old compositor's values.
-    // SHADOW_RADIUS (22) layers create the full falloff gradient.
-    int layers = SHADOW_RADIUS;
-    double peak_alpha = focused ? SHADOW_ALPHA_ACTIVE : SHADOW_ALPHA_INACTIVE;
-    int y_offset = SHADOW_Y_OFFSET;
+    if (!wt || wt->w <= 0 || wt->h <= 0) return;
 
-    // The shadow is drawn behind the window (the chrome area within the frame).
-    // When the frame has shadow padding, the chrome starts at (SHADOW_LEFT, SHADOW_TOP)
-    // within the frame. But our wt->x/y already account for this offset, so
-    // the chrome position is at (wt->x + SHADOW_LEFT, wt->y + SHADOW_TOP).
-    int chrome_x = wt->x + SHADOW_LEFT;
-    int chrome_y = wt->y + SHADOW_TOP;
+    // Calculate chrome dimensions (the visible window area inside the frame)
     int chrome_w = wt->w - SHADOW_LEFT - SHADOW_RIGHT;
     int chrome_h = wt->h - SHADOW_TOP - SHADOW_BOTTOM;
-
-    // Don't draw shadows for windows that are too small
     if (chrome_w <= 0 || chrome_h <= 0) return;
 
-    // Disable texturing — shadows are solid colored rectangles, not textured
-    glDisable(GL_TEXTURE_2D);
+    int radius = focused ? SHADOW_RADIUS : SHADOW_RADIUS_INACTIVE;
+    int pad = radius * 2;
+    int expected_w = chrome_w + pad * 2;
+    int expected_h = chrome_h + pad * 2;
 
-    // Draw layers from outermost (most transparent) to innermost (most opaque).
-    // Each layer is a filled rectangle that's slightly larger than the chrome.
-    for (int i = layers; i >= 1; i--) {
-        // t goes from 1.0 (outermost) to ~0.0 (innermost)
-        double t = (double)i / layers;
-
-        // Cubic falloff: (1-t)^3 creates a soft edge that's dark near the
-        // window and fades out smoothly. This closely matches the diffuse
-        // shadow appearance of real Snow Leopard windows.
-        double alpha = peak_alpha * (1.0 - t) * (1.0 - t) * (1.0 - t);
-
-        // Each layer expands outward by 2 pixels more than the previous
-        int expand = i * 2;
-
-        // Shadow rectangle position and size
-        float sx = (float)(chrome_x - expand);
-        float sy = (float)(chrome_y - expand + y_offset);
-        float sw = (float)(chrome_w + expand * 2);
-        float sh = (float)(chrome_h + expand * 2);
-
-        // Set the shadow color: pure black with varying transparency.
-        // glColor4f sets the current drawing color as (R, G, B, A) in [0, 1].
-        glColor4f(0.0f, 0.0f, 0.0f, (float)alpha);
-
-        // Draw a filled rectangle using GL_QUADS.
-        // glBegin(GL_QUADS) starts a group of quadrilaterals (4-sided shapes).
-        // Each set of 4 glVertex2f calls defines one quad. The vertices must
-        // be specified in order (clockwise or counter-clockwise).
-        glBegin(GL_QUADS);
-        glVertex2f(sx, sy);             // Top-left
-        glVertex2f(sx + sw, sy);        // Top-right
-        glVertex2f(sx + sw, sy + sh);   // Bottom-right
-        glVertex2f(sx, sy + sh);        // Bottom-left
-        glEnd();
+    // Generate or regenerate the shadow texture if needed.
+    // This happens on first draw (shadow_tex == 0) or after a resize
+    // (dimensions no longer match).
+    if (!wt->shadow_tex ||
+        wt->shadow_tex_w != expected_w ||
+        wt->shadow_tex_h != expected_h) {
+        generate_shadow_texture(wt, focused);
     }
 
-    // Reset color to fully opaque white so subsequent textured drawing
-    // isn't tinted by the shadow color. When texturing is enabled, the
-    // texture color is multiplied by the current glColor — white (1,1,1,1)
-    // means the texture appears unmodified.
+    // If generation failed (out of memory), bail silently
+    if (!wt->shadow_tex) return;
+
+    // ── Draw the shadow quad ──
+    // The shadow texture covers the chrome area plus 'pad' pixels on all
+    // sides. Position it so the chrome-sized center aligns with the actual
+    // window chrome on screen.
+    //
+    // chrome_x/chrome_y = top-left of the chrome area in screen coordinates.
+    // The shadow quad starts 'pad' pixels above-left of the chrome, with
+    // an additional y_offset downward to simulate a top-down light.
+    int chrome_x = wt->x + SHADOW_LEFT;
+    int chrome_y = wt->y + SHADOW_TOP;
+    float sx = (float)(chrome_x - pad);
+    float sy = (float)(chrome_y - pad + SHADOW_Y_OFFSET);
+
+    // Enable texturing and bind our cached shadow texture
+    glEnable(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, wt->shadow_tex);
+
+    // Set color to white — the actual shadow color and opacity are baked
+    // into the texture's alpha channel. With pre-multiplied alpha and our
+    // blend mode (GL_ONE, GL_ONE_MINUS_SRC_ALPHA), white color means the
+    // texture pixels are used as-is.
     glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
+
+    // Draw a textured quad covering the shadow area.
+    // Texture coords (0,0)→(1,1) map the full shadow texture onto the quad.
+    glBegin(GL_QUADS);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex2f(sx, sy);
+
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex2f(sx + (float)wt->shadow_tex_w, sy);
+
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex2f(sx + (float)wt->shadow_tex_w, sy + (float)wt->shadow_tex_h);
+
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex2f(sx, sy + (float)wt->shadow_tex_h);
+    glEnd();
+
+    // Unbind the shadow texture and disable texturing so subsequent
+    // rendering code starts from a clean state.
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glDisable(GL_TEXTURE_2D);
 }
 
 // ────────────────────────────────────────────────────────────────────────
