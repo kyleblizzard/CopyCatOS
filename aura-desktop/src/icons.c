@@ -214,10 +214,13 @@ static cairo_surface_t *load_theme_icon(const char *icon_name,
     const char *home = getenv("HOME");
     if (!home) return NULL;
 
-    // Search paths in priority order — try 128x128 first for crisp scaling
-    // to 96px, then fall back to 64x64 which will be upscaled.
+    // Search paths in priority order — try 256x256 first (scaling down to
+    // 128px looks better than scaling up from 64), then 128x128, then 64x64.
     char path[1024];
     const char *search_dirs[] = {
+        "%s/.local/share/icons/AquaKDE-icons/256x256/%s/%s.png",
+        "%s/.local/share/icons/hicolor/256x256/%s/%s.png",
+        "/usr/share/icons/hicolor/256x256/%s/%s.png",
         "%s/.local/share/icons/AquaKDE-icons/128x128/%s/%s.png",
         "%s/.local/share/icons/hicolor/128x128/%s/%s.png",
         "/usr/share/icons/hicolor/128x128/%s/%s.png",
@@ -473,6 +476,31 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
                 160.0 / 255.0);
             cairo_fill(cr);
         }
+
+        // Draw subtle drop shadow behind the icon (Snow Leopard style).
+        // This creates the "floating" feel on the desktop wallpaper.
+        // Three passes from large/faint to small/stronger, offset downward.
+        cairo_save(cr);
+        for (int pass = 3; pass >= 1; pass--) {
+            double alpha = 0.08 * pass;  // Stronger close to icon, fading outward
+            int offset = pass + 1;
+            cairo_set_source_rgba(cr, 0, 0, 0, alpha);
+            // Draw a rounded rect slightly larger than and below the icon
+            double sx = img_x - pass;
+            double sy = img_y - pass + offset;
+            double sw = ICON_SIZE + pass * 2;
+            double sh = ICON_SIZE + pass * 2;
+            double r = 8.0 + pass;
+            // Rounded rect path
+            cairo_new_sub_path(cr);
+            cairo_arc(cr, sx + sw - r, sy + r, r, -M_PI/2, 0);
+            cairo_arc(cr, sx + sw - r, sy + sh - r, r, 0, M_PI/2);
+            cairo_arc(cr, sx + r, sy + sh - r, r, M_PI/2, M_PI);
+            cairo_arc(cr, sx + r, sy + r, r, M_PI, 3*M_PI/2);
+            cairo_close_path(cr);
+            cairo_fill(cr);
+        }
+        cairo_restore(cr);
 
         // Draw the icon image (scaled to ICON_SIZE)
         if (icon->icon) {

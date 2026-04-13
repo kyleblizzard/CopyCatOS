@@ -8,13 +8,15 @@
 // The system tray lives on the right side of the menu bar and shows
 // status indicators. Items are drawn right-to-left:
 //
-//   [ ... menu items ... ]     [ battery 87% ] [ vol ] [ Tue 3:58 PM ]
-//                                                            ^
-//                                                       rightmost item
+//   [ ... menu items ... ]  [bat 87%] [vol] [wifi] [bt] [Tue 3:58 PM] [🔍]
+//                                                                       ^
+//                                                                  rightmost
 //
 // Each indicator is drawn using Cairo primitives (no icon images needed).
 // Data sources:
 //   - Clock: standard C time functions
+//   - Bluetooth: static icon (visual only, no backend yet)
+//   - WiFi: static icon (visual only, no backend yet)
 //   - Volume: PulseAudio via `pactl` command
 //   - Battery: Linux sysfs (/sys/class/power_supply/)
 
@@ -289,8 +291,98 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
     // Draw the clock text
     render_text(cr, clock_buf, cursor, 3, false, 0.1, 0.1, 0.1); // #1A1A1A
 
-    // Gap between clock and volume icon
+    // Gap between clock and Bluetooth icon
     cursor -= 14;
+
+    // ── Bluetooth icon ──────────────────────────────────────────
+    // The Bluetooth "rune" is a stylized letter B made of angular
+    // lines: a vertical stroke with two arrow-like chevrons pointing
+    // right (one top, one bottom). This matches the standard Bluetooth
+    // logo seen in macOS Snow Leopard's menu bar.
+    // Static icon — always shows "connected" for now.
+    {
+        double icon_w = 10.0;
+        double icon_h = 14.0;
+        double ix = cursor - icon_w;
+        double iy = (MENUBAR_HEIGHT - icon_h) / 2.0;
+
+        cairo_set_source_rgb(cr, 0.29, 0.29, 0.29); // #4A4A4A
+        cairo_set_line_width(cr, 1.4);
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+        cairo_set_line_join(cr, CAIRO_LINE_JOIN_ROUND);
+
+        // The Bluetooth symbol is built from a vertical center line
+        // with two chevron arrows pointing right.
+        //
+        // Coordinates (relative to ix, iy in a 10x14 box):
+        //   Top of vertical line:    (5, 0)
+        //   Bottom of vertical line: (5, 14)
+        //   Upper-right point:       (9, 3.5)
+        //   Lower-right point:       (9, 10.5)
+        //   Upper-left point:        (1, 10.5)  (bottom-left of top chevron)
+        //   Lower-left point:        (1, 3.5)   (top-left of bottom chevron)
+
+        double cx = ix + 5.0;  // center x (vertical stroke)
+
+        // Top half: line from bottom-left up to top-center, then
+        // diagonally down-right to the upper-right point, then back
+        // to the center crossing point.
+        cairo_move_to(cr, ix + 1.0, iy + 10.5);   // lower-left
+        cairo_line_to(cr, ix + 9.0, iy + 3.5);    // upper-right
+        cairo_line_to(cr, cx,       iy + 0.0);     // top of vertical
+        cairo_line_to(cr, cx,       iy + 14.0);    // bottom of vertical
+        cairo_line_to(cr, ix + 9.0, iy + 10.5);   // lower-right
+        cairo_line_to(cr, ix + 1.0, iy + 3.5);    // upper-left
+        cairo_stroke(cr);
+
+        cursor -= (int)icon_w;
+    }
+
+    // Gap between Bluetooth and WiFi icon
+    cursor -= 10;
+
+    // ── WiFi / AirPort icon ─────────────────────────────────────
+    // Draws a WiFi signal fan: three concentric quarter-circle arcs
+    // radiating upward from a small base dot. This replicates the
+    // classic AirPort/WiFi indicator in Snow Leopard's menu bar.
+    // Static icon — always shows full signal (3 bars) for now.
+    {
+        double icon_size = 14.0;
+        double ix = cursor - icon_size;
+        double iy = (MENUBAR_HEIGHT - icon_size) / 2.0;
+
+        cairo_set_source_rgb(cr, 0.29, 0.29, 0.29); // #4A4A4A
+        cairo_set_line_width(cr, 1.5);
+        cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+
+        // The arcs radiate upward from a center point at the
+        // bottom-center of the icon box.
+        double base_x = ix + icon_size / 2.0;  // horizontal center
+        double base_y = iy + icon_size - 1.0;  // near the bottom
+
+        // Small filled dot at the base (the "source" of the signal)
+        cairo_arc(cr, base_x, base_y, 1.5, 0, 2 * M_PI);
+        cairo_fill(cr);
+
+        // Three concentric arcs (quarter circles opening upward).
+        // Each arc spans from roughly 10-o'clock to 2-o'clock
+        // (-135 degrees to -45 degrees, i.e. upper-left to upper-right).
+        // Smaller radius = closer to the source = innermost bar.
+        double radii[] = { 4.0, 7.0, 10.0 };
+        int num_bars = 3; // Full signal: all 3 bars filled
+
+        for (int i = 0; i < num_bars; i++) {
+            cairo_arc(cr, base_x, base_y, radii[i],
+                      -M_PI * 3.0 / 4.0,   // start: -135 degrees
+                      -M_PI * 1.0 / 4.0);   // end:   -45 degrees
+            cairo_stroke(cr);
+        }
+
+        cursor -= (int)icon_size;
+    }
+
+    // Gap between WiFi and volume icon
+    cursor -= 10;
 
     // ── Volume icon ─────────────────────────────────────────────
     cursor -= 16; // Icon is 16px wide

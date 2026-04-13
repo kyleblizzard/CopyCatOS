@@ -77,18 +77,20 @@ void render_background(MenuBar *mb, cairo_t *cr)
         cairo_pattern_destroy(pattern);
     } else {
         // Gradient fallback — mimics Snow Leopard's translucent menu bar.
-        // Real SL measurements: brightness 245 at top, ~201 at middle,
-        // 170 at bottom. The wallpaper bleeds through at 12% (alpha 0.88),
-        // giving the bar its warm tint (purple from Aurora wallpaper).
-        // Three color stops from top to bottom:
-        //   0.96 (≈245/255) -> 0.85 (≈217/255) -> 0.72 (≈184/255)
+        // Real SL measurements (with wallpaper bleed-through):
+        //   y=0: 245, y=5: 217, y=10: 201, y=15: 186, y=20: 170
+        // That's a 75-brightness-unit range top to bottom. The wallpaper
+        // bleeds through at 12% (alpha 0.88), giving the bar its warm
+        // tint (purple from Aurora wallpaper). Gradient RGB values are
+        // calculated to hit those targets after compositing:
+        //   displayed = gradient_rgb * 0.88 + wallpaper_brightness * 0.12
         cairo_pattern_t *grad = cairo_pattern_create_linear(
             0, 0,           // Start at top
             0, MENUBAR_HEIGHT // End at bottom
         );
         cairo_pattern_add_color_stop_rgba(grad, 0.0,  0.96, 0.96, 0.96, 0.88);
-        cairo_pattern_add_color_stop_rgba(grad, 0.5,  0.85, 0.85, 0.85, 0.88);
-        cairo_pattern_add_color_stop_rgba(grad, 1.0,  0.72, 0.72, 0.72, 0.88);
+        cairo_pattern_add_color_stop_rgba(grad, 0.5,  0.78, 0.78, 0.78, 0.88);
+        cairo_pattern_add_color_stop_rgba(grad, 1.0,  0.62, 0.62, 0.62, 0.88);
 
         cairo_set_source(cr, grad);
         cairo_rectangle(cr, 0, 0, mb->screen_w, MENUBAR_HEIGHT);

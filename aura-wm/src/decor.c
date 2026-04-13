@@ -222,7 +222,7 @@ void decor_paint(AuraWM *wm, Client *c)
 
     // 1px white drop shadow below the text (embossed/engraved look)
     cairo_move_to(cr, text_x, text_y + 1);
-    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, active ? 0.6 : 0.4);
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, active ? 0.7 : 0.3);
     pango_cairo_show_layout(cr, layout);
 
     // Actual title text on top
@@ -236,7 +236,8 @@ void decor_paint(AuraWM *wm, Client *c)
     g_object_unref(layout);
 
     // ── Side and bottom borders ──
-    double bc = active ? 160/255.0 : 190/255.0;
+    // Real Snow Leopard outer border: ~RGB(138,138,138) active, ~RGB(180,180,180) inactive
+    double bc = active ? 138/255.0 : 180/255.0;
     cairo_set_source_rgb(cr, bc, bc, bc);
     cairo_set_line_width(cr, 1.0);
 

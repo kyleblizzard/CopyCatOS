@@ -133,6 +133,14 @@ void frame_window(AuraWM *wm, Window client)
     // Draw the initial decoration
     frame_redraw_decor(wm, c);
 
+    // Tell Crystal compositor about the new window so it can create a
+    // texture and start compositing it. This must happen AFTER the frame
+    // is fully set up (mapped, decorated, input shape configured) so
+    // Crystal can read valid window attributes and pixmap data.
+    if (crystal_is_active()) {
+        crystal_window_mapped(wm, c);
+    }
+
     if (getenv("AURA_DEBUG")) {
         fprintf(stderr, "[aura-wm] Framed window '%s' client=0x%lx frame=0x%lx %dx%d+%d+%d\n",
                 c->title, client, frame, c->w, c->h, c->x, c->y);
@@ -142,6 +150,14 @@ void frame_window(AuraWM *wm, Window client)
 void unframe_window(AuraWM *wm, Client *c)
 {
     if (!c || !c->frame) return;
+
+    // Tell Crystal to stop tracking this window BEFORE we destroy the frame.
+    // Crystal needs the frame window ID to find and release the associated
+    // OpenGL texture and XDamage handle. Once the frame is destroyed, the
+    // window ID is invalid and Crystal can't clean up properly.
+    if (crystal_is_active()) {
+        crystal_window_unmapped(wm, c);
+    }
 
     // Reparent client back to root
     XReparentWindow(wm->dpy, c->client, wm->root, c->x, c->y);

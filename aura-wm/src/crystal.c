@@ -33,6 +33,7 @@
 #define _GNU_SOURCE  // Needed for M_PI from <math.h>
 #include "crystal.h"
 #include "decor.h"
+#include "ewmh.h"
 
 // Forward declaration removed — compositor.c is no longer linked.
 // crystal_create_argb_visual() now handles fallback internally.
@@ -182,6 +183,7 @@ static void release_window_texture(AuraWM *wm, struct WindowTexture *wt);
 static struct WindowTexture *find_window_texture(Window xwin);
 static bool choose_fb_configs(Display *dpy, int screen);
 static bool load_glx_extensions(Display *dpy, int screen);
+static void sync_tracked_windows(AuraWM *wm);
 
 // ────────────────────────────────────────────────────────────────────────
 // SECTION: FBConfig selection
@@ -979,6 +981,148 @@ void crystal_window_resized(AuraWM *wm, Client *c)
 }
 
 // ────────────────────────────────────────────────────────────────────────
+// SECTION: Auto-discovery of visible windows via XQueryTree
+// ────────────────────────────────────────────────────────────────────────
+//
+// Crystal needs to composite ALL visible windows, including unmanaged ones
+// (dock, desktop, menubar, spotlight) that the WM does not frame and does
+// not create Client structs for. Instead of requiring every window lifecycle
+// path to call crystal_window_mapped(), we use XQueryTree each frame to
+// discover all children of the root window and auto-track any new ones.
+//
+// This also handles cleanup: if a tracked window is no longer a child of
+// root (or is no longer viewable), we remove its tracking entry.
+
+static void sync_tracked_windows(AuraWM *wm)
+{
+    Window root_ret, parent_ret;
+    Window *children = NULL;
+    unsigned int nchildren = 0;
+
+    // XQueryTree returns all immediate children of the root window in
+    // bottom-to-top stacking order — exactly the order we want for
+    // back-to-front compositing.
+    if (!XQueryTree(wm->dpy, wm->root, &root_ret, &parent_ret,
+                    &children, &nchildren)) {
+        return;
+    }
+
+    // ── Pass 1: Mark all currently tracked windows as "not seen" ──
+    // We use a temporary flag by checking each tracked window against
+    // the XQueryTree results. Any tracked window not found in the list
+    // has been destroyed or reparented away and should be removed.
+    bool seen[MAX_CLIENTS];
+    memset(seen, 0, sizeof(seen));
+
+    // ── Pass 2: For each visible root child, ensure it is tracked ──
+    for (unsigned int i = 0; i < nchildren; i++) {
+        XWindowAttributes wa;
+        if (!XGetWindowAttributes(wm->dpy, children[i], &wa)) continue;
+
+        // Skip windows that are not currently visible on screen
+        if (wa.map_state != IsViewable) continue;
+
+        // Skip zero-size windows
+        if (wa.width <= 0 || wa.height <= 0) continue;
+
+        // Check if we already track this window
+        struct WindowTexture *wt = find_window_texture(children[i]);
+        if (wt) {
+            // Already tracked — update its position and size in case it moved.
+            // This keeps our rendering in sync without needing ConfigureNotify
+            // for every window (especially unmanaged ones).
+            wt->x = wa.x;
+            wt->y = wa.y;
+            if (wt->w != wa.width || wt->h != wa.height) {
+                // Size changed — need to re-bind the texture
+                wt->w = wa.width;
+                wt->h = wa.height;
+                wt->dirty = true;
+            }
+
+            // Mark this entry as still alive
+            int idx = (int)(wt - crystal.windows);
+            if (idx >= 0 && idx < crystal.window_count) {
+                seen[idx] = true;
+            }
+            continue;
+        }
+
+        // New window — add a tracking entry if we have room
+        if (crystal.window_count >= MAX_CLIENTS) continue;
+
+        wt = &crystal.windows[crystal.window_count];
+        memset(wt, 0, sizeof(*wt));
+
+        wt->xwin = children[i];
+        wt->has_alpha = (wa.depth == 32);
+        wt->x = wa.x;
+        wt->y = wa.y;
+        wt->w = wa.width;
+        wt->h = wa.height;
+
+        // Create an OpenGL texture handle for this window
+        glGenTextures(1, &wt->texture);
+        wt->dirty = true;
+
+        // Register XDamage so we know when contents change
+        wt->damage = XDamageCreate(wm->dpy, children[i], XDamageReportNonEmpty);
+
+        // Mark this new entry as seen
+        seen[crystal.window_count] = true;
+        crystal.window_count++;
+
+        if (getenv("AURA_DEBUG")) {
+            fprintf(stderr, "[crystal] Auto-tracked window 0x%lx (%dx%d at %d,%d)\n",
+                    children[i], wa.width, wa.height, wa.x, wa.y);
+        }
+    }
+
+    // ── Pass 3: Remove tracked windows that are no longer visible ──
+    // Iterate backwards so removals don't shift indices we haven't checked yet.
+    for (int i = crystal.window_count - 1; i >= 0; i--) {
+        if (!seen[i]) {
+            if (getenv("AURA_DEBUG")) {
+                fprintf(stderr, "[crystal] Removing stale window 0x%lx\n",
+                        crystal.windows[i].xwin);
+            }
+            release_window_texture(wm, &crystal.windows[i]);
+
+            int remaining = crystal.window_count - i - 1;
+            if (remaining > 0) {
+                memmove(&crystal.windows[i], &crystal.windows[i + 1],
+                        remaining * sizeof(struct WindowTexture));
+            }
+            crystal.window_count--;
+        }
+    }
+
+    // ── Pass 4: Reorder tracked windows to match XQueryTree stacking ──
+    // XQueryTree returns children in bottom-to-top order, which is exactly
+    // the order we need for back-to-front compositing. Rebuild the array
+    // to match this stacking order so windows overlap correctly.
+    if (crystal.window_count > 1) {
+        struct WindowTexture reordered[MAX_CLIENTS];
+        int count = 0;
+
+        for (unsigned int i = 0; i < nchildren && count < crystal.window_count; i++) {
+            struct WindowTexture *wt = find_window_texture(children[i]);
+            if (wt) {
+                reordered[count++] = *wt;
+            }
+        }
+
+        // Copy the reordered array back
+        if (count == crystal.window_count) {
+            memcpy(crystal.windows, reordered,
+                   count * sizeof(struct WindowTexture));
+        }
+    }
+
+    if (children) XFree(children);
+}
+
+// ────────────────────────────────────────────────────────────────────────
 // SECTION: Shadow rendering (Phase 1 — concentric rectangles)
 // ────────────────────────────────────────────────────────────────────────
 //
@@ -1100,6 +1244,14 @@ void crystal_composite(AuraWM *wm)
     glEnable(GL_BLEND);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
+    // ── Step 3.5: Sync tracked windows with actual X11 state ──
+    //
+    // Use XQueryTree to discover ALL visible windows (including unmanaged
+    // ones like docks, desktops, and menubars) and ensure they have
+    // texture tracking entries. This also removes entries for windows
+    // that have disappeared and reorders entries to match stacking order.
+    sync_tracked_windows(wm);
+
     // ── Step 4: Draw all windows back-to-front ──
     //
     // We use a 3-pass approach to respect the natural z-ordering of different
@@ -1115,10 +1267,17 @@ void crystal_composite(AuraWM *wm)
         for (int i = 0; i < crystal.window_count; i++) {
             struct WindowTexture *wt = &crystal.windows[i];
 
-            // Determine which pass this window belongs to.
-            // For now, all windows are drawn in pass 1 (normal).
-            // TODO: Check _NET_WM_WINDOW_TYPE to sort into passes 0/2.
+            // Determine which pass this window belongs to by checking
+            // the _NET_WM_WINDOW_TYPE property. Dock/panel windows go in
+            // pass 2 (always on top), desktop windows in pass 0 (always
+            // behind), and everything else in pass 1.
             int window_pass = 1;
+            Atom wtype = ewmh_get_window_type(wm, wt->xwin);
+            if (wtype == wm->atom_net_wm_type_desktop) {
+                window_pass = 0;
+            } else if (wtype == wm->atom_net_wm_type_dock) {
+                window_pass = 2;
+            }
 
             // Skip windows that don't belong to this pass
             if (window_pass != pass) continue;
@@ -1135,12 +1294,15 @@ void crystal_composite(AuraWM *wm)
             }
 
             // ── Draw the shadow ──
-            // Shadows are drawn BEHIND the window. We need to find the
-            // corresponding Client to know if the window is focused (focused
-            // windows get stronger shadows).
-            Client *c = wm_find_client_by_frame(wm, wt->xwin);
-            bool focused = c ? c->focused : false;
-            draw_window_shadow(wt, focused);
+            // Shadows are drawn BEHIND the window. Only framed application
+            // windows (pass 1) get shadows — dock, desktop, and menubar
+            // windows are unframed and have no shadow padding baked into
+            // their geometry, so drawing shadows on them would look wrong.
+            if (window_pass == 1) {
+                Client *c = wm_find_client_by_frame(wm, wt->xwin);
+                bool focused = c ? c->focused : false;
+                draw_window_shadow(wt, focused);
+            }
 
             // ── Draw the window contents ──
             // Bind the window's texture and draw a quad that covers the

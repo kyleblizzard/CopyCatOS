@@ -127,6 +127,13 @@ static void on_destroy_notify(AuraWM *wm, XEvent *e)
     Window w = e->xdestroywindow.window;
     Client *c = wm_find_client(wm, w);
     if (c) {
+        // Tell Crystal to release the texture and damage tracking for this
+        // window BEFORE we destroy the frame. Crystal looks up the window
+        // by its frame ID, so the frame must still exist at this point.
+        if (crystal_is_active()) {
+            crystal_window_unmapped(wm, c);
+        }
+
         // Client destroyed itself — clean up frame
         if (c->frame) {
             XDestroyWindow(wm->dpy, c->frame);
@@ -345,5 +352,12 @@ static void on_expose(AuraWM *wm, XEvent *e)
     Client *c = wm_find_client_by_frame(wm, e->xexpose.window);
     if (c) {
         frame_redraw_decor(wm, c);
+
+        // Tell Crystal the window contents changed so it refreshes the
+        // OpenGL texture on the next composite pass. Expose events mean
+        // the window (or its decorations) were repainted.
+        if (crystal_is_active()) {
+            crystal_window_damaged(wm, c);
+        }
     }
 }

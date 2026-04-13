@@ -25,11 +25,11 @@
 // Grid layout constants — these control how icons are spaced and sized.
 // The grid starts at the top-right and fills downward, then moves left
 // (column by column), just like Finder in Mac OS X.
-#define ICON_CELL_W         120  // Width of each grid cell in pixels
-#define ICON_CELL_H         120  // Height of each grid cell in pixels
-#define ICON_SIZE           96   // Size of the icon image (96x96 — closer to real SL)
+#define ICON_CELL_W         140  // Width of each grid cell in pixels
+#define ICON_CELL_H         140  // Height of each grid cell in pixels
+#define ICON_SIZE           128  // Size of the icon image (128x128 — exact Snow Leopard desktop icon size)
 #define ICON_LABEL_FONT     "Lucida Grande 12"  // Pango font description (SL uses 12pt)
-#define ICON_TOP_MARGIN     40   // Pixels below the top edge (room for menubar)
+#define ICON_TOP_MARGIN     45   // Pixels below the top edge (room for menubar + breathing room)
 #define ICON_RIGHT_MARGIN   20   // Pixels from the right edge of screen
 #define ICON_MAX_LABEL_WIDTH 110 // Max pixel width before truncating with "..."
 
