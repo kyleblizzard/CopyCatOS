@@ -6,7 +6,7 @@
 // apple.c — Apple logo button and Apple menu dropdown
 //
 // The Apple logo is the leftmost element of the menu bar. It's loaded
-// from a PNG file and scaled to 14x16 pixels. Clicking it opens the
+// from a PNG file and scaled to 22x15 pixels (measured from real Snow Leopard). Clicking it opens the
 // Apple menu — a dropdown with system-level actions like Sleep, Restart,
 // Shut Down, and Log Out.
 //
@@ -35,7 +35,7 @@
 
 // ── Module state ────────────────────────────────────────────────────
 
-// The Apple logo surfaces, scaled to 14x16 pixels.
+// The Apple logo surfaces, scaled to 22x15 pixels (measured from real Snow Leopard).
 // NULL if the PNG files couldn't be loaded.
 static cairo_surface_t *logo_normal   = NULL;
 static cairo_surface_t *logo_selected = NULL;
@@ -126,9 +126,10 @@ void apple_init(MenuBar *mb)
     snprintf(path_selected, sizeof(path_selected),
              "%s/.local/share/aqua-widgets/menubar/apple_logo_selected.png", home);
 
-    // Load and scale both variants to 14x16 pixels
-    logo_normal   = load_and_scale_png(path_normal, 14, 16);
-    logo_selected = load_and_scale_png(path_selected, 14, 16);
+    // Load and scale both variants to 22x15 pixels (measured from real Snow Leopard:
+    // the Apple logo spans x=14 to x=36, y=3 to y=18, giving 22x15 pixels)
+    logo_normal   = load_and_scale_png(path_normal, 22, 15);
+    logo_selected = load_and_scale_png(path_selected, 22, 15);
 
     if (!logo_normal) {
         fprintf(stderr, "aura-menubar: Apple logo not found at %s (using fallback)\n",
@@ -144,9 +145,10 @@ void apple_paint(MenuBar *mb, cairo_t *cr)
     bool active = (mb->hover_index == 0 || mb->open_menu == 0);
     cairo_surface_t *logo = (active && logo_selected) ? logo_selected : logo_normal;
 
-    // Position: x=10, vertically centered in the 22px bar
-    double x = 10.0;
-    double y = (MENUBAR_HEIGHT - 16) / 2.0; // Center 16px icon in 22px bar
+    // Position: x=14, vertically centered in the 22px bar
+    // Measured from real Snow Leopard: logo starts at x=14, y=3
+    double x = 14.0;
+    double y = (MENUBAR_HEIGHT - 15) / 2.0; // Center 15px icon in 22px bar (≈3.5, close to measured y=3)
 
     if (logo) {
         // Draw the PNG logo
@@ -156,7 +158,7 @@ void apple_paint(MenuBar *mb, cairo_t *cr)
         // Fallback: draw a simple filled circle as a placeholder.
         // This is a dark gray circle roughly matching the Apple logo position.
         cairo_set_source_rgb(cr, 0.2, 0.2, 0.2);
-        cairo_arc(cr, x + 7, MENUBAR_HEIGHT / 2.0, 6.0, 0, 2 * M_PI);
+        cairo_arc(cr, x + 11, MENUBAR_HEIGHT / 2.0, 7.0, 0, 2 * M_PI);
         cairo_fill(cr);
     }
 }

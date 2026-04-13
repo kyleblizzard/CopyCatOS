@@ -547,6 +547,8 @@ void dock_run(DockState *state)
                 break;
 
             case ButtonPress:
+                fprintf(stderr, "[dock] ButtonPress: button=%d at (%d,%d)\n",
+                        ev.xbutton.button, ev.xbutton.x, ev.xbutton.y);
                 tooltip_hide(state);  // Dismiss tooltip on any click
 
                 // If stacks popup is open, let it handle events first
@@ -575,10 +577,14 @@ void dock_run(DockState *state)
                 } else if (ev.xbutton.button == 3) {
                     // Right click — show context menu
                     int idx = dock_hit_test(state, ev.xbutton.x, ev.xbutton.y);
+                    fprintf(stderr, "[dock] Right-click at local (%d,%d), hit_idx=%d\n",
+                            ev.xbutton.x, ev.xbutton.y, idx);
                     if (idx >= 0) {
                         // Convert local coords to screen coords for the popup
                         int screen_x = state->win_x + ev.xbutton.x;
                         int screen_y = state->win_y + ev.xbutton.y;
+                        fprintf(stderr, "[dock] Calling menu_show for '%s' at screen (%d,%d)\n",
+                                state->items[idx].name, screen_x, screen_y);
                         menu_show(state, &state->items[idx], screen_x, screen_y);
                     }
                 }
@@ -647,6 +653,16 @@ void dock_run(DockState *state)
                     last_count = n_running;
                 }
             }
+        }
+
+        // Check tooltip hover timer — the mouse may be stationary while the
+        // 500ms delay counts down. tooltip_update_hover() only runs during
+        // MotionNotify events, so we must also call it here on each select()
+        // wakeup. We re-hit-test at the last known mouse position to see if
+        // the cursor is still on the same icon.
+        if (tooltip_is_visible() && state->mouse_in_dock) {
+            int hit = dock_hit_test(state, state->mouse_x, state->mouse_y);
+            tooltip_update_hover(state, hit);
         }
 
         // Advance bounce animations — only call when something is bouncing

@@ -440,7 +440,12 @@ void tooltip_update_hover(DockState *state, int hover_icon_idx)
 // ---------------------------------------------------------------------------
 bool tooltip_is_visible(void)
 {
-    return tip.visible;
+    // Return true if either the tooltip is showing OR the 500ms hover timer
+    // is counting down. The event loop uses this to shorten the select()
+    // timeout so the timer check fires frequently enough. Without this,
+    // select() sleeps for the full 3-second process check interval, and
+    // the hover timer never triggers because no MotionNotify events arrive.
+    return tip.visible || tip.timer_active;
 }
 
 // ---------------------------------------------------------------------------

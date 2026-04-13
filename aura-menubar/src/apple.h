@@ -5,7 +5,7 @@
 
 // apple.h — Apple logo button and Apple menu
 //
-// The Apple logo sits at the far left of the menu bar (at x=10).
+// The Apple logo sits at the far left of the menu bar (at x=14).
 // Clicking it opens the "Apple menu" — a dropdown with system-level
 // actions like System Preferences, Sleep, Restart, Shut Down, and Log Out.
 //

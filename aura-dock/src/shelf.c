@@ -111,32 +111,49 @@ void shelf_draw(DockState *state, int shelf_width)
         cairo_paint(cr);
         cairo_restore(cr);
 
-        // Pass 2: Strong grey overlay to match real SL brightness.
-        // The real shelf has a grey-silver base tone around RGB(150-180).
-        // We paint a semi-opaque grey to bring our brightness up to match.
+        // Pass 2: Grey overlay matched to real Snow Leopard measurements.
+        // Measured from a real SL desktop (left padding area, no icons):
+        //   y_from_bottom= 3: RGB(108,103,108) brightness=106  (dark bottom edge)
+        //   y_from_bottom=10: RGB(167,159,163) brightness=163  (front shelf, blue-grey)
+        //   y_from_bottom=20: RGB(153,140,154) brightness=149  (middle)
+        //   y_from_bottom=30: RGB(251,254,255) brightness=253  (reflection band!)
+        //   y_from_bottom=40+: wallpaper (shelf ends)
+        //
+        // Gradient goes from shelf_y (top of shelf, t=0) to win_h (bottom, t=1).
+        // Shelf is 48px tall. y_from_bottom=30 is 18px from top → t=18/48≈0.375
+        // y_from_bottom=20 is 28px from top → t=28/48≈0.58
+        // y_from_bottom=10 is 38px from top → t=38/48≈0.79
+        // y_from_bottom= 3 is 45px from top → t=45/48≈0.94
         cairo_pattern_t *shelf_base = cairo_pattern_create_linear(
             0, shelf_y, 0, state->win_h);
-        // Back of shelf (top): very bright, almost white — real SL measures brightness 245 here
-        cairo_pattern_add_color_stop_rgba(shelf_base, 0.0,  0.85, 0.85, 0.88, 0.65);
-        // Middle: silver tone matching SL measured brightness ~131
-        cairo_pattern_add_color_stop_rgba(shelf_base, 0.4,  0.65, 0.67, 0.72, 0.55);
-        // Front of shelf: blue-grey silver — real SL is R=113-136, G=142-147, B=147-170, brightness 141
-        // Pushed higher to close the -21 brightness gap
-        cairo_pattern_add_color_stop_rgba(shelf_base, 0.8,  0.52, 0.60, 0.70, 0.65);
-        // Very bottom: brighter to approach SL's 209 brightness at the edge
-        cairo_pattern_add_color_stop_rgba(shelf_base, 1.0,  0.58, 0.62, 0.70, 0.65);
+        // Back of shelf (top, t=0): real SL measures brightness 253 — nearly pure white
+        // This is the reflection of ambient light on the glass surface
+        cairo_pattern_add_color_stop_rgba(shelf_base, 0.0,  0.95, 0.95, 0.97, 0.80);
+        // t≈0.375 (y_from_bottom=30): still very bright, reflection band
+        cairo_pattern_add_color_stop_rgba(shelf_base, 0.375, 0.92, 0.93, 0.95, 0.70);
+        // t≈0.58 (y_from_bottom=20): RGB(153,140,154) brightness=149, muted purple-grey
+        cairo_pattern_add_color_stop_rgba(shelf_base, 0.58,  0.55, 0.50, 0.56, 0.55);
+        // t≈0.79 (y_from_bottom=10): RGB(167,159,163) brightness=163, blue-grey front
+        cairo_pattern_add_color_stop_rgba(shelf_base, 0.79,  0.58, 0.55, 0.57, 0.55);
+        // t≈0.94 (y_from_bottom=3): RGB(108,103,108) brightness=106, dark bottom edge
+        cairo_pattern_add_color_stop_rgba(shelf_base, 0.94,  0.35, 0.33, 0.35, 0.65);
+        // Very bottom pixel: same dark tone
+        cairo_pattern_add_color_stop_rgba(shelf_base, 1.0,   0.30, 0.28, 0.30, 0.70);
         cairo_set_source(cr, shelf_base);
         cairo_paint(cr);
         cairo_pattern_destroy(shelf_base);
 
-        // Pass 3: Subtle white highlight at the front to create the reflection band
-        // Real SL has brightness 200+ in the back half of the shelf (y 34-48)
+        // Pass 3: White highlight concentrated at the back (reflection band).
+        // Real SL has brightness 253 at y_from_bottom=30 (t≈0.375).
+        // The highlight fades to nothing toward the front/bottom of the shelf,
+        // since the bottom edge should be DARK (brightness 106), not glowing.
         cairo_pattern_t *highlight = cairo_pattern_create_linear(
             0, shelf_y, 0, state->win_h);
-        cairo_pattern_add_color_stop_rgba(highlight, 0.0,  1.0, 1.0, 1.0, 0.15);  // back: bright
-        cairo_pattern_add_color_stop_rgba(highlight, 0.3,  1.0, 1.0, 1.0, 0.08);  // dip in middle
-        cairo_pattern_add_color_stop_rgba(highlight, 0.7,  1.0, 1.0, 1.0, 0.05);  // front is darker
-        cairo_pattern_add_color_stop_rgba(highlight, 1.0,  1.0, 1.0, 1.0, 0.10);  // bottom edge glow
+        cairo_pattern_add_color_stop_rgba(highlight, 0.0,  1.0, 1.0, 1.0, 0.25);  // back: very bright
+        cairo_pattern_add_color_stop_rgba(highlight, 0.3,  1.0, 1.0, 1.0, 0.18);  // reflection band
+        cairo_pattern_add_color_stop_rgba(highlight, 0.5,  1.0, 1.0, 1.0, 0.05);  // fading
+        cairo_pattern_add_color_stop_rgba(highlight, 0.75, 1.0, 1.0, 1.0, 0.0);   // gone before front
+        cairo_pattern_add_color_stop_rgba(highlight, 1.0,  1.0, 1.0, 1.0, 0.0);   // no bottom glow
         cairo_set_source(cr, highlight);
         cairo_paint(cr);
         cairo_pattern_destroy(highlight);
@@ -158,19 +175,13 @@ void shelf_draw(DockState *state, int shelf_width)
 
     cairo_restore(cr);  // Remove the trapezoid clip
 
-    // Strong bright line at the very bottom of the shelf (the "front edge" of the glass).
-    // Real SL bottom edge pixel brightness is ~209 — nearly pure white.
-    // This is the single most important visual cue that says "glass shelf."
-    cairo_set_source_rgba(cr, 0.82, 0.83, 0.85, 0.75);
-    cairo_set_line_width(cr, 3.0);
-    cairo_move_to(cr, shelf_x, state->win_h - 1.5);
-    cairo_line_to(cr, shelf_x + shelf_width, state->win_h - 1.5);
-    cairo_stroke(cr);
-    // Thinner white highlight on top of that
-    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.4);
-    cairo_set_line_width(cr, 1.0);
-    cairo_move_to(cr, shelf_x, state->win_h - 0.5);
-    cairo_line_to(cr, shelf_x + shelf_width, state->win_h - 0.5);
+    // Bottom edge: real SL measures RGB(108,103,108) brightness=106.
+    // This is a DARK contact line where the glass meets the screen edge —
+    // NOT a bright highlight. The old code had this as white/silver which was wrong.
+    cairo_set_source_rgba(cr, 108/255.0, 103/255.0, 108/255.0, 0.85);
+    cairo_set_line_width(cr, 2.0);
+    cairo_move_to(cr, shelf_x, state->win_h - 1.0);
+    cairo_line_to(cr, shelf_x + shelf_width, state->win_h - 1.0);
     cairo_stroke(cr);
 
     // --- Frontline highlight ---

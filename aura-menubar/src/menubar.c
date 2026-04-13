@@ -185,12 +185,15 @@ bool menubar_init(MenuBar *mb)
     XFlush(mb->dpy);
 
     // ── Compute layout regions ──────────────────────────────────
-    // The Apple logo sits at x=10 and is about 24px wide (14px icon + padding).
+    // Measured from real Snow Leopard: Apple logo starts at x=14, is 22px wide.
+    // The clickable region extends from x=0 to about x=50 (covers the logo
+    // plus some padding on each side).
     mb->apple_x = 0;
-    mb->apple_w = 34;  // Clickable region width
+    mb->apple_w = 50;  // Clickable region: covers logo (14..36) plus padding
 
-    // The app name starts right after the Apple region, with a small gap.
-    mb->appname_x = mb->apple_w + 8;
+    // Measured from real Snow Leopard: app name text starts at x=58.
+    // This gives a ~22px gap after the logo ends at x=36.
+    mb->appname_x = 58;
     mb->appname_w = 0;  // Will be computed dynamically based on text width
 
     // Menu items start after the app name (computed dynamically in paint).

@@ -818,6 +818,9 @@ static void dispatch_action(int action)
 // ---------------------------------------------------------------------------
 void menu_show(DockState *state, DockItem *item, int x, int y)
 {
+    fprintf(stderr, "[menu] menu_show called for '%s' at (%d,%d)\n",
+            item->name, x, y);
+
     // Close any existing menu first
     menu_close(state);
 

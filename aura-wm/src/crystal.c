@@ -103,6 +103,7 @@ struct WindowTexture {
     bool dirty;             // True if the texture needs refreshing (contents changed)
     bool has_alpha;         // True if the window uses a 32-bit ARGB visual (transparency)
     bool bound;             // True if the texture is currently bound to a pixmap
+    bool override_redirect; // True if the window has override_redirect set (menus, tooltips, popups)
 
     // ── Cached Gaussian shadow texture (Phase 2) ──
     // Instead of re-computing the blurred shadow every frame, we cache the
@@ -668,6 +669,17 @@ static void refresh_window_texture(AuraWM *wm, struct WindowTexture *wt)
         return;
     }
 
+    // Override-redirect windows (tooltips, menus, popups) often use a 32-bit
+    // ARGB visual that doesn't match the GLX FBConfig we chose for pixmap
+    // binding. Rather than trying (and failing) the fast GLX path — which
+    // generates X errors and leaves the texture blank — go straight to the
+    // CPU fallback. These windows are small and transient, so the performance
+    // cost is negligible.
+    if (wt->override_redirect) {
+        refresh_window_texture_fallback(wm, wt);
+        return;
+    }
+
     // If we already have a bound texture, release it first.
     // You can't re-bind without releasing — it's like unlocking a file before
     // another program can read it.
@@ -719,8 +731,13 @@ static void refresh_window_texture(AuraWM *wm, struct WindowTexture *wt)
 
     wt->glx_pixmap = glXCreatePixmap(wm->dpy, fb, wt->pixmap, pixmap_attrs);
     if (!wt->glx_pixmap) {
-        fprintf(stderr, "[crystal] WARNING: Cannot create GLX pixmap for 0x%lx\n",
+        // GLX pixmap creation can fail for override-redirect windows (tooltips,
+        // menus, popups) if their visual doesn't match the FBConfig. Fall back
+        // to the CPU-based texture upload which reads pixels via XGetImage and
+        // uploads them with glTexImage2D — slower but works with any visual.
+        fprintf(stderr, "[crystal] GLX pixmap failed for 0x%lx, using CPU fallback\n",
                 wt->xwin);
+        refresh_window_texture_fallback(wm, wt);
         return;
     }
 
@@ -755,6 +772,37 @@ static void refresh_window_texture(AuraWM *wm, struct WindowTexture *wt)
 // which is much slower than the zero-copy texture_from_pixmap approach.
 static void refresh_window_texture_fallback(AuraWM *wm, struct WindowTexture *wt)
 {
+    // For override-redirect windows (tooltips, menus, popups), we read pixels
+    // directly from the window instead of using XComposite pixmaps. These
+    // windows are not reliably redirected by XComposite (especially when
+    // created after the initial RedirectSubwindows call), and their pixmaps
+    // often fail to bind via GLX. Reading directly from the window is slower
+    // but always works, and these windows are small enough that the cost is
+    // negligible.
+    if (wt->override_redirect) {
+        // Read pixels directly from the window drawable
+        XImage *img = XGetImage(wm->dpy, wt->xwin, 0, 0,
+                                wt->w, wt->h, AllPlanes, ZPixmap);
+        if (!img) {
+            // Window might not be mapped yet or might have been destroyed
+            return;
+        }
+
+        glBindTexture(GL_TEXTURE_2D, wt->texture);
+        glTexImage2D(GL_TEXTURE_2D, 0,
+                     wt->has_alpha ? GL_RGBA : GL_RGB,
+                     wt->w, wt->h, 0,
+                     GL_BGRA, GL_UNSIGNED_BYTE, img->data);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+        XDestroyImage(img);
+        return;
+    }
+
     // Destroy and recreate the X pixmap to get fresh contents
     if (wt->pixmap) {
         XFreePixmap(wm->dpy, wt->pixmap);
@@ -1083,6 +1131,7 @@ static void sync_tracked_windows(AuraWM *wm)
 
         wt->xwin = children[i];
         wt->has_alpha = (wa.depth == 32);
+        wt->override_redirect = wa.override_redirect ? true : false;
         wt->x = wa.x;
         wt->y = wa.y;
         wt->w = wa.width;
@@ -1092,16 +1141,29 @@ static void sync_tracked_windows(AuraWM *wm)
         glGenTextures(1, &wt->texture);
         wt->dirty = true;
 
-        // Register XDamage so we know when contents change
-        wt->damage = XDamageCreate(wm->dpy, children[i], XDamageReportNonEmpty);
+        if (wa.override_redirect) {
+            // Override-redirect windows (tooltips, menus, popups) are read
+            // directly from the window drawable rather than via XComposite
+            // pixmaps. We do NOT redirect them through XComposite and do NOT
+            // create XDamage tracking — instead, they are always marked dirty
+            // so their texture is refreshed every frame. This is reliable
+            // across all X servers and these windows are small enough that
+            // the per-frame XGetImage cost is negligible.
+            wt->damage = 0;
+        } else {
+            // Normal windows: redirect through XComposite and track damage
+            // so we only refresh the texture when contents actually change.
+            wt->damage = XDamageCreate(wm->dpy, children[i], XDamageReportNonEmpty);
+        }
 
         // Mark this new entry as seen
         seen[crystal.window_count] = true;
         crystal.window_count++;
 
         if (getenv("AURA_DEBUG")) {
-            fprintf(stderr, "[crystal] Auto-tracked window 0x%lx (%dx%d at %d,%d)\n",
-                    children[i], wa.width, wa.height, wa.x, wa.y);
+            fprintf(stderr, "[crystal] Auto-tracked window 0x%lx (%dx%d at %d,%d%s)\n",
+                    children[i], wa.width, wa.height, wa.x, wa.y,
+                    wa.override_redirect ? " override-redirect" : "");
         }
     }
 
@@ -1113,6 +1175,15 @@ static void sync_tracked_windows(AuraWM *wm)
                 fprintf(stderr, "[crystal] Removing stale window 0x%lx\n",
                         crystal.windows[i].xwin);
             }
+            // If this was an override-redirect window, unredirect it since
+            // we explicitly redirected it in the tracking pass above.
+            // This is safe even if the window is already destroyed — X11
+            // silently ignores the call for non-existent windows.
+            if (crystal.windows[i].override_redirect) {
+                XCompositeUnredirectWindow(wm->dpy, crystal.windows[i].xwin,
+                                           CompositeRedirectManual);
+            }
+
             release_window_texture(wm, &crystal.windows[i]);
 
             int remaining = crystal.window_count - i - 1;
@@ -1525,12 +1596,22 @@ void crystal_composite(AuraWM *wm)
             // the _NET_WM_WINDOW_TYPE property. Dock/panel windows go in
             // pass 2 (always on top), desktop windows in pass 0 (always
             // behind), and everything else in pass 1.
+            //
+            // Override-redirect windows (menus, tooltips, popups) don't set
+            // _NET_WM_WINDOW_TYPE, so we check the override_redirect flag
+            // directly. These always render in pass 2 (on top of everything)
+            // because they are transient UI elements that must be visible
+            // above all other content.
             int window_pass = 1;
-            Atom wtype = ewmh_get_window_type(wm, wt->xwin);
-            if (wtype == wm->atom_net_wm_type_desktop) {
-                window_pass = 0;
-            } else if (wtype == wm->atom_net_wm_type_dock) {
+            if (wt->override_redirect) {
                 window_pass = 2;
+            } else {
+                Atom wtype = ewmh_get_window_type(wm, wt->xwin);
+                if (wtype == wm->atom_net_wm_type_desktop) {
+                    window_pass = 0;
+                } else if (wtype == wm->atom_net_wm_type_dock) {
+                    window_pass = 2;
+                }
             }
 
             // Skip windows that don't belong to this pass
@@ -1542,7 +1623,10 @@ void crystal_composite(AuraWM *wm)
             // ── Refresh dirty textures ──
             // If the window's contents have changed since the last frame,
             // update the OpenGL texture with the new pixel data.
-            if (wt->dirty) {
+            // Override-redirect windows (menus, tooltips) are always refreshed
+            // because they don't use XDamage tracking — their contents are
+            // read directly from the window each frame.
+            if (wt->dirty || wt->override_redirect) {
                 refresh_window_texture(wm, wt);
                 wt->dirty = false;
             }

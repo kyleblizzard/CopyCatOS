@@ -20,8 +20,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-// How far from the bottom of the dock window to place the indicator center
-#define INDICATOR_BOTTOM_OFFSET 6  // Sits on the shelf surface, 6px from dock bottom
+// How far from the bottom of the dock window to place the indicator center.
+// With DOCK_HEIGHT=160 and SHELF_HEIGHT=48, the shelf spans y=112 to y=160.
+// We want the dot about 10px above the very bottom so it sits clearly on
+// the visible shelf surface.
+#define INDICATOR_BOTTOM_OFFSET 10  // Sits on the shelf surface, 10px from dock bottom
 
 bool indicator_load(DockState *state)
 {
@@ -44,15 +47,19 @@ bool indicator_load(DockState *state)
         cairo_surface_destroy(state->indicator_img);
         state->indicator_img = NULL;
 
-        // Create a small surface for our procedural dot
-        int size = INDICATOR_SIZE * 2;  // Extra space for the glow
+        // Create a surface for our procedural dot.
+        // We use 3x the indicator diameter to give room for the glow halo
+        // to spread out naturally. At INDICATOR_SIZE=8, this gives us a
+        // 24x24 surface — large enough to see clearly on the shelf.
+        int size = INDICATOR_SIZE * 3;
         state->indicator_img = cairo_image_surface_create(
             CAIRO_FORMAT_ARGB32, size, size);
 
         cairo_t *cr = cairo_create(state->indicator_img);
 
-        // Draw a radial gradient: bright white center, aqua blue glow, fades out
-        // Radial gradient goes from a tiny center point outward to the edge
+        // Draw a radial gradient: bright white center, aqua blue glow, fades out.
+        // The gradient has a wider bright core (0.5 instead of 0.4) so the
+        // dot is clearly visible against the semi-transparent shelf surface.
         double cx = size / 2.0;
         double cy = size / 2.0;
         double radius = size / 2.0;
@@ -62,10 +69,10 @@ bool indicator_load(DockState *state)
             cx, cy, radius   // Outer circle: same center, full radius
         );
 
-        // White hot center
+        // White hot center — fully opaque
         cairo_pattern_add_color_stop_rgba(grad, 0.0, 1.0, 1.0, 1.0, 1.0);
-        // Aqua blue glow (the classic macOS indicator color)
-        cairo_pattern_add_color_stop_rgba(grad, 0.4, 0.4, 0.75, 1.0, 0.8);
+        // Bright aqua blue glow with a wider core for visibility
+        cairo_pattern_add_color_stop_rgba(grad, 0.5, 0.4, 0.75, 1.0, 0.9);
         // Fade to transparent at the edges
         cairo_pattern_add_color_stop_rgba(grad, 1.0, 0.3, 0.6, 1.0, 0.0);
 
