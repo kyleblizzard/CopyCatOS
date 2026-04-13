@@ -72,14 +72,21 @@ bool indicator_load(DockState *state)
         // White hot center — fully opaque
         cairo_pattern_add_color_stop_rgba(grad, 0.0, 1.0, 1.0, 1.0, 1.0);
         // Bright aqua blue glow with a wider core for visibility
-        cairo_pattern_add_color_stop_rgba(grad, 0.5, 0.4, 0.75, 1.0, 0.9);
+        cairo_pattern_add_color_stop_rgba(grad, 0.35, 0.6, 0.85, 1.0, 0.95);
         // Fade to transparent at the edges
         cairo_pattern_add_color_stop_rgba(grad, 1.0, 0.3, 0.6, 1.0, 0.0);
 
         cairo_set_source(cr, grad);
         cairo_paint(cr);
-
         cairo_pattern_destroy(grad);
+
+        // Draw a small solid white dot in the center for a crisp highlight.
+        // The radial gradient alone blends into the shelf background at
+        // small sizes. This opaque core ensures the dot is unmistakable.
+        cairo_arc(cr, cx, cy, 2.5, 0, 2 * 3.14159265);
+        cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
+        cairo_fill(cr);
+
         cairo_destroy(cr);
 
         cairo_surface_flush(state->indicator_img);

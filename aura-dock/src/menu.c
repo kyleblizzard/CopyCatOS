@@ -99,6 +99,13 @@ static int submenu_parent_index = -1;
 static long submenu_hover_start_ms = 0;
 static int submenu_hover_pending = -1;  // Which item we're waiting to open (-1 = none)
 
+// When the menu opens via a ButtonPress, the corresponding ButtonRelease
+// arrives immediately (since the pointer grab is active). We must ignore
+// that initial release or the menu will close the instant it opens.
+// This flag is set to true in menu_show() and cleared after the first
+// ButtonRelease is consumed.
+static bool ignore_next_release = false;
+
 // ---------------------------------------------------------------------------
 // Forward declarations for internal helpers
 // ---------------------------------------------------------------------------
@@ -818,9 +825,6 @@ static void dispatch_action(int action)
 // ---------------------------------------------------------------------------
 void menu_show(DockState *state, DockItem *item, int x, int y)
 {
-    fprintf(stderr, "[menu] menu_show called for '%s' at (%d,%d)\n",
-            item->name, x, y);
-
     // Close any existing menu first
     menu_close(state);
 
@@ -860,6 +864,11 @@ void menu_show(DockState *state, DockItem *item, int x, int y)
                  ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
                  GrabModeAsync, GrabModeAsync,
                  None, None, CurrentTime);
+
+    // The right-click that opened this menu will generate a ButtonRelease
+    // event that gets delivered to us through the pointer grab. If we don't
+    // ignore it, the menu will close immediately. Set a flag to skip it.
+    ignore_next_release = true;
 
     // Paint the initial menu contents
     menu_paint_state(&menu);
@@ -982,6 +991,14 @@ bool menu_handle_event(DockState *state, XEvent *ev)
 
     // ----- MOUSE BUTTON RELEASE: dispatch action on the clicked item -----
     case ButtonRelease: {
+        // Skip the ButtonRelease that comes from the same right-click that
+        // opened the menu. Without this, the menu closes immediately because
+        // the pointer grab delivers the release event to us.
+        if (ignore_next_release) {
+            ignore_next_release = false;
+            return true;
+        }
+
         Window event_win = ev->xbutton.window;
 
         // --- Click in the SUBMENU ---
