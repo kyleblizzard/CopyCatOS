@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>StartupSearchGroup</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>启用, 引导, 启动, 上, 初始, 硬, 盘, 光盘, 驱动, 宗卷, 系统, netboot, 网络启动</string>
+				<key>title</key>
+				<string>启动磁盘</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>光盘, FireWire, 火线</string>
+				<key>title</key>
+				<string>目标磁盘模式</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

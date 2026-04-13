@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+        <!-- sans-serif -->
+	<key>sans-serif</key>
+	<dict>
+		<key>default</key>
+		<array>
+			<string>LucidaGrande</string>
+			<string>GeezaPro</string>
+			<string>Thonburi</string>
+			<string>DevanagariMT</string>
+			<string>GujaratiMT</string>
+			<string>MonotypeGurmukhi</string>
+			<string>EuphemiaUCAS</string>
+			<string>InaiMathi</string>
+			<string>Mshtakan</string>
+			<string>PlantagenetCherokee</string>
+		</array>
+		<key>ja</key>
+		<string>HiraKakuPro-W3</string>
+		<key>ko</key>
+		<string>AppleGothic</string>
+		<key>zh-Hans</key>
+		<string>STXihei</string>
+		<key>zh-Hant</key>
+		<string>LiHeiPro</string>
+	</dict>
+
+        <!-- serif -->
+	<key>serif</key>
+        <dict>
+                <key>default</key>
+                <array>
+                        <string>Times-Roman</string>
+                        <string>Symbol</string>
+                        <string>LucidaGrande</string>
+                        <string>GeezaPro</string>
+			<string>Thonburi</string>
+                        <string>DevanagariMT</string>
+                        <string>GujaratiMT</string>
+                        <string>MonotypeGurmukhi</string>
+			<string>EuphemiaUCAS</string>
+			<string>InaiMathi</string>
+			<string>Mshtakan</string>
+			<string>PlantagenetCherokee</string>
+                </array>
+                <key>ja</key>
+                <string>HiraMinPro-W3</string>
+                <key>ko</key>
+                <string>AppleMyungjo</string>
+                <key>zh-Hans</key>
+                <string>STKaiti</string>
+                <key>zh-Hant</key>
+                <string>LiSongPro</string>
+        </dict>
+
+        <!-- fixed-pitch -->
+	<key>fixed-pitch</key>
+	<dict>
+                <key>default</key>
+                <array>
+                        <string>Monaco</string>
+                        <string>LucidaGrande</string>
+			<string>Silom</string>
+                        <string>Baghdad</string>
+                        <string>DevanagariMT</string>
+                        <string>GujaratiMT</string>
+                        <string>MonotypeGurmukhi</string>
+			<string>EuphemiaUCAS</string>
+			<string>InaiMathi</string>
+			<string>Mshtakan</string>
+			<string>PlantagenetCherokee</string>
+                </array>
+                <key>ja</key>
+                <string>Osaka-Mono</string>
+                <key>ko</key>
+                <string>AppleGothic</string>
+                <key>zh-Hans</key>
+                <string>STXihei</string>
+                <key>zh-Hant</key>
+                <string>LiHeiPro</string>
+	</dict>
+</dict>
+</plist>

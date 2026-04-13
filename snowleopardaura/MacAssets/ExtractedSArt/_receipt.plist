@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>buffer1</key>
+	<data>
+	AAAAAAAAAAA=
+	</data>
+	<key>bugFixOS</key>
+	<integer>0</integer>
+	<key>majorOS</key>
+	<integer>26</integer>
+	<key>minorOS</key>
+	<integer>4</integer>
+	<key>pdfsWritten</key>
+	<true/>
+</dict>
+</plist>

@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>apps</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>program, spel, familj, föräldrar, förälder, kontroller, säkerhet, integritet, privat, barn, ungar, gränser, begränsa, skydda, tillåta, behörighet, administratörer, administration, användare, konton, säker, barnsäkert, begränsa, begränsning, begränsat, begränsningar, skyddat, skyddar, program, skydd, skydda</string>
+				<key>title</key>
+				<string>Begränsa datoranvändning</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Begränsa Dock</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>förenkla, enkel, enklare, förenkla, förenklad, förenklad finder</string>
+				<key>title</key>
+				<string>Begränsad Finder</string>
+			</dict>
+		</array>
+	</dict>
+	<key>logs</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>familj, övervaka, logga, spåra, hantera, övervakning, loggning, spårning, hantering</string>
+				<key>title</key>
+				<string>Föräldrakontrollsloggar</string>
+			</dict>
+		</array>
+	</dict>
+	<key>other</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Begränsa användning av skrivare</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>kompakt, digital, skiva, skivor, optisk</string>
+				<key>title</key>
+				<string>Begränsa skivbränning</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Begränsa ändring av lösenord</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>ordlista, stötande, svordomar, svärord, svära</string>
+				<key>title</key>
+				<string>Göm olämpligt språk i ordlistan</string>
+			</dict>
+		</array>
+	</dict>
+	<key>people</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>familj, föräldrar, förälder, kontroller, säkerhet, integritet, privat, barn, ungar, begränsa, skydda, tillåta, behörighet, administratörer, administration, användare, konton, e-post, direkt, meddelanden, ichat, IM, snabbmeddelande, text, kontakt, kontakter, vänner, säker, barnsäkert, begränsa, begränsning, begränsat, skyddat, skyddar, skydd, chatt, chatta, texta, facetime</string>
+				<key>title</key>
+				<string>Begräsa e-post och chatt</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>familj, kontroller, meddelande, meddela, förälder</string>
+				<key>title</key>
+				<string>Meddela föräldrar</string>
+			</dict>
+		</array>
+	</dict>
+	<key>time</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>familj, föräldrar, förälder, kontroller, säkerhet, integritet, privat, barn, ungar, begränsa, hantera, timer, läggdags, skola, kvällar, tidsgräns, begränsning, hantering</string>
+				<key>title</key>
+				<string>Tidsgränser</string>
+			</dict>
+		</array>
+	</dict>
+	<key>web</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>familj, föräldrar, förälder, kontroller, säkerhet, integritet, privat, barn, ungar, begränsa, skydda, tillåta, behörighet, administratörer, administration, användare, konton, webb, webbsidor, webbplatser, Safari, webbläsare, filter, vuxet, innehåll, pornografi, säker, barnsäkert, begränsa, begränsning, begränsat, skyddat, skyddar, skydd, sidor, surfning, filtrerat, filtrering</string>
+				<key>title</key>
+				<string>Begränsa Internetåtkomst</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>hantera, olämplig, svära, svordom, kraftuttryck, explicit, dåligt, språk, obscent, obsceniteter, ord, pornografi, förbanna, fult, snusk, filtrerat, filtrering, ofiltrerat, runda ord</string>
+				<key>title</key>
+				<string>Filtrera olämpligt språk</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

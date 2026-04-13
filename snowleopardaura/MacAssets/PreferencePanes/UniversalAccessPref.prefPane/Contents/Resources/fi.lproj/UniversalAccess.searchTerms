@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Hearing</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>Käyttöapu, käytettävyys, rajoitteinen, vammainen, rajoitettu, kuuro, kuulla, kuuleminen, apu</string>
+				<key>title</key>
+				<string>Näytön väläyttäminen varoitusten tapahtuessa</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Keyboard</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>Käyttöapu, käytettävyys, rajoitteinen, vammainen, rajoitettu, liikkuvuus, hidasta, apu, helppo, yhden sormen näppäimet, toistonopeus, muuntonäppäin, herkkyys, säädä, säädöt, kirjoita, hitaammin, hidastaminen, säätäminen, kirjoittaminen</string>
+				<key>title</key>
+				<string>Tee näppäimistöstä helppokäyttöisempi</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Mouse</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>Käyttöapu, käytettävyys, rajoitteinen, vammainen, rajoitettu, liikkuvuus, hidasta, apu, helppo, näppäimet, numeronäppäimet, osoitin, kursori, näppäimistö, suurenna, suurennus, säädä, säädöt, hitaammin, hidastaminen, säätäminen, suurennettu, suurentaminen</string>
+				<key>title</key>
+				<string>Tee hiirestä ja ohjauslevystä helppokäyttöisempi</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Display</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>Käyttöapu, käytettävyys, rajoitteinen, vammainen, rajoitettu, sokea, näkö, näkyvä, lue, katso, parannettu, kontrasti, musta, valkoinen, harmaasävy, säädöt, lukeminen, näkeminen, katsominen, parantaminen, säätäminen</string>
+				<key>title</key>
+				<string>Tee näytöstä helppolukuisempi</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_VoiceOver</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>puhuttu, käyttöliittymä, kuuleminen, näyttö, lukija, universaali, esteettömyys, käyttöapu, työkyvytön, vammainen, rajoittunut, sokea, näkö, kyky, näkyvä, huono, vajaa, selostus</string>
+				<key>title</key>
+				<string>VoiceOver päällä/pois päältä</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Salli apulaitteet</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>valikkorivi</string>
+				<key>title</key>
+				<string>Näytä Käyttöapu valikkorivillä</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Zoom</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>Käyttöapu, esteettömyys, esteetön, työkyvytön, vammainen, rajoitettu, sokea, näkö, kyky, näkyvä, heikko, suurenna, suurennos, lukea, nähdä, näkymä, lisätä, vähentää, suurempi, isompi, enimmäis, vähimmäis, vierittää, hiiri, pyörä, pallo, vierityspallo, vierityspyörä, hiiripallo, hiiripyörä, zoomaus, suurennettu, suurentaminen, lukeminen, näkeminen, lisääminen, vähentäminen</string>
+				<key>title</key>
+				<string>Zoomaa näytön suurentamiseksi</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

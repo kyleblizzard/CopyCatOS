@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Main</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>selected, text, highlighting, highlite, highliting, hilite, hiliting</string>
+				<key>title</key>
+				<string>Highlight color</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>Apple menu, applications, documents, servers</string>
+				<key>title</key>
+				<string>Number of Recent Items</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>desktop, customize, personalize, customizing, customization, personalizing</string>
+				<key>title</key>
+				<string>Button, menu, and window look</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>arrows, smooth, minimize, window, jump, scrollbar, smoothing, minimizing, jumping</string>
+				<key>title</key>
+				<string>Scroll bar behavior</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>antialiasing, blurry, jagged, fuzzy, text, size, LCD, flat, display, screen, blurred, anti aliasing</string>
+				<key>title</key>
+				<string>Font smoothing</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

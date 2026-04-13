@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>main</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词语</string>
+				<key>index</key>
+				<string>备份, 归档, 硬, 磁盘, 光盘, 驱动器, 宗卷, 数据, 信息, 文件夹, 损失, 损失, 丢失, 意外, 灾难, 抹掉, 删除, 恢复, 归档, 损失, 损失, 抹掉, 已抹掉, 删除, 已删除, 恢复, 恢复</string>
+				<key>title</key>
+				<string>备份和恢复文件</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

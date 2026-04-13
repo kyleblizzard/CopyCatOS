@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Options</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>displays ディスプレイ ディスプレー, screens スクリーン 画面, monitors モニタ モニター, brighten 明るくする 高くする 上げる, dim 暗くする 低くする 下げる, sleep スリープ 休止, wake ウェイク ウェーク 休止解除 スリープ解除, shut down シャット ダウン システム終了 停止 終了, start up 起動 スタート スタートアップ, power パワー 電源, on オン 入, off オフ 切, electricity 電気 電源 電力, green グリーン 緑 グリン, save 節約 保存 セーブ, conserve 節約する, conservation 節約, preserve 保持, environmental 環境, charge 充電 チャージ, plug 接続 プラグ 付ける 挿す, unplugged 接続解除 切断 外す はずす, optimize 最適化 最適, performance パフォーマンス 性能 速度, processor プロセッサ プロセッサー CPU, automatic 自動 自動的 オート, brightness 明るさ 輝度 明度 ブライトネス, black 黒 ブラック, blank ブランク 空 空白, darkening 暗くする, dimmed 暗い 暗くなった 消灯 オフ 消す, dimming 暗くする 低くする 下げる, sleeping スリープする スリープさせる 休止する 一時停止, asleep スリープ状態 休止状態 一時停止状態, waking オンにする 休止解除する 休止を解除する スリープ解除する スリープを解除する, awake オン 休止解除 スリープ解除, awaken オンになる 休止解除になる スリープ解除になる, awakening オン 休止解除 スリープ解除, shutdown シャットダウン システム終了 停止 終了, shutting シャット, powering 電源を入れる, turn 入 切, turning 入れる 入る 切る 切れる オン オフ オンにする オフにする, saving 節約する 保存する セーブする, conserving 節約する, preserving 保持する, charged 充電済み 充電された, charging 充電中 充電する, plugged 接続された 付けた 挿した, plugging 接続する 付ける 挿す, un-plugged 接続解除された 切断された はずされた, unplugging 接続を解除する 切断する はずす, un-plugging 接続を解除する 切断する はずす, optimized 最適化された, optimizing 最適化する, optimization 最適化, automated 自動化された 自動化する, automating 自動化する 自動にする オート化する, automatically 自動的 自動で オートメーション</string>
+				<key>title</key>
+				<string>電力を節約</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>start up スタートアップ スタート アップ 起動 開始 ブート, restart 再起動 リスタート 再スタート 再起動 再開 リブート 再ブート, automatic オートマチック オートマティック 自動的 自動化 自動実行 オート, startup スタートアップ, starting スタートする 起動する 開始する ブートする, re-start リスタート, re-starting リスタートする 再起動する 再スタートする, automated 自動化された, automating 自動化する 自動実行する 自動で実行する, automatically 自動的 自動で</string>
+				<key>title</key>
+				<string>停電後に再起動する</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>menubar メニューバー メニュウバー メニュウバア メニューバア</string>
+				<key>title</key>
+				<string>メニューバーにバッテリーの状況を表示</string>
+			</dict>
+		</array>
+		<key>portableOnly</key>
+		<false/>
+	</dict>
+	<key>PortableOptions</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>battery life バッテリー寿命 バッテリ寿命 電池寿命 バッテリーレベル バッテリレベル 電池レベル バッテリー残量 バッテリ残量 電池残量, adapter アダプター アダプタ 電源, cable ケーブル コード, portable ポータブル モバイル ポータブルパソコン モバイルパソコン, PowerBook パワーブック, iBook アイブック, MacBook マックブック, laptop ラップトップ ラップトップパソコン, notebook ノートブック ノートパソコン, note book ノート ブック</string>
+				<key>title</key>
+				<string>バッテリーを節約</string>
+			</dict>
+		</array>
+		<key>portableOnly</key>
+		<true/>
+	</dict>
+	<key>Schedule</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>sleep スリープ 休止, wake ウェイク ウェーク 休止解除 スリープ解除, ower パワー 電源, on オン 入, off オフ 切, automatic 自動 自動的 オート, scheduled スケジュール スケジュールされた スケジュール済み スケジュールが設定された 予約された, scheduling スケジュールする スケジューリング スケジュールを設定する スケジュール設定 予約する, sleeping スリープする スリープさせる 休止する 一時停止, asleep スリープ状態 休止状態 一時停止状態, waking オンにする 休止解除する 休止を解除する スリープ解除する スリープを解除する, awake オン 休止解除 スリープ解除, awaken オンになる 休止解除になる スリープ解除になる, awakening オン 休止解除 スリープ解除, shutdown シャットダウン システム終了 停止 終了, shutting シャット, powering 電源を入れる, turn 入 切, turning 入れる 入る 切る 切れる オン オフ オンにする オフにする, automated 自動化された 自動化する, automating 自動化する 自動にする オート化する, automatically 自動的 自動で オートメーション</string>
+				<key>title</key>
+				<string>起動、スリープ、またはシステム終了をスケジュール</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Sleep</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>スリープの設定</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

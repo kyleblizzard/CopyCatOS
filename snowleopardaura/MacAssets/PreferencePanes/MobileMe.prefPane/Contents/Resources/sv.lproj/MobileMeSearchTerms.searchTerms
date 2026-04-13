@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>account</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>användare, medlemskap, prov, medlem, namn, lösenord, registrera, dotmac, itools</string>
+				<key>title</key>
+				<string>Skaffa ett MobileMe-konto</string>
+			</dict>
+		</array>
+	</dict>
+	<key>idisk</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>lagring, synkronisera, delad mapp, lösenord, spegel, hårddisk, skiva, lokal, e-post, synk, synkronisering, pass, ord</string>
+				<key>title</key>
+				<string>iDisk</string>
+			</dict>
+		</array>
+	</dict>
+	<key>mymacs</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>dela, tillbaka, nätverk, delning, min mac, mina mac-datorer</string>
+				<key>title</key>
+				<string>Tillbaka till min Mac</string>
+			</dict>
+		</array>
+	</dict>
+	<key>sync</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>synkronisering, MobileMe, dotmac, menyrad</string>
+				<key>title</key>
+				<string>Visa synkroniseringsstatus i menyraden</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>synka, synkronisera</string>
+				<key>title</key>
+				<string>Starta eller stoppa MobileMe-synkronisering</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

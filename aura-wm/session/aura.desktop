@@ -1,0 +1,17 @@
+# AuraOS X Session Entry
+#
+# This file tells the display manager (SDDM, GDM, LightDM, etc.) to offer
+# "AuraOS" as a selectable desktop session on the login screen.
+#
+# Install:
+#   sudo cp aura.desktop /usr/share/xsessions/
+#
+# After copying, log out and the new session should appear in the session
+# picker on your display manager's login screen.
+
+[Desktop Entry]
+Name=AuraOS
+Comment=Pixel-perfect Snow Leopard desktop environment
+Exec=/usr/local/bin/aura-session.sh
+Type=Application
+DesktopNames=AuraOS

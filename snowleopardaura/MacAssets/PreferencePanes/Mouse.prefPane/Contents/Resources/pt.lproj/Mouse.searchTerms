@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>mouseTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>duplo-clique, clicar, faixa, arrastar, mais rápido, velocidade, lenta, cursor, seta, ponteiro, clicando, usando o track-pad, arrastando, mais lento, diminuindo a velocidade</string>
+				<key>title</key>
+				<string>Sensibilidade do mouse</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>principal, secundário, Dashboard, alternador de aplicativos, Spotlight, atalho, Exposé, Spaces, rolagem, esfera, roda, roda de rolagem, esfera de rolagem, mouse com esfera, esfera do mouse, Mighty Mouse</string>
+				<key>title</key>
+				<string>Botões do mouse</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Zoom do mouse</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

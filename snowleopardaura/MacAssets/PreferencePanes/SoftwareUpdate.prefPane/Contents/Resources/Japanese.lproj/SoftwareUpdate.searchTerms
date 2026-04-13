@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>InstalledUpdates</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>applications アプリケーション アプリ ソフトウェア ソフト, programs プログラム</string>
+				<key>title</key>
+				<string>インストールされたソフトウェア・アップデートを表示</string>
+			</dict>
+		</array>
+	</dict>
+	<key>UpdateSoftware</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>install インストール, download ダウンロード, automatic 自動 オート, scheduled 予約された スケジュールされた 予定された, applications アプリケーション アプリ ソフトウェア ソフト, programs プログラム, updated アップデートされた アップデート済み 更新された 更新済み, updating アップデートする 更新する, downloaded ダウンロードされた ダウンロード済み, downloading ダウンロードする, installed インストールされた インストール済み, installing インストールする, automated 自動的に実行された 自動実行された, automating 自動的に実行する 自動実行する, automatically 自動的 自動化, scheduling 予約 スケジュール 予定</string>
+				<key>title</key>
+				<string>ソフトウェア・アップデートを確認</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

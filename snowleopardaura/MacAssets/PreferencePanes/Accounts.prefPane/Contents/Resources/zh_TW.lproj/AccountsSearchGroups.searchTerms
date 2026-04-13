@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>loginOptionsPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>使用者, 登入, 簽入, 登錄, 登進, 登陸, 申請, 隱藏, 顯示, 啟動, 關機, 重新開機, 睡眠, 按鈕, VoiceOver, 語音, 朗讀, 輸入, 方式, 模式, 選單, 密碼, 提示, 開始, 啟動, 關閉, 停止, 聲音, 音, 通行, 碼, 登入, 登進, 簽入, 登陸, 申請, 藏, 秀, 讀</string>
+				<key>title</key>
+				<string>登入視窗設定</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>使用者, 快, 記錄, 簽, 登入, 登, 登出, 申請, 註冊, 登出, 登出, 登出, 切換, 出, 入, 登入, 登出, 出, 入, 簽入, 簽出, 登出, 登入</string>
+				<key>title</key>
+				<string>在不同帳號之間切換</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>登, 登記, 登入, 自動化, 自動, 自動的, 登入, 登出, 申請, 註冊, 註, 冊</string>
+				<key>title</key>
+				<string>自動登入</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>啟用, ldap, 打開, 伺服器, 作用中目錄, open directory</string>
+				<key>title</key>
+				<string>目錄服務</string>
+			</dict>
+		</array>
+	</dict>
+	<key>mobilityPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array/>
+	</dict>
+	<key>passwordPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>訪客, 共享, 長, 短, 名稱, 認證, 密碼, filevault, 分享, 通過, 字, 認證, 認證, file, vault</string>
+				<key>title</key>
+				<string>使用者或群組帳號</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>照片, 圖片, 相片</string>
+				<key>title</key>
+				<string>使用者圖片</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>使用者, 帳號, 長, 短, 名稱, 認證, 記錄, 簽, 登入, 登出, 申請, 註冊, 更改, 管理, 通過, 字, 認證, 證, 登入, 登出, 簽出, 簽入, 登記, 改變</string>
+				<key>title</key>
+				<string>登入名稱和密碼</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>mobile, me, 點, mac, dotmac</string>
+				<key>title</key>
+				<string>MobileMe 會員名稱</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>vcard, 卡片</string>
+				<key>title</key>
+				<string>通訊錄名片</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>管理, 管理者, 管, 組織</string>
+				<key>title</key>
+				<string>管理者帳號</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>家庭, 限制, 限管</string>
+				<key>title</key>
+				<string>啟用分級保護控制</string>
+			</dict>
+		</array>
+	</dict>
+	<key>startupItemsPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>自動, 自動化, 登, 入, 登入, 登出, 登入, 申請, 開機, 啟動, 自動的, 自動地, 自動, 自動化, 開始, 登入, 登出, 簽, 簽入, 簽出</string>
+				<key>title</key>
+				<string>在登入時打開應用程式</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ClockPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string>часы, строка меню</string>
+				<key>title</key>
+				<string>Показывать дату и время в строке меню</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string>с нарушением слуха, инвалид, с ограниченными возможностями, глухой, помогать, голос, объявление, помощь</string>
+				<key>title</key>
+				<string>Произносить время</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string>секунды, AM, PM, день недели, 24-часовой, 12-часовой, 24-ч</string>
+				<key>title</key>
+				<string>Установить часы</string>
+			</dict>
+		</array>
+	</dict>
+	<key>DateTimePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string>автоматический, автоматизировать, автоматически, автоматизация</string>
+				<key>title</key>
+				<string>Установить дату и время</string>
+			</dict>
+		</array>
+	</dict>
+	<key>TimeZonePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Установить часовой пояс</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

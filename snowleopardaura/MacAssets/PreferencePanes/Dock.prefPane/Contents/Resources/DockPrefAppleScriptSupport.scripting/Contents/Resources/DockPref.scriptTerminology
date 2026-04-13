@@ -1,0 +1,66 @@
+{
+	Name = "Dock Preferences Suite";
+	Description = "Terms and Events for controlling the dock preferences";
+	Classes = {
+		DockPref = {
+			Name = "dock preferences object";
+			Description = "user's dock preferences";
+			Attributes = {
+				magnification = {
+					Name = magnification;
+					Description = "is magnification on or off?";
+				};
+				docksize = {
+					Name = "dock size";
+					Description = "size/height of the items (between 0.0 (minimum) and 1.0 (maximum))";
+				};
+				magsize = {
+					Name = "magnification size";
+					Description = "maximum magnification size when magnification is on (between 0.0 (minimum) and 1.0 (maximum))";
+				};
+				autohide = {
+					Name = autohide;
+					Description = "is autohiding the dock on or off?";
+				};
+				animate = {
+					Name = animate;
+					Description = "is the animation of opening applications on or off?";
+				};
+				edge = {
+					Name = "screen edge";
+					Description = "location on screen";
+				};
+				effect = {
+					Name = "minimize effect";
+					Description = "minimization effect";
+				};
+			};
+		};
+	};
+	Enumerations = {
+		Edges = {
+			Bottom = {
+				Description = bottom;
+				Name = bottom;
+			};
+			Left = {
+				Description = left;
+				Name = left;
+			};
+			Right = {
+				Description = right;
+				Name = right;
+			};
+		};
+		Effects = {
+			Genie = {
+				Description = genie;
+				Name = genie;
+			};
+			Scale = {
+				Description = scale;
+				Name = scale;
+			};
+		};
+	};
+}

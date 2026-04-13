@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>SpeechRecognition</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>Universal, acesso, acessibilidade, deficiente, visão, vista, cego, visível, audição, surdez, falar, pronunciável, enunciar, elementos, falado, comandos, reconhecimento, assistir, assistência, falar, vozes, calibrar, calibragem, ouvir, tecla, atalhos, personalizar, microfone, volume</string>
+				<key>title</key>
+				<string>Reconhecimento de voz</string>
+			</dict>
+		</array>
+	</dict>
+	<key>TTS</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>fala, síntese, TTS, falado, anunciar, anúncios, falar, enunciar, texto, voz, velocidade, alertas</string>
+				<key>title</key>
+				<string>Sintetizador de voz</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

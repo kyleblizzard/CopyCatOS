@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>FileVault</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>encrypt エンクリプト 暗号 暗号化, home ホーム, file vault ファイルボールト ファイルボルト ファイルヴォルト ファイルヴォールト, encrypted, encrypting エンクリプティング, encryption エンクリプション</string>
+				<key>title</key>
+				<string>FileVault</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>authenticate 認証 承認 オーセンティケート オーセンチケート, pass word パス ワード パスワード, authenticated, authenticating, authentication オーセンティケーション オーセンチケーション</string>
+				<key>title</key>
+				<string>マスターパスワード</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Firewall</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>prevent 防止 予防 防ぐ 防御, block ブロック 禁止, network ネットワーク, ports ポート, udp, file sharing ファイル 共有 ファイル共有, AFP, remote リモート, SSH エスエスエイチ, prevention, preventing, blocked, blocking, fire wall ファイアウォール ファイアーウォール ファイヤウォール ファイヤーウォール</string>
+				<key>title</key>
+				<string>ファイアウォールを入／切</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>ファイアウォール</string>
+				<key>title</key>
+				<string>ファイアウォールの詳細設定</string>
+			</dict>
+		</array>
+	</dict>
+	<key>General</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>screen スクリーン 画面, saver セーバ セーバー, password パスワード, authenticate 認証 承認 オーセンティケート オーセンチケート, lock ロック, unlock アンロック ロック解除 解除, sleep スリープ, wake スリープ解除, screensaver スクリーンセーバ スクリーンセーバー, pass word, authenticated, authenticating, authentication オーセンティケーション オーセンチケーション, locked, locking, unlocked, unlocking, sleeping, waking</string>
+				<key>title</key>
+				<string>コンピュータのスリープを解除するときにパスワードを要求</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>log ログ, sign サイン, on オン, in イン, automatic 自動 オート オートマチック オートマティック, logging ロギング, logon ログオン ログイン, signing サイニング, signin サインイン, signon サインオン</string>
+				<key>title</key>
+				<string>自動ログインを使用停止する</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>lock ロック, unlock アンロック ロック解除, locking, unlocking</string>
+				<key>title</key>
+				<string>システム環境設定をロック</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>sign サイン, off オフ, logging ログ ロギング, logoff ログオフ, logout ログアウト, signing サイニング,  signoff サインオフ, signout サインアウト</string>
+				<key>title</key>
+				<string>コンピュータが待機状態のときにログアウト</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>vm バーチャルメモリ ヴァーチャルメモリ 仮想メモリ, encrypt エンクリプト 暗号 暗号化, encrypted, encrypting エンクリプティング, encryption エンクリプション</string>
+				<key>title</key>
+				<string>安全な仮想メモリ</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>infrared 赤外線, receiver レシーバ レシーバー 受信, IR, infra-red</string>
+				<key>title</key>
+				<string>リモートコントロールを無効にする</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>secure セキュア 安全 セキュリティ 保護, private プライベート プライヴェート 個人 私的 私用, privacy プライバシー 個人情報, safe セーフ 安全 安心, safety セーフティ セーフティー, protect プロテクト, protection プロテクション, secured, securing, protected, protecting</string>
+				<key>title</key>
+				<string>セキュリティ設定</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

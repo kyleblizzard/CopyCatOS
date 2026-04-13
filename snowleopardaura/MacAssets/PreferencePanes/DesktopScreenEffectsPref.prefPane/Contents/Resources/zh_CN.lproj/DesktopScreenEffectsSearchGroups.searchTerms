@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>DesktopPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>照片, photographs, 背景, background, 桌面, desktop, 墙纸, wallpaper, 图案, pattern, 自定, customize, 照片, photos, 图片, pictures, 桌, desk, 顶部, top, 墙, wall, 纸, paper, customized, customizing, customization</string>
+				<key>title</key>
+				<string>桌面图片</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>半透明菜单栏</string>
+			</dict>
+		</array>
+	</dict>
+	<key>ScreenSaverPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>密码, passwords, 锁定, lock, 停用, disable, 启动, start, RSS, 可视化效果, visualizer, 提要, feeds, 新闻, news, 头条新闻, headlines, iTunes, 专辑, 相簿, albums, 艺术, art, 随机, random, 照片, photographs, 图片, pictures, 自定, customize, 屏幕保护程序, 屏保, screensavers, 新闻提要, newsfeeds, 相片, photos, pass words, locking, disabling, starting, 自定, customized, customizing, customization</string>
+				<key>title</key>
+				<string>屏幕保护程序, 屏幕保护</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>活跃的屏幕触发角</string>
+				<key>title</key>
+				<string>触发角</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>在屏幕保护程序中显示时钟</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

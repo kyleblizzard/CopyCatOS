@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Main</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>klawisz</string>
+				<key>title</key>
+				<string>Aktywne narożniki ekranu</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>dostosuj, biurko, klawiatura, klawisze funkcyjne, Fn, przyciski myszy, okna, programy, dostosowane, dostosowywanie, dostosowanie, dostosować</string>
+				<key>title</key>
+				<string>Skróty Exposé</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>dostosować, biurko, klawiatura, klawisze funkcyjne, Fn, przyciski myszy, dostosowanie, dostosowane, dostosuj, dostosowywanie, biurka, klawiatury, klawiszy funkcyjnych, przycisków myszy</string>
+				<key>title</key>
+				<string>Skróty Dashboard</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Spaces</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>uporządkować, przestrzenie robocze, programy, biurka, uporządkowanie, porządkowanie, porządkować, porządek, przestrzeni roboczych, programów, biurek</string>
+				<key>title</key>
+				<string>Skonfiguruj Spaces</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Skróty do obsługi Spaces</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>pasek menu</string>
+				<key>title</key>
+				<string>Pokaż Spaces w pasku menu</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

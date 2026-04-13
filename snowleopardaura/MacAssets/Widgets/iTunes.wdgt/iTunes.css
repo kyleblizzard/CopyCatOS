@@ -1,0 +1,154 @@
+/*
+Copyright © 2005, Apple Computer, Inc.  All rights reserved.
+NOTE:  Use of this source code is subject to the terms of the Software
+License Agreement for Mac OS X, which accompanies the code.  Your use
+of this source code signifies your agreement to such license terms and
+conditions.  Except as expressly granted in the Software License Agreement
+for Mac OS X, no other copyright, patent, or other intellectual property
+license or right is granted, either expressly or by implication, by Apple.
+*/
+html {
+	cursor:default;
+	-khtml-user-select:none;
+}
+
+body {
+	margin:0;
+	-apple-dashboard-region: dashboard-region(control circle 8 168 14 11); 
+}
+
+#titleDisplay {
+	color: #393F21;
+	font: 11px "Lucida Grande", sans-serif;
+  	text-align: center;
+	position: absolute;
+	top: 33px;
+	left: 115px;
+	width: 128px;
+	height: 15px;
+	overflow:hidden;
+	white-space:nowrap;
+	text-overflow:ellipsis;
+}
+
+#timeDisplay {
+	color: #393F21;
+	font: 11px "Lucida Grande", sans-serif;
+  	text-align: center;
+	position: absolute;
+	top: 68px;
+	left: 157px;
+	width: 46px;
+	height: 12px;
+}
+
+#fb {
+	position:absolute; 
+	z-index:2; 
+	left:19px; 
+	top:14px;
+}
+
+#pl {
+	position:absolute;
+	z-index:2;
+	left:38px;
+	top:33px;
+}
+
+#ds {
+	position:absolute;
+	z-index:1;
+	left:115px;
+	top:54px;
+	-apple-dashboard-region: dashboard-region(control rectangle 0 0 0 0); 
+}
+
+#dk {
+	position:absolute;
+	z-index:2;
+	left:114px;
+	top:54px;
+}
+
+#dimple {
+	position:absolute;
+	left:54px;
+	top:7px;
+}
+
+#volEmpty {
+	visibility:hidden;
+	position:absolute;
+	z-index:3;
+	left:120px;
+	top:62px;
+}
+
+#volFilled {
+	clip:rect(0,0,0,0); 
+	visibility:hidden;
+	position:absolute;
+	z-index:3;
+	left:120px;
+	top:62px;
+}
+
+#info {
+	position:absolute;
+	top:82px;
+	left:98px;
+	width:13px;
+	height:13px;
+}
+
+
+#behind {
+	position:absolute;
+	top: -10px;
+	left: -11px;
+	display:none;
+	margin:0;
+}
+
+.label {
+	position: absolute;
+	font: 10px "Helvetica Neue";
+	font-weight: bold;
+	color:white;
+	left: 40px;
+}
+
+.popup {
+	position:absolute;
+	top: 40px;
+	left: 50px;
+}
+
+#playlist {
+	top:28px;
+	left:50px;
+}
+
+#playlist-popup {
+	position:absolute;
+	width: 192px;
+}
+
+#done {
+	position:absolute;
+	left: 118px;
+	top: 75px;
+}
+
+#shuffle {
+	position: absolute;
+	top: 67px;
+	left: 134px;
+}
+
+#repeat {
+	position: absolute;
+	top: 67px;
+	left: 205px;
+}

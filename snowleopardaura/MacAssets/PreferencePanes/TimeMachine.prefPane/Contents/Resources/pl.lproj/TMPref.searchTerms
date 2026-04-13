@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>main</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>kopia zapasowa, kopie zapasowe, archiwum, archiwizacja, archiwizowanie, kopie bezpieczeństwa, dysk, twardy, dyski, płyty, napędy, płyta, napęd, wolumin, woluminy, dane, informacje, katalogi, utracone, utrata, strata, brakujące, brakuje, brak, przypadkowo, przypadek, przypadkiem, tragedia, usunięcie, usunięte, wymazanie, wymazane, skasowane, skasowanie, zagubione, nie ma, usuwanie, przywracanie, odtwarzanie, odzyskiwanie, odzyskać, przywrócić, stracone</string>
+				<key>title</key>
+				<string>Archiwizowanie i przywracanie plików</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

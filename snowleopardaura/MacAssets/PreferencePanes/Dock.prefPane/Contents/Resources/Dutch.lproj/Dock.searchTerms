@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Main</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>aanpassen, werkbalk, taakbalk, vergroten, verkleinen, groter, kleiner, positie, midden, bureaublad, links, rechts, onder, randen, veren, stuiteren, animatie, geest, fles, verbergen, tonen, zoomen, minimaal, maximaal, groot, klein, aangepast, aanpassing, knoppenbalk, vergroot, verkleind, positioneren, centreren, vering, afmetingen, animeren, verborgen, zichtbaar, weergave, minimaliseren, maximaliseren, geminimaliseerd, gemaximaliseerd, grootte</string>
+				<key>title</key>
+				<string>Dock-instellingen</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Options</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>디스플레이, 화면, 모니터, 밝게, 흐리게, 잠자기, 깨우기, 시스템 종료, 시동, 전원, 켬, 끔, 전원, 녹색, 저장, 절약, 보호, 보존, 환경, 충전, 연결, 연결 해제됨, 최적화, 성능, 프로세서, 자동, 밝기, 검정색, 빈 칸, 어둡게, 흐려짐, 흐리게, 잠자기 중, 잠자기, 깨우기 중, 깨우기, 깨워짐, 깨움, 시스템 종료, 시스템 종료 중, 전원 켜기, 켜기, 켜는 중, 저장 중, 절약하기, 보존하기, 충전됨, 충전하기, 연결됨, 연결하기, 연결 해제 중, 연결 해제하기, 최적화됨, 최적화 중, 최적화하기, 자동, 오토매틱, 자동으로</string>
+				<key>title</key>
+				<string>절전</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>시작, 재시동, 오토매틱, 시동, 시작 중, 다시시동, 재시동 중, 자동인, 자동, 자동으로</string>
+				<key>title</key>
+				<string>정전 후 재시동</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>메뉴 막대</string>
+				<key>title</key>
+				<string>메뉴 막대에서 배터리 상태 보기</string>
+			</dict>
+		</array>
+		<key>portableOnly</key>
+		<false/>
+	</dict>
+	<key>PortableOptions</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>배터리 수명, 어댑터, 케이블, 휴대용, PowerBook, iBook, MacBook, 랩탑, 노트북, 노트 북</string>
+				<key>title</key>
+				<string>배터리 절약</string>
+			</dict>
+		</array>
+		<key>portableOnly</key>
+		<true/>
+	</dict>
+	<key>Schedule</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>잠자기, 깨우기, 시동, 전원, 켬, 끔, 자동, 예정된, 예정, 잠자기, 잠자기 상태, 깨우는 중, 깨우기 상태, 깨워짐, 깨움, 시스템 종료, 시스템 종료 중, 전원 켜기, 켜기, 켜는 중, 자동, 오토매틱, 자동으로</string>
+				<key>title</key>
+				<string>시동, 잠자기 또는 시스템 종료 예약</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Sleep</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>잠자기 설정</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

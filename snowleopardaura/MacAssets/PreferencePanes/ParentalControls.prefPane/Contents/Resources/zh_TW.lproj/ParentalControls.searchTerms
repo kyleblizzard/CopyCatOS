@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>apps</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>應用程式, 遊戲, 家庭, 家長, 分級保護, 控制, 安全性, 隱私, 安全, 子女, 兒童, 限制, 保護, 允許, 許可, 權限, 管理者, 管理的, 使用者, 帳號, 私人, 安全的, 安全, 小孩, 保護兒童, 限制, 限制, 限制, 限制, 節目, 保護, 防護, 保護</string>
+				<key>title</key>
+				<string>限制使用電腦</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>限制 Dock</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>簡化, 容易, 簡易, 使簡化, 輕易, 簡易 finder</string>
+				<key>title</key>
+				<string>簡易 Finder</string>
+			</dict>
+		</array>
+	</dict>
+	<key>logs</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>家庭, 監控, 記錄, 追蹤, 管理, 監視, 記錄, 追蹤, 管理</string>
+				<key>title</key>
+				<string>分級保護控制記錄</string>
+			</dict>
+		</array>
+	</dict>
+	<key>other</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>限制使用印表機</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>精簡, 數位, 磁碟, 光碟, 光學</string>
+				<key>title</key>
+				<string>限制燒錄光碟</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>限制更改密碼</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>字典, 詞典, 不妥, 不敬, 不雅, 不適當, 詛咒, 髒話, 粗話, 粗口</string>
+				<key>title</key>
+				<string>隱藏字典裡不敬的言語</string>
+			</dict>
+		</array>
+	</dict>
+	<key>people</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>家庭, 家長, 分級保護, 控制, 安全性, 隱私, 安全, 子女, 兒童, 限制, 允許, 許可, 權限, 管理者, 管理的, 使用者, 帳號, 郵件, 即時, 訊息, 傳訊, ichat, 即時通訊, 文字, 好友, 聯絡人, 私人, 安全的, 安全, 小孩, 保護兒童, 約束, 節目, 保護, 防護, 訊息, 聊天, 文字, facetime</string>
+				<key>title</key>
+				<string>限制電子郵件和聊天</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>家庭, 控制, 注意, 通知, 分級</string>
+				<key>title</key>
+				<string>通知家長</string>
+			</dict>
+		</array>
+	</dict>
+	<key>time</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>家庭, 家長, 分級, 控制, 安全, 隱私, 安全性, 小孩, 兒童, 限制, 管理, 計時, 睡覺時間, 學校, 夜晚, 宵禁, 限制, 管理</string>
+				<key>title</key>
+				<string>時間限制</string>
+			</dict>
+		</array>
+	</dict>
+	<key>web</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>家庭, 家長, 分級保護, 控制, 安全性, 隱私, 安全, 子女, 兒童, 限制, 保護, 允許, 許可, 權限, 管理者, 管理的, 使用者, 帳號, 網路, 網頁, Safari, 瀏覽器, 過濾, 成人, 內容, 色情, 限制級, 私人, 安全的, 安全, 小孩, 保護兒童, 限制, 限制, 限制, 限制, 節目, 保護, 防護, 保護, 頁面, 網站, 瀏覽, 過濾</string>
+				<key>title</key>
+				<string>限制 Internet 連線</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>管理, 不適當, 不妥, 不敬, 不雅, 詛咒, 發誓, 咒罵, 明白的, 不好的, 語言, 猥褻的, 猥褻, 字眼, 色情, 粗話, 髒話, 粗口, 過濾, 濾, 未過濾, 未過濾的</string>
+				<key>title</key>
+				<string>過濾不妥的內容</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

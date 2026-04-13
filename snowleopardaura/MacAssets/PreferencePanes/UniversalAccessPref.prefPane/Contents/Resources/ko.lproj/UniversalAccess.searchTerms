@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Hearing</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>손쉬운, 사용, 접근 가능, 장애, 장애인, 제한됨, 청각 장애, 듣기, 청각, 손상된, 지원</string>
+				<key>title</key>
+				<string>경고음이 발생할 때마다 화면 깜빡거리기</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Keyboard</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>손쉬운, 사용, 접근 가능, 장애, 장애인, 제한됨, 유동성, 손상됨, 천천히, 지원, 쉬운, 고정 키, 반복 속도, 조합, 감도, 조절, 조정, 입력, 느리게, 천천히, 조절하기, 입력하기</string>
+				<key>title</key>
+				<string>키보드 사용이 더 쉽도록 하기</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Mouse</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>손쉬운, 사용, 접근 가능, 장애, 장애인, 제한됨, 유동성, 손상된, 천천히, 지원, 쉬운, 키, 숫자, 키패드, 포인터, 커서, 키보드, 확대, 확대하기, 크게, 조절하기, 조절, 느리게, 늦추기, 확대됨, 확대함</string>
+				<key>title</key>
+				<string>마우스 및 트랙 패드 사용이 더 쉽도록 하기</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Display</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>손쉬운, 사용, 접근 가능, 장애, 장애인, 제한됨, 시각 장애, 시력, 시각, 보이는, 손상된, 읽기, 보기, 개선, 대조, 검정, 흰색, 회색, 조절, 읽는 중, 보는 중, 보기 중, 개선 중, 조정, gray scale</string>
+				<key>title</key>
+				<string>모니터 보기가 더 쉽도록 하기</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_VoiceOver</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>말하기, 인터페이스, 듣기, 화면, 읽기, 손쉬운, 사용, 접근 가능, 장애, 장애인, 제한됨, 시각 장애, 시력, 시각, 손상된, voice over</string>
+				<key>title</key>
+				<string>VoiceOver 켜거나 끄기</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>보조 장비 활성화</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>menubar</string>
+				<key>title</key>
+				<string>메뉴 막대에서 손쉬운 사용 보기</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Zoom</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>손쉬운, 사용, 접근 가능, 장애, 장애인, 제한됨, 시각 장애, 시력, 시각, 보이는, 손상된, 확대, 확대하기, 읽기, 보기, 증가, 감소, 크게, 더 크게, 최대, 최소, 스크롤, 마우스, 휠, 볼, 스크롤볼, 스크롤휠, 마우스볼, 마우스휠, 확대/축소하기, 확대됨, 확대 중, 읽는 중, 보는 중, 증가하기, 감소하기</string>
+				<key>title</key>
+				<string>화면을 크게하기 위해 확대</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

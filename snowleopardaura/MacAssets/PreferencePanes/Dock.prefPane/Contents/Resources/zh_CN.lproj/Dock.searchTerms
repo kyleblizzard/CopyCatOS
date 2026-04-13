@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Main</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>自定, 控制条, 控制带, 工具栏, 调整, 大小, 较大, 较小, 位置, 中央, 中心, 桌面, 左, 右, 底部, 边缘, 弹跳, 跳, 缩放, 比例, 动画, 神奇, 精灵, 隐藏, 显示, 放大, 最小化, 最大化, 扩大, 更大, 自定义, 定制, 定做, 控制栏, 工具条, 已调整大小, 大小已调整, 定位, 位置, 中心, 合开, 并轨, 缩放比例, 动画, 不可见, 最大, 最小</string>
+				<key>title</key>
+				<string>Dock 设置</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

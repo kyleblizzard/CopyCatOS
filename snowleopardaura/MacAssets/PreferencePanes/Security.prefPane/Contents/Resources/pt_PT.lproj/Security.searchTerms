@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>FileVault</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>cifrar, encriptar, pasta pessoal, file vault, cifrado, cifrada, cifra, cifragem</string>
+				<key>title</key>
+				<string>FileVault</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>autenticar, palavra-passe, autenticado, autenticada, autenticação</string>
+				<key>title</key>
+				<string>Palavra-passe mestra</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Firewall</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>impedir, bloquear, rede, portas, udp, partilha de ficheiros, AFP, remoto, SSH, prevenção, prevenir, bloqueado, bloqueio, fire wall</string>
+				<key>title</key>
+				<string>Activar ou desactivar firewall</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>fire wall</string>
+				<key>title</key>
+				<string>Definições avançadas de firewall</string>
+			</dict>
+		</array>
+	</dict>
+	<key>General</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>ecrã, protecção, palavra-passe, autenticar, bloquear, desbloquear, pausa, activar, protecção de ecrã, palavras-passe, autenticado, autenticada, autenticação, bloqueado, bloqueio, desbloqueado, desbloqueio, suspensão, activação</string>
+				<key>title</key>
+				<string>Pedir palavra-passe para activar o computador</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>acesso, sessão, entrar, iniciar, automático, aceder, iniciar sessão, início de sessão, entrar em sessão, sessões</string>
+				<key>title</key>
+				<string>Desactivar início de sessão automático</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>bloquear, desbloquear, bloqueio, desbloqueio</string>
+				<key>title</key>
+				<string>Bloquear Preferências do Sistema</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>acesso, terminar, sessão, sair, encerrar, desligar, saída, encerramento</string>
+				<key>title</key>
+				<string>Terminar a sessão quando estiver inactivo</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>mv, cifrar, cifrado, cifrada, cifragem</string>
+				<key>title</key>
+				<string>Memória virtual segura</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>infravermelhos, receptor, IV, infra-vermelhos</string>
+				<key>title</key>
+				<string>Desactivar controlo remoto</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>seguro, privado, privacidade, segura, segurança, proteger, protecção, protegido, protegida, protegidos, protegidas</string>
+				<key>title</key>
+				<string>Definições de segurança</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

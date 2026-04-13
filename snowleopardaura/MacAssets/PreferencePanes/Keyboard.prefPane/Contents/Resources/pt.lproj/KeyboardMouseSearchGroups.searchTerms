@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>keyboardTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>teclas, atraso, repetir, resposta, função, Fn, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, teclas, taxa, tipo, atrasando, repetindo, digitando</string>
+				<key>title</key>
+				<string>Sensibilidade do teclado</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>ver, visão, escuro, pouca luz, escurecer, noite, digitar, vendo, iluminando, iluminado, digitação</string>
+				<key>title</key>
+				<string>Iluminar o teclado</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>barra de menu, paletas, paleta de caracteres, visor do teclado</string>
+				<key>title</key>
+				<string>Mostrar o Visualizador de Teclado e Caracteres na barra de menus</string>
+			</dict>
+		</array>
+	</dict>
+	<key>keyboardTab_ModifierKeys</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>Fixar Maiúsc., Controle, Opção, Comando</string>
+				<key>title</key>
+				<string>Redefinir teclas modificadoras</string>
+			</dict>
+		</array>
+	</dict>
+	<key>shortcutsTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>serviços, Front Row, Dicionário, função, teclas, Fn, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, cheia, Tab, navegar, destacar, Acesso Universal, acessibilidade, deficiência, limitado, mobilidade, deficiente, auxiliar, atalhos, destacando, realçar, realce, detacar, detacando</string>
+				<key>title</key>
+				<string>Atalhos de teclado</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

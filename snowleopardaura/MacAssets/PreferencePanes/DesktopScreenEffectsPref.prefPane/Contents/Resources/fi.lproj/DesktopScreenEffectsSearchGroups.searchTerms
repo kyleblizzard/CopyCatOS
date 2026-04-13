@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>DesktopPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>valokuvat, tausta, työpöytä, taustakuva, kuvio, muokkaa, kuvat, pöytä, tausta, muokattu, muokkaaminen, muokkaus</string>
+				<key>title</key>
+				<string>työpöydän kuva</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Läpikuultava valikkorivi</string>
+			</dict>
+		</array>
+	</dict>
+	<key>ScreenSaverPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>salasanat, lukitse, poista käytöstä, aloita, RSS, visualisoija, syötteet, uutiset, otsikot, iTunes, albumit, taide, satunnainen, valokuvat, kuvat, muokkaa, näytönsäästäjät, uutissyötteet, sala sanat, lukitseminen, käytöstä poistaminen, aloittaminen, muokkaaminen, muokkaus</string>
+				<key>title</key>
+				<string>näytönsäästäjä</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>aktiiviset näyttökulmat</string>
+				<key>title</key>
+				<string>aktivointikulmat</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Näytä kello näytönsäästäjässä</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

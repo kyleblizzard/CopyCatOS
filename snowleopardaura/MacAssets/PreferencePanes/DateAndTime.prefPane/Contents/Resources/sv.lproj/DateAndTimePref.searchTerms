@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ClockPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>klocka, menyrad</string>
+				<key>title</key>
+				<string>Visa datum och tid i menyraden</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>hörselskadad, avaktiverad, handikappad, döv, assistans, hjälp, meddela, räst</string>
+				<key>title</key>
+				<string>Meddela tiden</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>sekunder, veckodag, 24, timmar, klocka</string>
+				<key>title</key>
+				<string>Ställ klocka</string>
+			</dict>
+		</array>
+	</dict>
+	<key>DateTimePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>automatisk, automatisera</string>
+				<key>title</key>
+				<string>Ställa in datum och tid</string>
+			</dict>
+		</array>
+	</dict>
+	<key>TimeZonePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Ställa in tidszon</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

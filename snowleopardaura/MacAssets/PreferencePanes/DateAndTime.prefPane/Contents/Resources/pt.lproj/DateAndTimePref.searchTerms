@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ClockPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>relógio, barra de menus</string>
+				<key>title</key>
+				<string>Mostrar data e hora na barra de menus</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>deficiente auditivo, incapacitado, deficiente, surdo, ajudar, voz, anúncio, ajudando</string>
+				<key>title</key>
+				<string>Anunciar a hora</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>segundos, AM, PM, dia de semana, 24 horas, militar, 24-h</string>
+				<key>title</key>
+				<string>Ajustar relógio</string>
+			</dict>
+		</array>
+	</dict>
+	<key>DateTimePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>automático, automatizar, automaticamente, automatizando</string>
+				<key>title</key>
+				<string>Ajustar data e hora</string>
+			</dict>
+		</array>
+	</dict>
+	<key>TimeZonePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Ajustar fuso horário</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

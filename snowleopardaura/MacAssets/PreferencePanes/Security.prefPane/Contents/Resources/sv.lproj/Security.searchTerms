@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>FileVault</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>kryptera, hem, file vault, krypterad, krypterar, kryptering</string>
+				<key>title</key>
+				<string>FileVault</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>autentisera, lösenord, autentiserad, autentiserar, autentisering</string>
+				<key>title</key>
+				<string>Huvudlösenord</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Firewall</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>förhindra, blockera, nätverk, portar, udp, fildelning, AFP, remote, SSH, förhinder, blockerad, blockning, brandvägg</string>
+				<key>title</key>
+				<string>Slå på eller av brandväggen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>brandvägg</string>
+				<key>title</key>
+				<string>Avancerade brandväggsinställningar</string>
+			</dict>
+		</array>
+	</dict>
+	<key>General</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>skärm, släckare, lösenord, autentisera, låsa, låsa upp, vila, väcka, skärmsläckare, lösen, autentiserad, autentisering, låst, låsning, olåst, försätta i vila, väckning</string>
+				<key>title</key>
+				<string>Kräv lösenord för att väcka datorn</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>logga, inlogga, på, in, automatisk, loggning, logon, signering, signin, signon</string>
+				<key>title</key>
+				<string>Stäng av automatisk inloggning</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>lås, lås upp, låsning, upplåsning</string>
+				<key>title</key>
+				<string>Lås Systeminställningar</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>logga, ut, loggning, utloggning, logga ut</string>
+				<key>title</key>
+				<string>Logga ut vid overksamhet</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>vm, kryptera, krypterat, kryptering</string>
+				<key>title</key>
+				<string>Säkert virtuellt minne</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>infraröd, mottagare, IR, infra-röd, infra-rött, infrarött</string>
+				<key>title</key>
+				<string>Avaktivera fjärrkontroll</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbara indexord</string>
+				<key>index</key>
+				<string>säker, privat, integritet, säkerhet, säkrad, säkring, skyddad, skyddar</string>
+				<key>title</key>
+				<string>Säkerhetsinställningar</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

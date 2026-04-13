@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>displaysArrangementTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>ekrany, monitory, lustrzane, rozmieszczanie, rozmieszczenie</string>
+				<key>title</key>
+				<string>Rozmieść wiele monitorów</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>pasek menu</string>
+				<key>title</key>
+				<string>Zmień położenie paska menu</string>
+			</dict>
+		</array>
+	</dict>
+	<key>displaysColorTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>ekrany, monitory, wyświetlacze, kalibrowanie, korygowanie, jaśniej, ciemniej, punkt bieli, światło otoczenia, profile, kalibrować, korygować, korekty, przygasić, przygaszanie</string>
+				<key>title</key>
+				<string>Kolory i kalibracja monitora</string>
+			</dict>
+		</array>
+	</dict>
+	<key>displaysDisplayTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>ekrany, monitory, wyświetlacze, głębia, miliony, tysiące, 256, ColorSync, korygowanie, jaśniej, ciemniej, kalibrować, korygować, korekty, przygasić, przygaszanie</string>
+				<key>title</key>
+				<string>Kolory, jasność i rozdzielczość</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>Ekrany, monitory, wyświetlacze</string>
+				<key>title</key>
+				<string>Odświeżanie monitora</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>ekrany, monitory</string>
+				<key>title</key>
+				<string>Wykryj wiele monitorów</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>pasek menu</string>
+				<key>title</key>
+				<string>Pokazuj ikonę Monitory w pasku menu</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>obrót, obróć, obrócić, obracanie, rotacja, obroty, obrócenie, odwrócenie</string>
+				<key>title</key>
+				<string>Obrót ekranu</string>
+			</dict>
+		</array>
+	</dict>
+	<key>displaysGeometryTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>pozycja, wysokość, szerokość, poduszka, obrót, keystone, równoległobok, wykrzywienie, zakrzywienie narożników, pochylenie, geometria, wymiary</string>
+				<key>title</key>
+				<string>Obraz ekranu</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>rgb, korygowanie, dopasowanie, korygować, dopasować</string>
+				<key>title</key>
+				<string>Zbieżność obrazu</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>statyczne, zerowanie, migotanie, zakłócenia, migotać</string>
+				<key>title</key>
+				<string>Degauss</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

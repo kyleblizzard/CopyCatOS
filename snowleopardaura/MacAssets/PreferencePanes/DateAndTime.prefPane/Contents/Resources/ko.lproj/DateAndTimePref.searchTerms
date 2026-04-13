@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ClockPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>시계, 메뉴 막대</string>
+				<key>title</key>
+				<string>메뉴 막대에 날짜와 시간 보기</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>청취 손상, 신체 장애자, 장애자, 청각 장애인, 지원, 음성, 알리기, 지원하기</string>
+				<key>title</key>
+				<string>시간 통보</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>초, 오전, 오후, 평일, 24시간, 군사, 24시</string>
+				<key>title</key>
+				<string>시계 설정</string>
+			</dict>
+		</array>
+	</dict>
+	<key>DateTimePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>자동, 자동화, 자동으로, 자동</string>
+				<key>title</key>
+				<string>날짜와 시간 설정</string>
+			</dict>
+		</array>
+	</dict>
+	<key>TimeZonePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>시간대 설정</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

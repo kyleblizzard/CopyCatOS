@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Fonts in /System/Library -->
+	<key>Courier</key>
+	<integer>3</integer>
+	<key>Monaco</key>
+	<integer>3</integer>
+	<key>Osaka</key>
+	<integer>3</integer>
+	<key>Symbol</key>
+	<integer>2</integer>
+	<key>Times</key>
+	<integer>2</integer>
+	<key>Hiragino Mincho Pro</key>
+	<integer>2</integer>
+
+	<!-- Fonts in /Library -->
+	<key>#GungSeo</key>
+	<integer>2</integer>
+	<key>#PCMyungjo</key>
+	<integer>2</integer>
+	<key>American Typewriter</key>
+	<integer>2</integer>
+	<key>Apple Chancery</key>
+	<integer>2</integer>
+	<key>Apple LiSung</key>
+	<integer>2</integer>
+	<key>AppleMyungjo</key>
+	<integer>2</integer>
+	<key>Baskerville</key>
+	<integer>2</integer>
+	<key>BiauKai</key>
+	<integer>2</integer>
+	<key>Big Caslon</key>
+	<integer>2</integer>
+	<key>Brush Script MT</key>
+	<integer>2</integer>
+	<key>Cochin</key>
+	<integer>2</integer>
+	<key>Courier New</key>
+	<integer>3</integer>
+	<key>Didot</key>
+	<integer>2</integer>
+	<key>Fang Song</key>
+	<integer>2</integer>
+	<key>Georgia</key>
+	<integer>2</integer>
+	<key>Herculanum</key>
+	<integer>2</integer>
+	<key>Hoefler Text</key>
+	<integer>2</integer>
+	<key>Kai</key>
+	<integer>2</integer>
+	<key>Monaco CY</key>
+	<integer>3</integer>
+	<key>Song</key>
+	<integer>2</integer>
+	<key>Times New Roman</key>
+	<integer>2</integer>
+	<key>Times CY</key>
+	<integer>2</integer>
+	<key>Zapfino</key>
+	<integer>2</integer>
+	<key>STFangsong</key>
+	<integer>2</integer>
+	<key>STKaiti</key>
+	<integer>2</integer>
+	<key>STSong</key>
+	<integer>2</integer>
+</dict>
+</plist>

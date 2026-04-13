@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ClockPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>klok, menubalk</string>
+				<key>title</key>
+				<string>Datum en tijd in menubalk tonen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>slechthorend, beperking, gehandicapt, doof, hulp, stem, zeggen, helpen</string>
+				<key>title</key>
+				<string>Zeggen hoe laat het is</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>seconden, AM, PM, weekdag, 24-uurs, militair, notatie</string>
+				<key>title</key>
+				<string>Klok instellen</string>
+			</dict>
+		</array>
+	</dict>
+	<key>DateTimePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>automatisch, automatiseren, geautomatiseerd, automatische</string>
+				<key>title</key>
+				<string>Datum en tijd instellen</string>
+			</dict>
+		</array>
+	</dict>
+	<key>TimeZonePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Tijdzone instellen</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

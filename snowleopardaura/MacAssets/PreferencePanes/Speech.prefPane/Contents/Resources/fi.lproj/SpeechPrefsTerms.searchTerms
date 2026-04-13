@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>SpeechRecognition</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>Käyttöapu, käytettävyys, rajoitteinen, vammainen, näkö, sokea, näkyvä, kuulo, puhu, puhuttavat koheet, puhuttu, komennot, kohteet, tunnista, tunnistaminen, avusta, avustava, äänet, kalibroi, kalibrointi, kuuntele, näppäin, oikotie, muokkaa, mikrofoni, äänenvoimakkuus, puhuminen, tunnistaminen, kalibroiminen, kuunteleminen, muokattu, muokkaaminen, lausu</string>
+				<key>title</key>
+				<string>Puheentunnistus</string>
+			</dict>
+		</array>
+	</dict>
+	<key>TTS</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>puhe, synteesi, TTS, puhuttu, ilmoita, ilmoitukset, puhu, teksti, puhe, nopeus, puhu, varoitukset, ilmoitetaan, puhutaan, lausu</string>
+				<key>title</key>
+				<string>Teksti puheeksi</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

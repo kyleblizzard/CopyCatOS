@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Options</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>beeldschermen, schermen, monitors, helder, donker, sluimerstand, ontwaken, uitschakelen, opstarten, stroom, aan, uit, elektriciteit, groen, besparen, besparing, milieu, opladen, losgekoppeld, optimaliseren, prestaties, processor, automatisch, helderheid, zwart, leeg, gedimd, dimmen, sluimeren, wakker, uitschakelen, uitzetten, opgeladen, geoptimaliseerd, optimalisatie, geautomatiseerd, automatiseren, automatisch</string>
+				<key>title</key>
+				<string>Stroom besparen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>opstarten, opnieuw opstarten, automatisch, starten, herstarten, geautomatiseerd, automatiseren, automatisch</string>
+				<key>title</key>
+				<string>Opnieuw opstarten na stroomstoring</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>menubalk</string>
+				<key>title</key>
+				<string>Batterijstatus in menubalk tonen</string>
+			</dict>
+		</array>
+		<key>portableOnly</key>
+		<false/>
+	</dict>
+	<key>PortableOptions</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>gebruiksduur batterij, adapter, kabel, portable, PowerBook, iBook, MacBook, laptop, notebook, note book, draagbaar, draagbare</string>
+				<key>title</key>
+				<string>Batterij sparen</string>
+			</dict>
+		</array>
+		<key>portableOnly</key>
+		<true/>
+	</dict>
+	<key>Schedule</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>sluimeren, sluimerstand, ontwaken, opstarten, inschakelen, uitschakelen, aan, uit, automatisch, schema, uitzetten, geautomatiseerd, automatiseren, automatisch</string>
+				<key>title</key>
+				<string>Opstarten, sluimeren of uitschakelen volgens schema</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Sleep</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Sluimerinstellingen</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

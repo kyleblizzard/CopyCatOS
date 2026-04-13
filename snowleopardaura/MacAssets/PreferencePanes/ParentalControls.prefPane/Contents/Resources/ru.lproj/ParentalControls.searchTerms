@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>apps</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>программы, игры, семья, родители, родительский, контроль, безопасность, конфиденциальность, защита, дети, ограничения, защищать, разрешить, разрешения, права, администраторы, административный, пользователи, учетные записи, частный, надежный, обеспечение безопасности, безопасный для детей, ограничение, ограниченный, ограничить, ограничения, программы, защищенный, защищать, защита</string>
+				<key>title</key>
+				<string>Ограничить использование компьютера</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Ограничить использование Dock</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>упростить, простой, проще, упрощение, упрощенный, простой поиск</string>
+				<key>title</key>
+				<string>Простой Finder</string>
+			</dict>
+		</array>
+	</dict>
+	<key>logs</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>семья, мониторинг, учет, отслеживание, управлять, управление, учитывать, отслеживать</string>
+				<key>title</key>
+				<string>Журналы Родительского контроля</string>
+			</dict>
+		</array>
+	</dict>
+	<key>other</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Ограничить использование принтеров</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>компактный, цифровой, диски, оптический</string>
+				<key>title</key>
+				<string>Ограничить запись дисков</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Ограничить возможность изменения пароля</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>словарь, нецензурная лексика, брань, ругательство, ругань</string>
+				<key>title</key>
+				<string>Скрывать нецензурную лексику в Словаре</string>
+			</dict>
+		</array>
+	</dict>
+	<key>people</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>семья, родители, родительский, контроль, безопасность, конфиденциальность, защита, дети, ограничить, защитить, разрешить, разрешения, права, администраторы, административный, пользователи, учетные записи, почта, мгновенный, сообщения, обмен сообщениями, ichat, программы обмена сообщениями, текст, друг, друзья, контакты, частный, безопасный, защита, безопасный для детей, ограничение, ограниченный, ограничить, защищенный, защита, защищать, обмен сообщениями, беседа, текстовые сообщения, отправка сообщений SMS и MMS, facetime</string>
+				<key>title</key>
+				<string>Ограничить почту и чаты</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>семья, контроль, уведомление, оповещение, родительский</string>
+				<key>title</key>
+				<string>Оповещать родителей</string>
+			</dict>
+		</array>
+	</dict>
+	<key>time</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>семья, родители, родительский, контроль, безопасность, конфиденциальность, защита, дети, ограничить, управлять, таймер, режим, школа, ночь, блокировка, ограничение, управление</string>
+				<key>title</key>
+				<string>Ограничение по времени</string>
+			</dict>
+		</array>
+	</dict>
+	<key>web</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>семья, родители, родительский, контроль, безопасность, конфиденциальность, защита, дети, ограничить, защитить, разрешить, разрешения, права, администраторы, административный, пользователи, учетные записи, Интернет, веб-страницы, веб-сайты, Safari, браузер, фильтр, взрослый, содержимое, порнография, для взрослых, безопасный, защита, безопасный для детей, ограничение, ограниченный, ограничить, защищенный, защита, защищать, страницы, сайты, обзор, фильтрованный, фильтрация</string>
+				<key>title</key>
+				<string>Ограничить доступ к Интернету</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>управление, словарь, неприемлемый, брань, ругательство, ненормативная лексика, ненормативный, плохой, язык, нецензурный, непристойный, слова, порнография, ругаться, три буквы, слово из трех букв, фильтрованный, фильтрация, нефильтрованный, не фильтрованный</string>
+				<key>title</key>
+				<string>Фильтровать нецензурную лексику</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

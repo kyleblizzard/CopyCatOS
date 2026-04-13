@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ClockPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>clock 時計 クロック, menubar メニューバー メニュウバー メニュウバア メニューバア</string>
+				<key>title</key>
+				<string>メニューバーに日付と時刻を表示</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>hearing impaired 耳の不自由な方, disabled 障害者 障碍者 障がい者, handicapped ハンディキャップ ハンディーキャップ ハンデ, deaf 聴覚障害 聴覚障碍 聴覚障害がい 聞こえない, assist 支援 補助 ヘルプ アシスト 助ける, voice 音声 ボイス 声 サウンド 音, announcing アナウンス 告知 通知 知らせる, assisting 支援 補助 ヘルプ アシスト 助ける</string>
+				<key>title</key>
+				<string>時報をアナウンス</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>seconds 秒 secs, AM 午前 a.m., PM 午後 p.m., weekday 平日, 24-hour 24 時間, military 軍隊, 24-hr 24 時間</string>
+				<key>title</key>
+				<string>時計を設定</string>
+			</dict>
+		</array>
+	</dict>
+	<key>DateTimePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string>automatic 自動 自動的 自動で 自動化 オートメーション, automate 自動化 機械化 オートメーション化, automatically 自動的に 機械的に, automating 自動 自動的 自動で 自動化 オートメーション</string>
+				<key>title</key>
+				<string>日付と時刻を設定</string>
+			</dict>
+		</array>
+	</dict>
+	<key>TimeZonePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>ローカライズ可能な索引の用語</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>時間帯を設定</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

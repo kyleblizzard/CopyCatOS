@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>saver</key>
+	<dict>
+		<key>bundleid</key>
+		<string>com.apple.preference.desktopscreeneffect</string>
+		<key>localInstallPath</key>
+		<string>~/Library/Screen Savers</string>
+		<key>sharedInstallPath</key>
+		<string>/Library/Screen Savers</string>
+		<key>systemInstallPath</key>
+		<string>/System/Library/Screen Savers</string>
+		<key>moduleName</key>
+		<string>SCREEN_SAVER</string>
+	</dict>
+	<key>slidesaver</key>
+	<dict>
+		<key>bundleid</key>
+		<string>com.apple.preference.desktopscreeneffect</string>
+		<key>localInstallPath</key>
+		<string>~/Library/Screen Savers</string>
+		<key>sharedInstallPath</key>
+		<string>/Library/Screen Savers</string>
+		<key>systemInstallPath</key>
+		<string>/System/Library/Screen Savers</string>
+		<key>moduleName</key>
+		<string>SCREEN_SAVER</string>
+	</dict>
+	<key>prefpane</key>
+	<dict>
+		<key>bundleid</key>
+		<string>com.apple.preference</string>
+		<key>localInstallPath</key>
+		<string>~/Library/PreferencePanes</string>
+		<key>sharedInstallPath</key>
+		<string>/Library/PreferencePanes</string>
+		<key>systemInstallPath</key>
+		<string>/System/Library/PreferencePanes</string>
+		<key>moduleName</key>
+		<string>PREF_PANE</string>
+	</dict>
+	<key>internetconnect</key>
+	<dict>
+		<key>bundleid</key>
+		<string>com.apple.preference.network</string>
+		<key>openOnly</key>
+		<true/>
+	</dict>
+	<key>networkconnect</key>
+	<dict>
+		<key>bundleid</key>
+		<string>com.apple.preference.network</string>
+		<key>openOnly</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

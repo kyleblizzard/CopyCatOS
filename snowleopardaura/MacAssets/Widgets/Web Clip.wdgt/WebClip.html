@@ -1,0 +1,82 @@
+<!--
+Copyright 2005, Apple Computer, Inc.  All rights reserved.
+NOTE:  Use of this source code is subject to the terms of the Software
+License Agreement for Mac OS X, which accompanies the code.  Your use
+of this source code signifies your agreement to such license terms and
+conditions.  Except as expressly granted in the Software License Agreement
+for Mac OS X, no other copyright, patent, or other intellectual property
+license or right is granted, either expressly or by implication, by Apple.
+-->
+
+<html>
+<head>
+<meta http-equiv="content-type" content="text/html; charset=utf-8">
+<meta http-equiv="Cache-Control" content="no-cache" /> 
+<style type="text/css" title="AppleStyle">
+     @import "WebClip.css";
+</style>
+
+<script type='text/javascript' src='localizedStrings.js' charset='utf-8'/>
+<script type='text/javascript' src='WebClip.js' charset='utf-8'/>
+<script type='text/javascript' src='/System/Library/WidgetResources/AppleClasses/AppleButton.js' charset='utf-8'/>
+</head>
+
+<body onload='body_onload();'>
+        <div id='front'> 
+          <embed id='clipper' type="application/x-apple-webclip-plug-in"></embed>
+        </div>
+        
+        <div id='back'>
+                <div id='themeLabel' class='label'></div>
+                <div id="selector"/>
+                <table id="themes">
+                  <tr valign=top>
+                   <td class="selection" id="glassOption" onDblClick='glassIcon_onDblClick(this);' onclick='glassIcon_onclick(this);'>
+                     <div class="thumbnailContainer">
+                         <img id="glassThumbnail" class="thumbnail"/>
+                         <img id="glassIcon" src="Images/glassicon.png" class="icon"/>
+                     </div>
+                   </td>
+                   <td class="selection" id ="blackEdgeOption"  onDblClick='blackEdgeIcon_onDblClick(this);' onclick='blackEdgeIcon_onclick(this);'>
+                     <div class="thumbnailContainer">
+                         <img id="blackEdgeThumbnail" class="thumbnail"/>
+                         <img id="blackEdgeIcon" src="Images/blackicon.png" class="icon"/>
+                     </div>
+                   </td>
+                    <td class="selection" id ="vintageOption" onDblClick='vintageIcon_onDblClick(this);' onclick='vintageIcon_onclick(this);'>
+                     <div class="thumbnailContainer">
+                         <img id="vintageIcon" src="Images/vintageicon.png"/>
+                         <img id="vintageThumbnail" class="thumbnail"/>
+                     </div>
+                   </td>
+                  </tr>
+                 <tr valign=top>
+                   <td class="selection" id ="deckledOption" onDblClick='deckledIcon_onDblClick(this);'  onclick='deckledIcon_onclick(this);'>
+                     <div class="thumbnailContainer">
+                      <img id="deckledIcon" src="Images/deckledicon.png"/>
+                      <img id="deckledThumbnail" class="thumbnail"/>
+                     </div>
+                   </td>
+                     <td class="selection" id ="pegboardOption" onDblClick='pegboardIcon_onDblClick(this);'  onclick='pegboardIcon_onclick(this);'>
+                        <div class="thumbnailContainer">
+                            <img id="pegboardThumbnail" class="thumbnail"/>
+                            <img id="blackMetalIcon" src="Images/pegboardicon.png" class="icon"/>
+                        </div>
+                     </td>
+                      <td class="selection" id ="tornEdgeOption" onDblClick='tornEdgeIcon_onDblClick(this);'  onclick='tornEdgeIcon_onclick(this);'>
+                        <div class="thumbnailContainer">
+                            <img id="tornEdgeThumbnail" class="thumbnail"/>
+                        </div>
+                     </td>
+                 </tr>
+                </table>
+                
+        <div id="audio" class="label"><input type="checkbox" id="audioCheckbox" onclick='audio_onclick(this);'><label for="audioCheckbox" id="audioLabel"/></div>
+        <div id="glassButtons">
+          <div id="editPosition"></div>
+          <div id="done"></div>
+        </div>
+    </div>
+
+</body>
+</html>

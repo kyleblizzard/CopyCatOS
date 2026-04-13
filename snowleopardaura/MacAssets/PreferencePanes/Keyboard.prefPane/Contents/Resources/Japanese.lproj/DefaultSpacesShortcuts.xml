@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 1 へ切り替え</string>
+		<key>key</key>
+		<integer>18</integer>
+		<key>modifier</key>
+		<integer>262144</integer>
+		<key>sybmolichotkey</key>
+		<integer>118</integer>
+	</dict>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 2 へ切り替え</string>
+		<key>key</key>
+		<integer>19</integer>
+		<key>modifier</key>
+		<integer>262144</integer>
+		<key>sybmolichotkey</key>
+		<integer>119</integer>
+	</dict>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 3 へ切り替え</string>
+		<key>key</key>
+		<integer>20</integer>
+		<key>modifier</key>
+		<integer>262144</integer>
+		<key>sybmolichotkey</key>
+		<integer>120</integer>
+	</dict>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 4 へ切り替え</string>
+		<key>key</key>
+		<integer>21</integer>
+		<key>modifier</key>
+		<integer>262144</integer>
+		<key>sybmolichotkey</key>
+		<integer>121</integer>
+	</dict>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 5 へ切り替え</string>
+		<key>key</key>
+		<integer>23</integer>
+		<key>modifier</key>
+		<integer>262144</integer>
+		<key>sybmolichotkey</key>
+		<integer>122</integer>
+	</dict>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 6 へ切り替え</string>
+		<key>key</key>
+		<integer>22</integer>
+		<key>modifier</key>
+		<integer>262144</integer>
+		<key>sybmolichotkey</key>
+		<integer>123</integer>
+	</dict>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 7 へ切り替え</string>
+		<key>key</key>
+		<integer>26</integer>
+		<key>modifier</key>
+		<integer>262144</integer>
+		<key>sybmolichotkey</key>
+		<integer>124</integer>
+	</dict>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 8 へ切り替え</string>
+		<key>key</key>
+		<integer>28</integer>
+		<key>modifier</key>
+		<integer>262144</integer>
+		<key>sybmolichotkey</key>
+		<integer>125</integer>
+	</dict>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 9 へ切り替え</string>
+		<key>key</key>
+		<integer>25</integer>
+		<key>modifier</key>
+		<integer>262144</integer>
+		<key>sybmolichotkey</key>
+		<integer>126</integer>
+	</dict>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 10 へ切り替え</string>
+		<key>key</key>
+		<integer>29</integer>
+		<key>modifier</key>
+		<integer>262144</integer>
+		<key>sybmolichotkey</key>
+		<integer>127</integer>
+	</dict>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 11 へ切り替え</string>
+		<key>key</key>
+		<integer>18</integer>
+		<key>modifier</key>
+		<integer>786432</integer>
+		<key>sybmolichotkey</key>
+		<integer>128</integer>
+	</dict>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 12 へ切り替え</string>
+		<key>key</key>
+		<integer>19</integer>
+		<key>modifier</key>
+		<integer>786432</integer>
+		<key>sybmolichotkey</key>
+		<integer>129</integer>
+	</dict>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 13 へ切り替え</string>
+		<key>key</key>
+		<integer>20</integer>
+		<key>modifier</key>
+		<integer>786432</integer>
+		<key>sybmolichotkey</key>
+		<integer>130</integer>
+	</dict>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 14 へ切り替え</string>
+		<key>key</key>
+		<integer>21</integer>
+		<key>modifier</key>
+		<integer>786432</integer>
+		<key>sybmolichotkey</key>
+		<integer>131</integer>
+	</dict>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 15 へ切り替え</string>
+		<key>key</key>
+		<integer>23</integer>
+		<key>modifier</key>
+		<integer>786432</integer>
+		<key>sybmolichotkey</key>
+		<integer>132</integer>
+	</dict>
+	<dict>
+		<key>name</key>
+		<string>操作スペース 16 へ切り替え</string>
+		<key>key</key>
+		<integer>22</integer>
+		<key>modifier</key>
+		<integer>786432</integer>
+		<key>sybmolichotkey</key>
+		<integer>133</integer>
+	</dict>
+</array>
+</plist>

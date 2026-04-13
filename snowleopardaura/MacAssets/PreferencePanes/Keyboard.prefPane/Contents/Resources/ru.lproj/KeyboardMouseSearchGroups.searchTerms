@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>keyboardTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string>клавиши, задержка, повтор, реакция, функция, Fn, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, клавиши, скорость, ввести, задержка, повторение, ввод</string>
+				<key>title</key>
+				<string>Чувствительность клавиатуры</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string>смотреть, зрение, темно, темнота, плохой свет, затемнение, ночь, сумрак, печать, набор, видеть, освещение, свет</string>
+				<key>title</key>
+				<string>Подсветить клавиатуру</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>строка меню, панели, палитра символов, Клавиатура</string>
+				<key>title</key>
+				<string>Показать Клавиатуру и символы в строке меню</string>
+			</dict>
+		</array>
+	</dict>
+	<key>keyboardTab_ModifierKeys</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string>Клавиши: Caps Lock, Control, Option, Command</string>
+				<key>title</key>
+				<string>Сбросить клавиши модификации</string>
+			</dict>
+		</array>
+	</dict>
+	<key>shortcutsTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string>службы, Front Row, Словарь, функциональные, клавиши, Fn, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, полный, Tab, переход, выделить, Универсальный доступ, доступность, ограниченные возможности, с ограниченными возможностями, гибкость, ослабленный, помощь, сочетания клавиш, выделение</string>
+				<key>title</key>
+				<string>Сочетания клавиш</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

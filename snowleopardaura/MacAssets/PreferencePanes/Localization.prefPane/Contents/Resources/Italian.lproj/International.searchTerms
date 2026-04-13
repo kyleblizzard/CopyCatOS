@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Formats</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>regionale, internazionale, misure, unità, stili, metrico, calendario, Gregoriano, Buddhista, Ebreo, Islamico, Giapponese, Cinese, Copto, Etiope, Indiano, Persiano, Repubblica di Cina, personalizza, personalizzato, personalizzare, personalizzazione</string>
+				<key>title</key>
+				<string>Formati numero, data e ora</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>valuta</string>
+				<key>title</key>
+				<string>Assegnazione valuta</string>
+			</dict>
+		</array>
+	</dict>
+	<key>InputMenu</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>metodo, barra dei menu</string>
+				<key>title</key>
+				<string>Mostra Menu Tastiera nella barra dei menu</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>tipo, digitare, sorgenti, Qwerty, Pro, PC, Standard, ISO, Extended, Dvorak, Afghano, Arabo, Armeno, Austriaco, Azero, Belga, Brasiliano, Britannico, Bulgaro, Bielorusso, Canadese, Cherokee, Croato, Ceco, Danese, Devanagari, Olandese, Estone, Faroese, Finlandese, Francese, Tedesco, Greco, Gujarati, Gurmukhi, Hawaiano, Ebreo, Ungherese, Islandese, Inuktitut, Irlandese, Italiano, Jawi, Kazako, Lettone, Lituano, Macedone, Maltese, Maori, Nepali, Sami, Norvegese, Persiano, Polacco, Portoghese, Rumeno, Russo, Serbo, Slovacco, Sloveno, Spagnolo, Svedese, Svizzero, Tailandese, Tibetano, Turco, U.S., Uighur, Ucraino, Unicode, Hex, Vietnamita, Gallese</string>
+				<key>title</key>
+				<string>Layout di tastiera</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>principale, lingue, modalità, sorgente, internazionale, straniero, caratteri, Unicode, Giapponese, Kotoeri, Hiragana, Katakana, Romaji, Ainu, Cinese, Tradizionale, Hanin, Semplificato, Wubi, Coreano, Hangul, Vietnamita, Telex, Tamil, Anjal</string>
+				<key>title</key>
+				<string>Metodi inserimento lingue</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>tavolozza, simbolo, visore, simboli, caratteri, Unicode, Giapponese, Kana, caratteri, sorgenti, tasti, tasti, tasti, punteggiatura</string>
+				<key>title</key>
+				<string>Tavolozze</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>ingresso, sorgente, documento</string>
+				<key>title</key>
+				<string>Usa una modalità di input in tutti i documenti</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>ingresso, sorgente, documento</string>
+				<key>title</key>
+				<string>Consenti una modalità di input diversa per ogni documento</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Language</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>lingue, personalizza, internazionale, Inglese, Giapponese, Francese, Tedesco, Spagnolo, Italiano, Portoghese, Olandese, Svedese, Finlandese, Norvegese, Bokmål, Danese, Russo, Polacco, Cinese, Semplificato, Tradizionale, Coreano, Afrikaans, Australiano, Aymara, Azero, Indonesiano, Malese, Bislama, Bosniaco, Bretone, Britannico, Canadese, Catalano, Ceco, Corso, Gallese, Svizzera, Navajo, Estone, Esperanto, Basco, Tongano, Faroese, Svizzero, Irlandese, Gaelico, Manx, Scozzese, Galiziano, Guarani, Croato, Hawaiano, Ido, Zulu, Islandese, Kalaallisut, Cornico, Kinyarwanda, Swahili, Haitiano, Latino, Lettone, Lussemburghese, Lituano, Ungherese, Malgascio, Maltese, Maori, Napoletano, Nynorsk, Occitano, Uzbeco, Oromo, Austriaco, Brasile, Quechua, Rumeno, Kirundi, Sami, Albanese, Siciliano, Slovacco, Sloveno, Somalo, Tagalog, Tataro, Klingon, Turco, Turkmeno, U.S., Vietnamita, Fiammingo, Vallone, Greco, Azero, Bielorusso, Bulgaro, Chirghiso, Kazako, Macedone, Mongolo, Serbo, Tagico, Ucraino, Georgiano, Armeno, Yiddish, Ebraico, Urdu, Pashtu, Arabo, Persiano, Konkani, Nepalese, Marathi, Sanscrito, Hindi, Punjabi, Gujarati, Tamil, Tailandese, Tibetano, Dzongkha, Cherokee, Inuktitut, Uiguro, personalizzato, personalizzare, personalizzazione, ordinare</string>
+				<key>title</key>
+				<string>Priorità e preferenze lingua</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Text</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>frazioni, sostituisci, sostituire, cambiare, cambia</string>
+				<key>title</key>
+				<string>Sostituzione di testo e simboli</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>lingua, controllo ortografia, controllo ortografico</string>
+				<key>title</key>
+				<string>Ortografia</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>lingua</string>
+				<key>title</key>
+				<string>Separazione parole</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>virgolette curve</string>
+				<key>title</key>
+				<string>Stile virgolette</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

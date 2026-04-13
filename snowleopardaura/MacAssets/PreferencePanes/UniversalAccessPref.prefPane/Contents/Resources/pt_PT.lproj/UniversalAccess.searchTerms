@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Hearing</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>Universal, acesso, acessibilidade, deficiente, surdo, surdez, audição, ouvir, auxiliar</string>
+				<key>title</key>
+				<string>Intermitência do ecrã para alertas</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Keyboard</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>Universal, acesso, acessibilidade, deficiente, mobilidade, abrandar, auxiliar, fácil, Sticky Keys, chaves, taxa de repetição, modificador, sensibilidade, ajustar, ajustes, digitar, escrever, mais devagar, ampliado</string>
+				<key>title</key>
+				<string>Tornar o teclado mais fácil de usar</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Mouse</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>Universal, acesso, acessibilidade, deficiente, mobilidade, abrandar, auxiliar, fácil, chaves, numérico, teclado, apontador, cursor, teclado, aumentar, ampliar, ajustar, ajustes, mais devagar, ampliado</string>
+				<key>title</key>
+				<string>Tornar o rato e o trackpad mais fácil de usar</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Display</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>Universal, acesso, acessibilidade, deficiente, cego, visão, vista, visível, ler, ver, ampliar, contraste, preto, branco, cinzentos, melhorar, ajustes</string>
+				<key>title</key>
+				<string>Tornar o ecrã mais fácil de ver</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_VoiceOver</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>falado, interface, audição, ecrã, leitor, Universal, acesso, acessibilidade, deficiente, cego, visão, vista, visível, locução, voz-off</string>
+				<key>title</key>
+				<string>Activar/desactivar VoiceOver</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Activar dispositivos auxiliares</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>barra de menus</string>
+				<key>title</key>
+				<string>Mostrar Acesso Universal na barra de menus</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Zoom</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>Universal, acesso, acessibilidade, deficiente, cego, visão, vista, visível, aumentar, aumento, ver, ampliar, diminuir, maior, máximo, mínimo, deslocar, rato, roda, bola, bola de deslocamento, bola do rato, zoom, aumentado, ampliado, ler</string>
+				<key>title</key>
+				<string>Zoom para amplificar o ecrã</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

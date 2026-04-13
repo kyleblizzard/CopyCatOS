@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>account</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>utilizador, assinatura, prova, membro, assinante, nome, palavra-passe, registo, dotmac, itools</string>
+				<key>title</key>
+				<string>Assinar os serviços MobileMe</string>
+			</dict>
+		</array>
+	</dict>
+	<key>idisk</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>armazenamento, sincronizar, pasta pública, palavra-passe, espelho, disco, local, correio, sincronização, palavra, passe</string>
+				<key>title</key>
+				<string>iDisk</string>
+			</dict>
+		</array>
+	</dict>
+	<key>mymacs</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>partilhar, retroceder, rede, partilha, omeumac, osmeusmacs</string>
+				<key>title</key>
+				<string>Voltar ao meu Mac</string>
+			</dict>
+		</array>
+	</dict>
+	<key>sync</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>sincronização, MobileMe, dotmac, barra de menus</string>
+				<key>title</key>
+				<string>Mostrar estado da sincronização na barra de menus</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>sincronizar</string>
+				<key>title</key>
+				<string>Iniciar ou parar a sincronização com MobileMe</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

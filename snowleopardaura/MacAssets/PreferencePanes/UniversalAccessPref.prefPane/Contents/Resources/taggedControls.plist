@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist SYSTEM "file://localhost/System/Library/DTDs/PropertyList.dtd">
+<plist version="0.9">
+<dict>
+	<key>allowUAShortcuts</key>
+	<integer>100</integer>
+	<key>enableAccessForAssistiveDevices</key>
+	<integer>110</integer>
+	<key>seeingTab</key>
+	<array>
+		<integer>1010</integer>
+		<integer>1020</integer>
+		<integer>1030</integer>
+		<integer>1040</integer>
+		<integer>1050</integer>
+		<integer>1060</integer>
+	</array>
+	<key>hearingTab</key>
+	<array>
+		<integer>2010</integer>
+	</array>
+	<key>keyboardTab</key>
+	<array>
+		<integer>3010</integer>
+		<integer>3020</integer>
+		<integer>3025</integer>
+		<integer>3030</integer>
+		<integer>3040</integer>
+		<integer>3050</integer>
+		<integer>3060</integer>
+	</array>
+	<key>mouseTab</key>
+	<array>
+		<integer>4010</integer>
+		<integer>4015</integer>
+		<integer>4020</integer>
+		<integer>4030</integer>
+		<integer>4035</integer>
+		<integer>4040</integer>
+	</array>
+</dict>
+</plist>

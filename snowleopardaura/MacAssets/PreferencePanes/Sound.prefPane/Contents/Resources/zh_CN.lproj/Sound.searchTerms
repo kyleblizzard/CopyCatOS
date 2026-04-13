@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>effects</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>噪声, 音频, 听, 电平, 音量, 更大, 更柔和, 更安静, 增加, 减小, 升高, 降低, 扬声器, 嘟嘟声, 警告, 响铃, 叮当声, 响铃, 听, 嘟嘟响, 叮当地响, 响铃</string>
+				<key>title</key>
+				<string>提示和声音效果</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>音频, 听, 电平, 音量, 更大, 更柔和, 更安静, 增加, 减小, 升高, 降低, 音乐, 扬声器, 听</string>
+				<key>title</key>
+				<string>音量</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>音频, 听, 电平, 音量, 更大, 更柔和, 更安静, 增加, 减小, 升高, 降低, 安静, 无声的, 无声, 关闭, 听, 静音</string>
+				<key>title</key>
+				<string>使声音静音</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>菜单栏</string>
+				<key>title</key>
+				<string>在菜单栏中显示音量</string>
+			</dict>
+		</array>
+	</dict>
+	<key>input</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>音频, 听, 电平, 音量, 更大, 更柔和, 更安静, 增加, 减小, 升高, 降低, 设备, 来源, 麦克风, 乐器, MIDI, 录音, 线路输入, 听, 录音</string>
+				<key>title</key>
+				<string>声音输入</string>
+			</dict>
+		</array>
+	</dict>
+	<key>output</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>设备, 耳机, 头戴式耳机, 扬声器, 听, 平衡, iSub, 字幕, 听, 耳机, 头戴式耳机</string>
+				<key>title</key>
+				<string>声音输出</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

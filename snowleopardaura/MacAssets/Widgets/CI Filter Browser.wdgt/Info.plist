@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AllowFileAccessOutsideOfWidget</key>
+	<true/>
+	<key>AllowInternetPlugins</key>
+	<true/>
+	<key>AllowNetworkAccess</key>
+	<false/>
+	<key>AllowSystem</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en_US</string>
+	<key>CFBundleDisplayName</key>
+	<string>CI Filter Browser</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.apple.CIFilterBrowser</string>
+	<key>CFBundleName</key>
+	<string>CI Filter Browser</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.2</string>
+	<key>CFBundleVersion</key>
+	<string>1.2</string>
+	<key>CloseBoxInsetX</key>
+	<integer>6</integer>
+	<key>CloseBoxInsetY</key>
+	<integer>4</integer>
+	<key>Height</key>
+	<integer>350</integer>
+	<key>MainHTML</key>
+	<string>CIFilterBrowser.html</string>
+	<key>Plugin</key>
+	<string>CIPlugin.plugin</string>
+	<key>Width</key>
+	<integer>327</integer>
+</dict>
+</plist>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>DesktopPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>zdjęcia, tło, biurko, tapeta, wzorek, wzór, dostosować, dostosuj, dostosowanie, zdjęcie, tła, biurka, tapety, wzoru, wzorka, zdjęć, obrazków, obrazek, obrazka, w tle, dostosowywanie</string>
+				<key>title</key>
+				<string>Obrazek biurka</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Przezroczysty pasek menu</string>
+			</dict>
+		</array>
+	</dict>
+	<key>ScreenSaverPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>hasła, kłódka, blokada, wyłącz, wyłączyć, uruchom, uruchomić, start, RSS, wizualizacja, kanały, źródła, wiadomości, newsy, informacje, iTunes, albumy, grafika, okładki, losowo, losowe, zdjęcia, obrazki, obrazy, wygaszacze ekranu, wygaszacz ekranu, zdjęcia, hasło, hasła, blokowanie, zablokować, uruchamianie, uruchomić, dostosowanie, dostosowywanie, dostosować</string>
+				<key>title</key>
+				<string>Wygaszacz ekranu</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>aktywne narożniki ekranu</string>
+				<key>title</key>
+				<string>Aktywne narożniki</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Pokazuj zegar na wygaszaczu ekranu</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

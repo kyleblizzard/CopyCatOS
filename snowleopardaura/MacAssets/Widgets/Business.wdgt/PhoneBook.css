@@ -1,0 +1,435 @@
+/*
+Copyright (c) 2005, Apple Computer, Inc.  All rights reserved.
+NOTE: Use of this source code is subject to the terms of the Software
+License Agreement for Mac OS X, which accompanies the code.  Your use
+of this source code signifies your agreement to such license terms and
+conditions.  Except as expressly granted in the Software License Agreement
+for Mac OS X, no other copyright, patent, or other intellectual property
+license or right is granted, either expressly or by implication, by Apple.
+*/
+
+body {
+	margin:0;
+}
+
+#front {
+	position:absolute;
+	width:335px; height:51px;
+}
+
+	#topPane {
+		position:absolute;
+		left:0; right:0;
+		height:51px;
+		z-index:6;
+		background:url(Images/bodycompact.png);	
+	}
+
+	#topPane.bottomPanePastBottomOfTopPane {
+		height:40px;
+		background:url(Images/bodycompact_expanded.png);
+	}
+
+		#mouseLogo {
+			position:absolute;
+			left:25px; top:7px;
+			width:24px; height:26px;
+			background:url(Images/mouselogo.png);
+		}
+	
+		#searchTextField {
+			position:absolute;
+			left:68px; right:14px; top:9px;
+			margin:0;
+			font:18px "Lucida Grande", LucidaGrande, Helvetica, sans-serif;
+		}
+	
+		#clearSearchTextFieldButton {
+			position:absolute;
+			right:38px; top:12px;
+			width:20px; height:16px;
+			border:0; outline:0;
+			background:transparent;
+			text-indent:1000px;
+			overflow:hidden;
+			background:white url(Images/Activity_Stop.tif) 3px 50% no-repeat;
+		}
+	
+		#clearSearchTextFieldButton:active {
+			background-image:url(Images/Activity_StopPressed.tif);
+		}
+	
+		#searchPopUpButton {
+			position:absolute;
+			right:15px; top:9px;
+			width:27px; height:22px;
+			border:0; outline:0;
+			background:url(Images/popupbutton.png) top right no-repeat;
+		}
+	
+		#searchPopUpButton:active {
+			background-image:url(Images/popupbutton_clicked.png);
+		}
+		
+		#searchPopUp {
+			position:absolute;
+			left:75px; top:33px;
+			height:192px; width:236px;
+			background:white;
+			-webkit-box-shadow:0 4px 15px rgba(0,0,0,.7);
+			overflow:hidden;
+		}
+		
+		#searchPopUpButton {
+			text-indent:1000px;
+			overflow:hidden;
+			white-space:nowrap;
+		}
+		
+		#categoryBrowser {
+			position:absolute;
+			left:0; right:0; top:0; bottom:0;
+			border:0;
+			font:11px "Lucida Grande", Helvetica, sans-serif;
+			background:#ddd;
+		}
+	
+		#categoryBrowser .AppleBrowserCol0 {
+			bottom:0;
+			width:220px;
+		}
+		
+		#categoryBrowser .AppleBrowserScroll0 {
+			background:transparent;
+			top:5px; bottom:5px;
+		}
+		
+		#categoryBrowser li {
+			height:15px;
+			border:0;
+			background:white;
+		}
+		
+		#categoryBrowser .AppleBrowserCol li.selected {
+			color:white;
+			background:rgb(56, 117, 215);
+		}
+	
+	#middlePane {
+		position:absolute;
+		left:0; right:0; top:40px; bottom:42px;
+		background:url(Images/body_midsolid.png);
+	}
+	
+	.collapsed #middlePane {
+		display:none !important;
+	}
+	
+		.resizing #middlePaneContents, .collapsed #middlePaneContents {
+			display:none;
+		}
+	
+		#resultsListWrap {
+			position:absolute;
+			left:6px; right:29px; top:0; bottom:-1px;
+			font-family:"Helvetica Neue", Helvetica, sans-serif;
+			font-weight:bold;
+			line-height:1.5;
+		}
+		
+		#resultsListWrap ul {
+			list-style-type:none;
+			padding:0; margin:0 0 0 1px;
+			background:url(Images/yp_2stripe.png);
+		}
+		
+		#resultsListWrap li {
+			position:relative;
+			min-height:44px;
+			padding:4px 3px 5px 170px;
+		}
+		
+		#resultsListWrap li a:link, #resultsListWrap li a:visited {
+			text-decoration:none;
+		    color:#595543;
+		}
+		
+		#resultsListWrap li a:hover {
+			text-decoration:underline;
+		}
+		
+		#addConfirmName,
+		#addConfirmMessage,
+		#resultsListWrap a:link,
+		#resultsListWrap a:visited,
+		#resultsListWrap .phone,
+		#resultsListWrap .address div,
+		#resultsListWrap .address span {
+			overflow:hidden;
+			white-space:nowrap;
+			text-overflow:ellipsis;
+		}
+		
+		
+		#resultsListWrap .name, #resultsListWrap .phone {
+			font-size:12px;
+			font-weight:bold;
+		}
+	
+		#resultsListWrap .address {
+			font-size:9px;
+		}
+		
+		#resultsListWrap a:link,
+		#resultsListWrap a:visited,
+		#resultsListWrap .street {
+			display:block;
+		}
+		
+		#resultsListWrap .name {
+			position:absolute;
+			left:20px; top:4px;
+			width:145px;
+		}
+		
+		#resultsListWrap .add {
+			position:absolute;
+			left:152px; top:17px;
+		}
+		
+		#resultsListWrap .addButton {
+			width:12px; height:12px;
+			border:0;
+			outline:0;
+			overflow:hidden;
+			text-indent:1000px;
+			overflow:hidden;
+			background:url(Images/add.png) center center no-repeat;
+		}
+			
+		#resultsListWrap .addButton:hover {
+			background-image:url(Images/add_onmouseover.png);
+		}
+			
+		#resultsListWrap .addButton:active {
+			background-image:url(Images/add_onclick.png);
+		}
+
+		#resultsListScroller, #resultsListScrollerBG {
+			position:absolute;
+			right:13px; top:0; bottom:0;
+			width:19px;
+		}
+		
+		#resultsListScrollerBG {
+			top:-1px; bottom:-1px;
+			border-width:8px 0;
+			-webkit-border-image:url(Images/scrollBar.png) 8 0;
+		}
+		
+		#noResultsWrap {
+			margin:60px 20px 0;
+			text-align:center;
+			font:bold 14px "Helvetica Neue", Helvetica, sans-serif;
+		}
+		
+		#addConfirmDialog {
+			position:absolute;
+			left:7px; right:7px; top:-1px; bottom:0;
+			background:url(Images/confirmbackground.png);
+			font:bold 14px "Helvetica Neue", Helvetica, sans-serif;
+			color:white;
+			text-align:center;
+		}
+		
+			#addConfirmName {
+				margin:50px 10px 0 10px;
+			}
+	
+			#addConfirmMessage {
+				margin:10px 10px 0 10px;
+				font-weight:normal;
+				font-size:12px;
+			}
+	
+			#addConfirmButtonWrap {
+				position:absolute;
+				left:10px; right:16px; top:120px;
+				text-align:right;
+			}
+	
+			#addConfirmCancelButton, #addConfirmAddButton {
+				height:24px; min-width:67px;
+				padding:0;
+				outline:0;
+				color:white;
+				text-align:center;
+
+				-webkit-appearance:none;
+				-webkit-border-image:url(Images/confirmbutton.png) 0 13;
+			    border-width:0px 13px;
+				background:transparent;
+			}
+			
+			#addConfirmCancelButton {
+				right:92px;
+			}
+			
+			#addConfirmAddButton {
+				right:18px;
+			}
+	
+		#progressIndicatorCanvas {
+			position:absolute;
+			left:50%; top:50%;
+			margin:-15px 0 0 -15px;
+		}
+			
+	#bottomPane {
+		position:absolute;
+		left:0; right:0; bottom:0px;
+		height:41px;
+		background:url(Images/body_bottom.png);
+	}
+
+	#bottomPaneMask {
+		position:absolute;
+		left:0; right:0; bottom:1px;
+		height:33px;
+		overflow: hidden;
+	}
+
+	#bottomPaneMask.bottomPanePastBottomOfTopPane, .expanded #bottomPaneMask {
+		height:41px;
+	}
+	
+	.collapsed #bottomPane {
+		display:none !important;
+		
+	}
+	
+		#infoButton {
+			position:absolute;
+			left:15px; bottom:33px;
+		}
+		
+		#navWrap {
+			margin:8px 100px;
+			text-align:center;
+		}
+		
+		.resizing #navWrap {
+			display:none;
+		}
+		
+		#navText {
+			font:bold 11px "Helvetica Neue", Helvetica, sans-serif;
+		    color:#595543;
+		}
+		
+		#prevButton, #nextButton {
+			width:14px; height:9px;
+			-webkit-appearance:none;
+			border:0; margin-top:3px;
+			background:transparent;
+			text-indent:1000px;
+			overflow:hidden;
+		}
+		
+		#prevButton {
+			float:left;
+			background-image:url(Images/backarrow_on.png);
+		}
+		
+		#prevButton:active {
+			background-image:url(Images/backarrow_clicked.png);
+		}
+		
+		#prevButton[disabled="disabled"] {
+			background-image:url(Images/backarrow_off.png);
+		}
+		
+		#nextButton {
+			float:right;
+			background-image:url(Images/forwardarrow_on.png);
+		}
+		
+		#nextButton:active {
+			background-image:url(Images/forwardarrow_clicked.png);
+		}
+		
+		#nextButton[disabled="disabled"] {
+			background-image:url(Images/forwardarrow_off.png);
+		}
+		
+		#resizer {
+			-apple-dashboard-region: dashboard-region(control rectangle);
+			position:absolute;
+			right:11px; bottom:15px;
+			width:20px; height:20px;
+			background:url(/System/Library/WidgetResources/resize.png) center center no-repeat;
+		}
+
+#back {
+	position:absolute;
+	width:335px; height:240px;
+	background:url(Images/backside.png);
+	-webkit-background-size:100%;
+}
+
+	#logo {
+		position:absolute;
+		left:208px; top:92px;
+	}
+
+	#formWrap {
+		position:absolute;
+		left:28px; top:28px;
+		font:bold 10px "Helvetica Neue", sans-serif;
+		color:white;
+	}
+	
+	.label {
+		margin:0 0 2px 2px;
+	}
+	
+	#searchRadiusPopUp, #itemsPerPagePopUp {
+		width:150px;
+	}
+	
+	#locationWrap, #searchRadiusWrap, #itemsPerPageWrap {
+		margin-bottom:15px;
+	}
+	
+	#doneButton {
+		position:absolute;
+		left:255px; top:190px;
+	}
+
+/* AppleBrowser Styles*/	
+.AppleBrowser {
+	position:relative;
+	overflow:hidden;
+}
+
+.AppleBrowserCol {
+	position:absolute;
+	top:0; bottom:1px;
+}
+
+.AppleBrowserScroll {
+	position:absolute;
+}
+
+.AppleBrowserCol ul, .AppleBrowserCol li {
+	margin:0; padding:0;
+	list-style-type:none;
+	overflow:hidden;
+}
+
+.AppleBrowser li {
+	height:18px;
+	margin:0; padding:1px 5px 0;
+	text-overflow:ellipsis;
+	white-space:nowrap;
+}

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ClockPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>時鐘, 選單列</string>
+				<key>title</key>
+				<string>在選單列中顯示日期與時間</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>聽力受損, 停用, 身心障礙的, 耳聾, 協助, 聲音, 發佈, 協助</string>
+				<key>title</key>
+				<string>語音報時</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>秒, 早上, 下午, 平日, 24 小時制, 軍用, 24-hr</string>
+				<key>title</key>
+				<string>設定時鐘</string>
+			</dict>
+		</array>
+	</dict>
+	<key>DateTimePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>自動, automate, automatically, automating</string>
+				<key>title</key>
+				<string>設定日期與時間</string>
+			</dict>
+		</array>
+	</dict>
+	<key>TimeZonePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>設定時區</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

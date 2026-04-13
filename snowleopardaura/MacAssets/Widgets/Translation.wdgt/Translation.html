@@ -1,0 +1,93 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+	"http://www.w3.org/TR/html4/strict.dtd">
+<!--
+Copyright (c) 2005, Apple Computer, Inc.  All rights reserved.
+NOTE:  Use of this source code is subject to the terms of the Software
+License Agreement for Mac OS X, which accompanies the code.  Your use
+of this source code signifies your agreement to such license terms and
+conditions.  Except as expressly granted in the Software License Agreement
+for Mac OS X, no other copyright, patent, or other intellectual property
+license or right is granted, either expressly or by implication, by Apple.
+-->
+<html>
+<head>
+<style type="text/css" title="AppleStyle">
+	@import "Translation.css";
+</style>
+<script type="text/javascript" src="localizedStrings.js" charset="utf-8"></script>
+<script type="text/javascript" src="file:///System/Library/WidgetResources/AppleClasses/AppleButton.js" charset="utf-8"></script>
+<script type="text/javascript" src="file:///System/Library/WidgetResources/AppleClasses/AppleInfoButton.js" charset="utf-8"></script>
+<script type="text/javascript" src="file:///System/Library/WidgetResources/AppleClasses/AppleAnimator.js" charset="utf-8"></script>
+<script id="apple-replace-script" type="text/javascript" src="file:///System/Library/WidgetResources/.parsers/translationParser.js" charset="utf-8"></script>
+<script type="text/javascript" src="Translation.js" charset="utf-8"></script>
+<title></title>
+</head>
+<body onload="load();">
+    <div id="front">
+		<div id="frontBGGrid" class="grid" onclick="blurText(event);">
+			<div class="topLef corner"></div>
+			<div class="topMid edge"></div>
+			<div class="topRit corner"></div>
+			<div class="midLef edge"></div>
+			<div class="midMid"></div>
+			<div class="midRit edge"></div>
+			<div class="botLef corner"></div>
+			<div class="botMid edge"></div>
+			<div class="botRit corner"></div>
+	    </div>
+
+		<div id="fromGrid" class="textBGGrid grid">
+			<div class="topLef corner"></div>
+			<div class="topMid edge"></div>
+			<div class="topRit corner"></div>
+			<div class="midMid"></div>
+			<div class="botLef corner"></div>
+			<div class="botMid edge"></div>
+			<div class="botRit corner"></div>
+		</div>
+
+		<div id="toGrid" class="textBGGrid grid">
+			<div class="topLef corner"></div>
+			<div class="topMid edge"></div>
+			<div class="topRit corner"></div>
+			<div class="midMid"></div>
+			<div class="botLef corner"></div>
+			<div class="botMid edge"></div>
+			<div class="botRit corner"></div>
+		</div>
+
+		<div class="globe" id="textFieldGlobe" onclick="blurText(event);"></div>
+		<div class="globe" id="bodyGlobe" onclick="blurText(event);"></div>
+		
+        <div id="unavailableLabel" class="label"></div>
+		<div id="swapButton" class="button"></div>
+
+		<label id="fromLabel" for="fromPopup" onclick="blurText(event);">Translate from</label>
+		<div id="fromPopupBG" class="popupBG"></div>
+		<div class="label" id="fromStaticLabel"></div>
+		<select id="fromPopup" class="popup" onchange="handleFromLanguageChanged(this);"></select>
+       
+		<div id="fromTextAreaWrap" class="textAreaWrap">
+			<textarea class="textArea" id="fromTextArea" rows="" cols=""
+				onkeypress="translateKeyPress(event,this);" 
+				onkeyup="translateKeyUp(event,this);"></textarea>
+		</div>
+
+		<label id="toLabel" for="toPopup" onclick="blurText(event);">To</label>
+		<div id="toPopupBG" class="popupBG"></div>
+		<div class="label" id="toStaticLabel"></div>
+		<select id="toPopup" class="popup" onchange="handleToLanguageChanged(this);"></select>
+
+		<div id="toTextAreaWrap" class="textAreaWrap">
+        	<textarea class="textArea" id="toTextArea" rows="" cols="" readonly="readonly"></textarea>
+		</div>
+
+		<div id="infoButton"></div>
+	</div> <!-- front -->
+
+	<div id="back">
+		<img src="Images/logo.png" id="backlogo" onclick="clickOnProvider();" alt="Systran">
+		<div id="done"></div>
+	</div>
+</body>
+</html>

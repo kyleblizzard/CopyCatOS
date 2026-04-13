@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>loginOptionsPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>utenti, resosconto, firma, login, accedi, entra, nascondi, mostra, avvio, spegnimento, riavvia, metti in stop, pulsanti, VoiceOver, voce, parla, input, metodo, modalità, menu, password, suggerimenti, avvia, su, segni, giù, voce, sopra, passa, parole, eseguire il login, esegui login, firmare, firmato, accedere, nascondere, mostrare, parlare</string>
+				<key>title</key>
+				<string>Impostazioni finestra di login</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>utente, veloce, resoconto, accedi, login, logon, accedere, eseguire l'accesso, logout, esci, uscire, eseguire il logout, passare, eseguire il login, log in, log on, logout, eseuire l'uscita, eseguire l'accesso, accedi, accedere, uscire, uscito</string>
+				<key>title</key>
+				<string>Alterna account</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>accedi, accedere, logon, automatizzare, automatico, automazione, eseguire il login, login, logon, eseguire l'accesso, esegui l'accesso, accedi</string>
+				<key>title</key>
+				<string>Login automatico</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>attivo, ldap, apri, server, directory attiva, apri directory</string>
+				<key>title</key>
+				<string>Servizi directory</string>
+			</dict>
+		</array>
+	</dict>
+	<key>mobilityPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array/>
+	</dict>
+	<key>passwordPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>ospite, condividi, lungo, breve, nome, autentica, password, filevault, condivisione, pass, parole, autenticare, autenticazione, documento, vault</string>
+				<key>title</key>
+				<string>Aggiungi di gruppo o utente</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>fotografie, immagini, foto</string>
+				<key>title</key>
+				<string>Immagine utente</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>utenti, account, lungo, breve, nome, autentica, resoconto, accedi, login, logon, accedi, accedere, modifica, amministra, pass, parole, autenticare, autenticazione, eseguire il login, eseguire il logon, acceder, accedi, eseguire l'accesso, modificare</string>
+				<key>title</key>
+				<string>Nome di login e password</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>mobile, me, dot, mac, dotmac</string>
+				<key>title</key>
+				<string>Nome utente MobileMe</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>vcard, schede</string>
+				<key>title</key>
+				<string>Scheda Rubrica Indirizzi</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>gestisci, amministra, gestire, amministrare</string>
+				<key>title</key>
+				<string>Account amministratore</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>famiglia, limiti, limitare</string>
+				<key>title</key>
+				<string>Abilita i controlli censura</string>
+			</dict>
+		</array>
+	</dict>
+	<key>startupItemsPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>automatico, automatizzare, resoconto, fimra, login, logon, accedere, accesso, inizio, su, automaticamente, automatico, automazione, in modo automatico, avviare, eseguire il login, eseguire il logon, eseguire l'accesso, esegui l'accesso</string>
+				<key>title</key>
+				<string>Apri applicazioni al login</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

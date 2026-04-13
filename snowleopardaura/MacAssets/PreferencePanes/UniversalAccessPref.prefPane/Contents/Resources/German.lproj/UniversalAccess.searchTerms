@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Hearing</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>Universal, Zugang, Bedienungshilfen, behindert, Behinderte, begrenzt, taub, hören, Hören, beeinträchtigt, Hilfsmittel</string>
+				<key>title</key>
+				<string>Bildschirm bei Warnungen blinken lassen</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Keyboard</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>Universal, Zugang, Bedienungshilfen, behindert, Behinderte, begrenzt, Mobilität, beeinträchtigt, langsam, Hilfsmittel, einfach, Einfingerbedienung, Wiederholrate, Sondertaste, Empfindlichkeit, anpassen, Anpassungen, eingeben, langsamer, verlangsamen, einstellen, Eingabe</string>
+				<key>title</key>
+				<string>Tastaturbedienung vereinfachen</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Mouse</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>Universal, Zugang, Bedienungshilfen, behindert, Behinderte, begrenzt, Mobilität, beeinträchtigt, langsam, Hilfsmittel, einfach, Tasten, numerisch, Ziffernblock, Mauszeiger, Cursor, Tastatur, vergrößern, Lupe, Vergrößerung, anpassen, Anpassungen, langsamer, verlangsamen, einstellen, vergrößert, vergrößern</string>
+				<key>title</key>
+				<string>Maus- und Trackpad-Bedienung vereinfachen</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Display</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>Universal, Zugang, Bedienungshilfen, behindert, Behinderte, begrenzt, blind, Sicht, Sehvermögen, sichtbar, beeinträchtigt, lesen, Ansicht, verbessern, Kontrast, schwarz, weiß, Graustufen, Anpassungen, Lesen, Sehen, Darstellung, erhöhen, einstellen, schwarz-weiß</string>
+				<key>title</key>
+				<string>Monitoranzeige verbessern</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_VoiceOver</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>gesprochen, Interface, hören, Bildschirm, Leser, Universal, Zugang, Bedienungshilfen, behindert, Behinderte, begrenzt, blind, Sicht, Vision, sichtbar, beeinträchtigt, Voice-over</string>
+				<key>title</key>
+				<string>VoiceOver ein- und ausschalten</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Hilfsgeräte aktivieren</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>Menüleiste</string>
+				<key>title</key>
+				<string>Bedienungshilfen in der Menüleiste einblenden</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Zoom</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>Universal, Zugang, Bedienungshilfen, behindert, Behinderte, begrenzt, blind, Sicht, Vision, sichtbar, beeinträchtigt, größer, vergrößern, Vergrößerung, lesen, sehen, anzeigen, erhöhen, verringern, Maximum, Minimum, scrollen, Maus, Rad, Kugel, Scrollball, Scrollrad, Mausball, Mausrad, Zoomen, erweiterten, Erweiterung, vergrößert, betrachten, Erhöhung, Verringerung</string>
+				<key>title</key>
+				<string>Zum Vergrößern des Bildschirms zoomen</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

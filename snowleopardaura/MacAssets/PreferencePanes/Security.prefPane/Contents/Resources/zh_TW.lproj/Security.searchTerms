@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>FileVault</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>加密, 個人專屬, file vault, 加密, 加密, 加密</string>
+				<key>title</key>
+				<string>FileVault</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>認證, 密碼, 認證, 認證, 認證</string>
+				<key>title</key>
+				<string>主要密碼</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Firewall</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>防止, 阻擋, 網路, 埠, udp, 檔案共享, AFP, 遙控器, SSH, 防止, 防止, 阻擋, 阻擋, 防火牆</string>
+				<key>title</key>
+				<string>啟用或停用防火牆</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>防火牆</string>
+				<key>title</key>
+				<string>防火牆進階設定</string>
+			</dict>
+		</array>
+	</dict>
+	<key>General</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>螢幕, 保護程式, 密碼, 認證, 鎖定, 解鎖, 睡眠, 喚醒, 螢幕保護程式, 密碼, 認證, 認證, 認證, 鎖定, 鎖定, 解鎖, 解鎖, 睡眠, 喚醒</string>
+				<key>title</key>
+				<string>需要密碼喚醒電腦</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>登入, 登入, 登入, 登入, 自動, 登入, 登入, 登入, 登入, 登入</string>
+				<key>title</key>
+				<string>停用自動登入</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>鎖定, 解鎖, 鎖定, 解鎖</string>
+				<key>title</key>
+				<string>鎖定系統偏好設定</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>登入, 登出, 登入, 登出, 登出, 登入, 登出, 登出</string>
+				<key>title</key>
+				<string>閒置時登出</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>虛擬記憶體, 加密, 加密, 加密, 加密</string>
+				<key>title</key>
+				<string>安全虛擬記憶體</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>紅外線, 接收器, IR, 紅外線</string>
+				<key>title</key>
+				<string>停用遙控器</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>安全性, 私人, 隱私, 安全, 安全, 保護, 保護, 安全性, 安全性, 保護, 保護</string>
+				<key>title</key>
+				<string>安全性設定</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

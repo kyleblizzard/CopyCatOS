@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>FileVault</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>krypter, hjem, file vault, kryptert, krypterer, kryptering</string>
+				<key>title</key>
+				<string>FileVault</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>godkjenn, autentiser, pass ord, godkjent, autentisert, godkjenner, autentiserer, autentisering, godkjenning</string>
+				<key>title</key>
+				<string>Hovedpassord</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Firewall</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>forhindre, blokkere, nettverk, porter, udp, fildeling, AFP, fjernkontroll, remote, SSH, avverge, hindre, blokkert, blokkering, brann mur, brannmur</string>
+				<key>title</key>
+				<string>Slå brannmuren på eller av</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>brannmur</string>
+				<key>title</key>
+				<string>Avanserte brannmurinnstillinger</string>
+			</dict>
+		</array>
+	</dict>
+	<key>General</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>skjerm, sparer, passord, godkjenne, autentisere, låse, låse opp, dvale, vekke, skjermsparer, passord, pass, ord, godkjent, autentisert, autentisering, godkjenning, låse, låser, låst opp, opplåst, låser opp, dvale, dvalemodus, vekke</string>
+				<key>title</key>
+				<string>Kreve passord for å vekke maskinen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>logge, logge på, automatisk, logge seg på, pålogging, innlogging, logge seg inn ,logge inn</string>
+				<key>title</key>
+				<string>Deaktivere automatisk pålogging</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>låse, lås, låse opp, låsing, opplåsing</string>
+				<key>title</key>
+				<string>Låse Systemvalg</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>logge, av, på, logge av, avlogging, innlogging, pålogging, logge inn</string>
+				<key>title</key>
+				<string>Logge av når inaktiv</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>vm, kryptere, kryptert, kryptering</string>
+				<key>title</key>
+				<string>Sikker virtuell hukommelse</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>infrarød, mottaker, IR</string>
+				<key>title</key>
+				<string>Deaktivere fjernkontroll</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>sikker, privat, personvern, sikkerhet, sikring, beskyttelse, sikret, sikrer, beskyttet, beskytter</string>
+				<key>title</key>
+				<string>Sikkerhetsinnstillinger</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

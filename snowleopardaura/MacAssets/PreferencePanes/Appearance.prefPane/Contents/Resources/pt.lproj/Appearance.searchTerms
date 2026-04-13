@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Main</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>selecionado, texto, destacando, destaque, destacar, detacar, detacando</string>
+				<key>title</key>
+				<string>Cor de destaque</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>menu Apple, aplicativos, documentos, servidores</string>
+				<key>title</key>
+				<string>Número de Itens Recentes</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>mesa, personalizar, personificar, personalizando, personalização, personificando</string>
+				<key>title</key>
+				<string>Aparência de botões, menus e janelas</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>setas, suave, minimizar, janela, saltar, barra de rolagem, suavizando, minimizando, saltando</string>
+				<key>title</key>
+				<string>Comportamento da barra de rolagem</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>serrilhado, desfocado, irregular, confuso, texto, tamanho, LCD, plano, monitor, tela, desfocada, suavizar bordas</string>
+				<key>title</key>
+				<string>Suavização de fontes</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

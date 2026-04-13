@@ -1,0 +1,98 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<!--
+Copyright © 2005, Apple Computer, Inc.  All rights reserved.
+NOTE:  Use of this source code is subject to the terms of the Software
+License Agreement for Mac OS X, which accompanies the code.  Your use
+of this source code signifies your agreement to such license terms and
+conditions.  Except as expressly granted in the Software License Agreement
+for Mac OS X, no other copyright, patent, or other intellectual property
+license or right is granted, either expressly or by implication, by Apple.
+-->
+<html>
+	<head>
+		<title>Phone Book</title>
+		<link rel="stylesheet" href="PhoneBook.css" type="text/css">
+		<script type="text/javascript" src="localizedStrings.js" charset="utf-8"></script>
+		<script type="text/javascript" src="/System/Library/WidgetResources/AppleClasses/AppleScrollArea.js" charset="utf-8"></script>
+		<script type="text/javascript" src="/System/Library/WidgetResources/AppleClasses/AppleScrollbar.js" charset="utf-8"></script>
+		<script type="text/javascript" src="/System/Library/WidgetResources/AppleClasses/AppleAnimator.js" charset="utf-8"></script>
+		<script type="text/javascript" src="/System/Library/WidgetResources/AppleClasses/AppleInfoButton.js" charset="utf-8"></script>
+		<script type="text/javascript" src="/System/Library/WidgetResources/AppleClasses/AppleButton.js" charset="utf-8"></script>
+		<script type="text/javascript" src="AppleProgressIndicator.js" charset="utf-8"></script>
+		<script type="text/javascript" src="AppleBrowser.js" charset="utf-8"></script>
+		<script id="apple-replace-script" type="text/javascript" src="file:///System/Library/WidgetResources/.parsers/phoneBookParser.js" charset="utf-8"></script>
+		<script type="text/javascript" src="PhoneBook.js" charset="utf-8"></script>
+	</head>
+	<body onload="load();">
+		<div id="front" class="collapsed">
+			<div id="topPane">
+				<div id="mouseLogo"></div>
+				<input id="searchTextField" type="search" results="results" placeholder="Business Name or Category">
+				<button id="clearSearchTextFieldButton" style="display:none;"
+					onclick="clearSearchTextFieldButtonClicked(event);">Clear search field</button>
+				<button id="searchPopUpButton" onmousedown="searchPopUpButtonMouseDown(event);">Show search categories</button>
+				<div id="searchPopUp" style="display:none;">
+					<div id="categoryBrowser"></div>
+				</div>
+			</div>
+			<div id="middlePane">
+				<div id="middlePaneContents">
+					<div id="resultsListWrap"></div>
+					<div id="resultsListScrollerBG"></div>
+					<div id="resultsListScroller"></div>
+					<div id="noResultsWrap">No Results Found.</div>
+					<canvas id="progressIndicatorCanvas" width="30" height="30"></canvas>
+					<div id="addConfirmDialog" style="display:none;">
+						<div id="addConfirmName"></div>
+						<div id="addConfirmMessage"></div>
+						<div id="addConfirmButtonWrap">
+							<button id="addConfirmCancelButton" onclick="addConfirmCancelButtonClicked(event);">Cancel</button>
+							<button id="addConfirmAddButton" onclick="addConfirmAddButtonClicked(event);">Add</button>
+						</div>
+					</div>
+				</div>
+			</div> <!-- middlePane -->
+			<div id="bottomPaneMask">
+			<div id="bottomPane">
+				<div id="infoButton"></div>
+				<div id="navWrap">
+					<button id="prevButton" disabled="disabled" onclick="prevButtonClicked(event);">Previous</button>
+					<button id="nextButton" disabled="disabled" onclick="nextButtonClicked(event);">Next</button>
+					<div id="navText"></div>
+				</div>
+				<div id="resizer"></div>
+			</div>
+			</div>
+		</div> <!-- front -->
+		<div id="back" style="display:none;">
+			<img id="logo" src="Images/backside_logo.png" onclick="logoClicked(event);" 
+				alt="Visit Directory Assistance Plus website">
+			<div id="formWrap">
+				<div id="locationWrap">
+					<div id="cityStateLabel" class="label">City, State</div>
+					<div id="orPostalCodeLabel" class="label">or ZIP Code:</div>
+					<input type="text" id="locationTextField">
+				</div>
+				<div id="searchRadiusWrap">
+					<div id="searchRadiusLabel" class="label">Search within:</div>
+					<select id="searchRadiusPopUp" onchange="searchRadiusPopUpChanged(event);">
+						<option value="10"> 10 Miles</option>
+						<option value="20"> 20 Miles</option>
+						<option value="50"> 50 Miles</option>
+						<option value="100">100 Miles</option>
+					</select>
+				</div>
+				<div id="itemsPerPageWrap">
+					<div id="itemsPerPageLabel" class="label">Items per page:</div>
+					<select id="itemsPerPagePopUp" onchange="searchRadiusPopUpChanged(event);">
+						<option value="10">10 items</option>
+						<option value="20">20 items</option>
+						<option value="30">30 items</option>
+						<option value="40">40 items</option>
+					</select>
+				</div>
+			</div>
+			<div id="doneButton"></div>
+		</div> <!-- back -->
+	</body>
+</html>

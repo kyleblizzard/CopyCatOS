@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>account</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>użytkownik, uczestnictwo, okres próbny, uczestnik, nazwa, hasło, rejestrować, dotmac, itools, zarejestrować, rejestracja, zarejestrowanie, okresu próbnego, okresie próbnym, okresem próbnym, nazwy użytkownika, nazwa użytkownika, konto próbne</string>
+				<key>title</key>
+				<string>Rejestracja w MobileMe</string>
+			</dict>
+		</array>
+	</dict>
+	<key>idisk</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>miejsce, przestrzeń, synchronizacja, katalog public, katalog publiczny, hasło, odwzorowanie, dysk, płyta, lokalnie, mail, poczta, synchronizowanie, synchronizować, synchronizuje, przestrzeni, dysku, płyty, katalogu publicznego, katalogu public, wiadomości, poczty, pocztę</string>
+				<key>title</key>
+				<string>iDisk</string>
+			</dict>
+		</array>
+	</dict>
+	<key>mymacs</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>współdzielić, wróć, znów, sieć, współdzielenie, udostępnij, udostępnić, udostępnianie, mój mac, moim macu, mojego maca, znów na moim macu, zdalnie na moim macu</string>
+				<key>title</key>
+				<string>Zdalnie na moim Macu</string>
+			</dict>
+		</array>
+	</dict>
+	<key>sync</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>synchronizacja, MobileMe, dotmac, pasek menu, pasku menu</string>
+				<key>title</key>
+				<string>Pokazuj status synchronizacji w pasku menu</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>synchronizuj</string>
+				<key>title</key>
+				<string>Włączenie lub wyłączenie synchronizacji MobileMe</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

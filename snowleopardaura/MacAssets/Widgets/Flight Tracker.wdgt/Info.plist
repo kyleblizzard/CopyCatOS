@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AllowInternetPlugins</key>
+	<true/>
+	<key>AllowNetworkAccess</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en_US</string>
+	<key>CFBundleDisplayName</key>
+	<string>Flight Tracker</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.apple.widget.flighttracker</string>
+	<key>CFBundleName</key>
+	<string>Flight Tracker</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.5.1</string>
+	<key>CFBundleVersion</key>
+	<string>1.5.1</string>
+	<key>CloseBoxInsetX</key>
+	<integer>8</integer>
+	<key>CloseBoxInsetY</key>
+	<integer>5</integer>
+	<key>Height</key>
+	<integer>188</integer>
+	<key>MainHTML</key>
+	<string>FlightTracker.html</string>
+	<key>Parser</key>
+	<string>flightTrackerParser.js</string>
+	<key>Width</key>
+	<integer>405</integer>
+	<key>SyncExclusions</key>
+	<array>
+		<dict>
+			<key>key</key>
+			<string>http://www.apple.com/widgets/flightTrackerParser.js</string>
+			<key>global</key>
+			<true/>
+		</dict>
+	</array>
+</dict>
+</plist>

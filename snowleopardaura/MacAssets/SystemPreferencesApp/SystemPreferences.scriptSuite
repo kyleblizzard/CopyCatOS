@@ -1,0 +1,106 @@
+{
+	Name = SystemPreferences;
+	AppleEventCode = xpsp;
+	UsedFeatures = (
+		UnnamedArguments,
+	);
+	Commands = {
+		reveal = {
+			AppleEventClassCode = misc;
+			AppleEventCode = mvis;
+			CommandClass = NSScriptCommand;
+			Type = NSPrefPaneAnchor;
+			ResultAppleEventCode = xppa;
+			UnnamedArgument = {
+				Optional = NO;
+				Type = NSPrefPaneAnchor;
+			};
+		};
+		timedLoad = {
+			CommandClass = NSScriptCommand;
+			AppleEventCode = mtml;
+			AppleEventClassCode = misc;
+			Type = NSNumber;
+			ResultAppleEventCode = doub;
+			UnnamedArgument = {
+				Optional = NO;
+				Type = NSPrefPaneBundle;
+			};
+		};
+	};
+	Classes = {
+		NSPrefPaneAnchor = {
+			AppleEventCode = xppa;
+			Superclass = "NSCoreSuite.AbstractObject";
+			SupportedCommands = {
+				"SystemPreferences.reveal" = "reveal:";
+			};
+			Attributes = {
+				name = {
+					AppleEventCode = pnam;
+					ReadOnly = YES;
+					Type = NSString;
+				};
+			};
+		};
+		NSPrefPaneBundle = {
+			AppleEventCode = xppb;
+			Superclass = "NSCoreSuite.AbstractObject";
+			ToManyRelationships = {
+				anchors = {
+					AppleEventCode = xppa;
+					Type = NSPrefPaneAnchor;
+				};
+			};
+			SupportedCommands = {
+				"SystemPreferences.reveal" = "reveal:";
+				"SystemPreferences.timedLoad" = "timedLoad:";
+			};
+			Attributes = {
+				shortName = {
+					AppleEventCode = xpsn;
+					ReadOnly = YES;
+					Type = NSString;
+				};
+				identifier = {
+					AppleEventCode = "ID  ";
+					ReadOnly = YES;
+					Type = NSString;
+				};
+				name = {
+					AppleEventCode = pnam;
+					ReadOnly = YES;
+					Type = NSString;
+				};
+			};
+		};
+		PreferencesApp = {
+			AppleEventCode = capp;
+			Superclass = "NSCoreSuite.NSApplication";
+			ToManyRelationships = {
+				orderedPrefPanes = {
+					AppleEventCode = xppb;
+					Type = NSPrefPaneBundle;
+				};
+			};
+			Attributes = {
+				currentPanel = {
+					AppleEventCode = xpcp;
+					ReadOnly = NO;
+					Type = NSPrefPaneBundle;
+				};
+				showAll = {
+					AppleEventCode = xpsa;
+					ReadOnly = NO;
+					Type = "NSNumber<Bool>";
+				};
+				preferencesWindow = {
+					AppleEventCode = xppw;
+					ReadOnly = YES;
+					Type = "NSCoreSuite.NSWindow";
+				};
+			};
+		};
+	};
+	Synonyms = {};
+}

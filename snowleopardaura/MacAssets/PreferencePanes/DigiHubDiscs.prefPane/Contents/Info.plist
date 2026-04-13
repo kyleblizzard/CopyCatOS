@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>English</string>
+	<key>CFBundleExecutable</key>
+	<string>DigiHubDiscs</string>
+	<key>CFBundleGetInfoString</key>
+	<string>Digital Hub version 1.6, Copyright 2002-2008, Apple Computer, Inc.</string>
+	<key>CFBundleIconFile</key>
+	<string>cd.icns</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.apple.preference.digihub.discs</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>CDs &amp; DVDs</string>
+	<key>CFBundlePackageType</key>
+	<string>BNDL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.6</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>56</string>
+	<key>NSMainNibFile</key>
+	<string>DigiHubDiscs</string>
+	<key>NSPrefPaneIconFile</key>
+	<string>cd.icns</string>
+	<key>NSPrefPaneSearchParameters</key>
+	<string>CDDVD</string>
+	<key>NSPrincipalClass</key>
+	<string>DigiHubDiscs</string>
+</dict>
+</plist>

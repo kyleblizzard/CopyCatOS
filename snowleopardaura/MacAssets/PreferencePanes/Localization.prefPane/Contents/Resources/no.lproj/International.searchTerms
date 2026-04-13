@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Formats</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>regionalt, internasjonalt, mål, enheter, stiler, metrisk, kalender, gregoriansk, buddhistisk, hebraisk, islamsk, japansk, kinesisk, koptisk, etiopisk, indisk, persisk, republikken Kina, tilpass, tilpasset, tilpasse, tilpassing</string>
+				<key>title</key>
+				<string>Tall-, dato- og tidsformater</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>penger</string>
+				<key>title</key>
+				<string>Velge valuta</string>
+			</dict>
+		</array>
+	</dict>
+	<key>InputMenu</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>metode, menylinje</string>
+				<key>title</key>
+				<string>Vise tastaturmenyen i menylinjen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>skrive, skriving, kilder, qwerty, Pro, PC, standard, ISO, utvidet, Dvorak, afghansk, arabisk, armensk, østerriksk, aserbajdsjansk, belgisk, brasiliansk, britisk, bulgarsk, hviterussisk, canadisk, cherokee, kroatisk, tsjekkisk, dansk, devanagari, nederlandsk, estisk, færøysk, finsk, fransk, tysk, gresk, gujarati, gurmukhi, hawaiisk, hebraisk, ungarsk, islandsk, inuktitut, irsk, italiensk, jawi, kasakhisk, latvisk, litauisk, makedonsk, maltesisk, maori, nepalsk, samisk, norsk, persisk, polsk, portugisisk, rumensk, russisk, serbisk, slovakisk, slovensk, spansk, svensk, sveitsisk, thai, tibetansk, tyrkisk, USA, uighur, ukrainsk, Unicode, heks, vietnamesisk, walisisk</string>
+				<key>title</key>
+				<string>Tastaturlayouter</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>hoved, språk, modus, kilder, internasjonalt, utenlandsk, tegn, Unicode, japansk, kotoeri, hiragana, katakana, romaji, ainu, kinesisk, tradisjonell, hanin, forenklet, wubi, koreansk, hangul, vietnamesisk, teleks, tamil, anjal</string>
+				<key>title</key>
+				<string>Språkinndatametoder</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>palett, symbol, visningsvindu, symboler, tegn, Unicode, japansk, kana, kilder, keycaps, taster, tastaturoversikt, tegnsetting</string>
+				<key>title</key>
+				<string>Paletter</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>inndata, kilde, dokument</string>
+				<key>title</key>
+				<string>Bruke én inndatametode i alle dokumenter</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>inndata, kilde, dokument</string>
+				<key>title</key>
+				<string>Tillate forskjellige inndatametoder for hvert dokument</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Language</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>språk, tilpasse, internasjonalt, engelsk, japansk, fransk, tysk, spansk, italiensk, portugisisk, nederlandsk, svensk, finsk, norsk, bokmål, dansk, russisk, polsk, kinesisk, forenklet, tradisjonell, koreansk, afrikaans, australsk, aymara, aserbajdsjansk, indonesisk, malayisk, bislama, bosnisk, bretonsk, britisk, canadisk, katalansk, tsjekkisk, korsikansk, walisisk, Sveits, navajo, estisk, esperanto, baskisk, tongansk, færøysk, sveitsisk, irsk, gælisk, mansk, skotsk, galisisk, guarani, kroatisk, hawaiisk, ido, zulu, islandsk, grønlandsk, kornisk, kinyarwanda, swahili, haitisk, latinsk, latvisk, luxembourgsk, litauisk, ungarsk, gassisk, maltesisk, maori, neapolitansk, nynorsk, oksitansk, usbekisk, oromo, østerriksk, Brasil, quechua, rumensk, kirundi, samisk, albansk, siciliansk, slovakisk, slovensk, somalisk, tagalog, tatarisk, klingon, tyrkisk, turkmensk, USA, vietnamesisk, flamsk, vallonsk, gresk, aserbajdsjansk, hviterussisk, bulgarsk, kirgisisk, kasakhisk, makedonsk, mongolsk, serbisk, tadsjikisk, ukrainsk, georgisk, armensk, jiddisk, hebraisk, urdu, pashto, arabisk, persisk, konkani, nepalsk, marathi, sanskrit, hindi, panjabi, gujarati, tamil, thai, tibetansk, dzongkha, cherokee, inuktitut, uighur, tilpasse, tilpassing, sortering</string>
+				<key>title</key>
+				<string>Språkvalg og prioritet</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Text</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>brøker, erstatt, erstatte, bytte ut, utbytting</string>
+				<key>title</key>
+				<string>Automatiske endringer for symboler og tekst</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>språk, stavekontroll, stavekontrollering</string>
+				<key>title</key>
+				<string>Stavekontroll</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>språk</string>
+				<key>title</key>
+				<string>Orddeling</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>smarte anførselstegn</string>
+				<key>title</key>
+				<string>Anførselstegnstil</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

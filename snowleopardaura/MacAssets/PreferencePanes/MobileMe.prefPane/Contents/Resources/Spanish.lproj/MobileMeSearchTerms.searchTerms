@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>account</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palabras de índice localizables</string>
+				<key>index</key>
+				<string>usuario, pertenencia, cuenta, prueba, miembro, nombre, contraseña, registrar, registro, puntomac, itools</string>
+				<key>title</key>
+				<string>Registrarse en MobileMe</string>
+			</dict>
+		</array>
+	</dict>
+	<key>idisk</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palabras de índice localizables</string>
+				<key>index</key>
+				<string>almacenamiento, sincronizar, carpeta pública, contraseña, servidor alternativo, disco, discos, local, correo, sincronizar, sincronización, sincronizando, palabra, paso</string>
+				<key>title</key>
+				<string>iDisk</string>
+			</dict>
+		</array>
+	</dict>
+	<key>mymacs</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palabras de índice localizables</string>
+				<key>index</key>
+				<string>compartir, atrás, red, mimac, mismacs</string>
+				<key>title</key>
+				<string>Volver a mi Mac</string>
+			</dict>
+		</array>
+	</dict>
+	<key>sync</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palabras de índice localizables</string>
+				<key>index</key>
+				<string>sincronización, MobileMe, puntomac, barra de menús</string>
+				<key>title</key>
+				<string>Mostrar estado de la sincronización en la barra de menús</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palabras de índice localizables</string>
+				<key>index</key>
+				<string>sincronizar</string>
+				<key>title</key>
+				<string>Iniciar o detener la sincronización con MobileMe</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

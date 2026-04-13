@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>keyboardTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>keys, 键, 按键, delay, 延迟, repeat, 重复, response, 响应, function, 功能, Fn, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, rate, 速率, type, 键入, delaying, repeating, typing</string>
+				<key>title</key>
+				<string>键盘灵敏度</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>see, 看见, 看到, vision, 视觉, 视力, dark, 黑暗, 黑, low light, 低亮度, dim, 暗, 灰色, night, 夜晚, 晚上, type, 键入, seeing, 看, illuminating, 照明, illuminated, typing, 输入</string>
+				<key>title</key>
+				<string>照明键盘</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>menubar, 菜单栏, palettes, 调板, character palette, 字符调板, keyboard viewer, 键盘显示程序</string>
+				<key>title</key>
+				<string>在菜单栏中显示“键盘与字符显示程序”</string>
+			</dict>
+		</array>
+	</dict>
+	<key>keyboardTab_ModifierKeys</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>Caps Lock, 大写锁定, Control, 控制键, Option, Command, 命令键, Apple 键</string>
+				<key>title</key>
+				<string>重设修饰键</string>
+			</dict>
+		</array>
+	</dict>
+	<key>shortcutsTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>services, 服务, Front Row, Dictionary, 字典, function, 功能, keys, 按键, Fn, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, full, 全, Tab, navigate, 导航, highlight, 高亮显示, Universal Access, 万能辅助, accessibility, 辅助, disabled, 残疾, handicapped, 伤残, mobility, 可移动性, impaired, 残障, assistive, short cuts, 快捷键, highlighting, hilight, 高亮, hilighting, hilite, hiliting</string>
+				<key>title</key>
+				<string>键盘快捷键</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

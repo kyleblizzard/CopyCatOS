@@ -1,0 +1,567 @@
+Aqua Design Language — Comprehensive Reference
+=================================================
+Distilled from Apple's 2008 Human Interface Guidelines, real Snow Leopard
+screenshots, and hands-on recreation work. For use in recreating or
+extending the Aqua desktop experience on any platform.
+
+
+I. FIRST PRINCIPLES
+====================
+These come directly from Apple and are the foundation everything else
+rests on. Violating any of these makes the interface feel wrong, even
+if you can't say why.
+
+1. METAPHORS
+   "Take advantage of people's knowledge of the world by using metaphors
+   to convey concepts and features. Use metaphors that represent concrete,
+   familiar ideas."
+
+   The dock is a shelf. A window is a document on a desk. A scrollbar is
+   a capsule in a track. A button is a physical thing you press. None of
+   this is decorative — it's instructional. The visual tells you the
+   behavior before you try it.
+
+2. MENTAL MODEL
+   "The user already has a mental model that describes the task."
+
+   Four qualities the model must have:
+   - Familiarity: use the model's symbology and terminology
+   - Simplicity: streamlined, focused on fundamentals
+   - Availability: key features must be reachable, not buried
+   - Discoverability: "If an element is clickable, it must appear that way"
+
+3. DIRECT MANIPULATION
+   "An onscreen object should remain visible while a user performs an
+   action on it, and the impact of the action should be immediately
+   visible."
+
+   When you drag an icon, the icon moves. When you resize a window, the
+   content reflows in real time. The object is always the thing you're
+   touching — never a proxy.
+
+4. USER CONTROL
+   "Allow the user, not the computer, to initiate and control actions."
+
+   Don't hide options to "protect" users. Don't make decisions for them.
+   Offer the full range of choices and trust the user to pick.
+
+5. FEEDBACK AND COMMUNICATION
+   "Always provide an indication that your application has received the
+   user's input and is operating on it."
+
+   This is why:
+   - Minimizing a window animates into the dock (shows WHERE it went)
+   - A sheet unfurls from the title bar (shows WHERE it came from)
+   - A drawer slides from beneath a window (shows it BELONGS to that window)
+   - The dock icon bounces on launch (shows the app is LOADING)
+
+   Animation is not decoration. It is spatial communication.
+
+6. CONSISTENCY
+   Four levels, all required:
+   - With Mac OS X standards
+   - With itself
+   - With earlier versions
+   - With people's expectations
+
+7. FORGIVENESS
+   "Encourage people to explore by building in forgiveness — making most
+   actions easily reversible."
+
+   Undo, Revert, Trash (not immediate delete). The user should never
+   fear trying something.
+
+8. PERCEIVED STABILITY
+   "The Aqua interface provides an understandable, familiar, and
+   predictable environment."
+
+   Menu commands that don't apply are dimmed, not removed. The menu bar
+   stays in the same place. Controls don't move around. The environment
+   is spatially consistent.
+
+9. AESTHETIC INTEGRITY
+   "Information is well organized and consistent with principles of
+   good visual design. Keep graphics simple, and use them only when they
+   truly enhance usability."
+
+   Rules:
+   - Icons rendered at highest quality
+   - All text anti-aliased
+   - Font size consistent within a window
+   - Control size consistent (don't mix small and standard)
+   - Graphics match user expectations of behavior
+
+10. MODELESSNESS
+    "Allow users to do whatever they want at all times."
+
+    If you must use a mode, there must be a clear visual indicator of the
+    current mode, and escaping must be trivial.
+
+
+II. THE LIGHT MODEL
+====================
+Apple: "All interface elements have a common light source from directly
+above."
+
+Every element — icons, buttons, title bars, the dock — is lit from
+above and slightly in front. This is non-negotiable. If one element
+breaks the light model, the whole interface feels incoherent.
+
+What the light source produces:
+  - Title bars: lighter at top (#E8E8E8), darker at bottom (#A8A8A8)
+  - Buttons: highlight on top edge, shadow on bottom edge
+  - Icons: light catches the top, shadow falls below
+  - Traffic lights: gloss crescent on upper-left quadrant
+  - Dock shelf: brighter at front (bottom), receding at back (top)
+  - Window shadows: stronger below, softer above (light is above)
+
+Inactive elements lose their gradient (become flat gray). This isn't
+arbitrary — a flat surface doesn't catch light the way a raised one
+does. Flatness = recessed/inactive.
+
+
+III. THE COLOR SYSTEM
+======================
+Aqua uses almost no saturated color in the interface chrome. Color is
+reserved for meaning.
+
+SURFACES (neutral, recessive):
+  Window background:     #ECECEC  (warm light gray)
+  Content/view area:     #FFFFFF  (pure white — the "paper")
+  Sidebar:               #D8DEE8  (blue-gray — cool, recessive)
+  Toolbar:               #E0E0E0  (slightly darker than window)
+  Menu bar:              #FAFAFA → #E8E8E8  (gradient with translucency)
+  Window frame gradient: #E8E8E8 → #D0D0D0 → #A8A8A8
+  Inactive frame:        #F0F0F0 → #E8E8E8  (lighter, flatter)
+
+INTERACTIVE (blue = actionable):
+  Selection/highlight:   #3875D7  (the Aqua blue — THE color)
+  Focus ring:            #3B99FC  (bright blue glow)
+  Default button:        Pulsing blue tint
+  Scrollbar capsule:     #3875D7 with white gloss
+  Link:                  #0057AE  (darker blue, distinct from selection)
+
+TEXT:
+  Primary:               #1A1A1A  (not pure black — softer)
+  Secondary/inactive:    #737373
+  Disabled:              #A6A6A6
+  On selection:          #FFFFFF  (always white on blue)
+
+SEMANTIC (one color = one meaning, never used casually):
+  Red    #FF5F57:  close, destructive, error
+  Yellow #FFBD2E:  minimize, caution, warning
+  Green  #28C940:  zoom/expand, positive, success
+  Blue   #3875D7:  selection, active, primary action
+
+WHY SO LITTLE COLOR?
+Apple: "Use color judiciously to help tell a story; don't add color just
+to make it more colorful."
+
+When the chrome is gray, the user's content — photos, documents, files —
+becomes the most colorful thing on screen. The interface recedes.
+Saturated color in the chrome is reserved for things that NEED attention.
+
+
+IV. THE DEPTH STACK
+====================
+
+Layer 0 — Desktop
+  The ground plane. Everything else floats above it.
+
+Layer 1 — The Dock
+  A physical shelf ON the desktop. Semi-transparent glass so the
+  desktop shows through. Icons cast reflections onto its surface.
+  Perspective trapezoid says "you're looking down at a surface."
+  Strut reservation prevents windows from covering it.
+
+Layer 2 — Windows
+  Float above the desktop with drop shadows.
+  Apple: "Perspective and shadows are the most important components."
+  Shadow: pure black, ~40% opacity at darkest, large/soft/diffuse,
+  stronger below (light is above), extends 15-25px from edge.
+
+  Active windows: colored controls, gradient title bar.
+  Inactive windows: gray controls, flat title bar.
+  Apple: "Only the controls of the key window have color."
+
+Layer 3 — Menus and Sheets
+  Menus drop from the menu bar. Sheets unfurl from the title bar.
+  Tighter shadows than windows (they're closer to their parent).
+  Apple: "Only one sheet may be open for a window at any one time."
+
+Layer 4 — Tooltips
+  Apple calls them "help tags." #FFFFCC with #999999 border.
+  Topmost layer. No shadow needed — they're touching their trigger.
+
+
+V. WINDOW ANATOMY
+==================
+Apple (v10.5+): "No window-frame surface is visible on the sides of
+windows; the window-body area, the toolbar, and the bottom bar stretch
+from the left edge to the right edge."
+
+"All window-frame areas have a gray gradient surface. In the window body,
+content views display a white background by default; the surrounding
+window-body background is a shade of light gray."
+
+a) TITLE BAR
+   The handle. Gradient = active (raised, catching light). Flat = inactive.
+   Active:   #E0E0E0 → #C0C0C0 → #A8A8A8
+   Inactive: #E8E8E8 → #E0E0E0 (almost flat)
+
+   Contains ONLY: close/minimize/zoom buttons + centered title.
+   Apple: "The only controls that belong in a title bar are the close,
+   minimize, and zoom buttons."
+
+   Title font: Lucida Grande 13pt bold, centered.
+   Proxy icon: appears left of title after first save.
+
+b) TRAFFIC LIGHT BUTTONS
+   Always left side. Always this order: close, minimize, zoom.
+   Why circles: most forgiving shape for imprecise clicking.
+   Why colors: faster than reading — red=stop, yellow=pause, green=go.
+
+   Close:    #FF5F57 / border #E0443E / hover glyph: ×
+   Minimize: #FFBD2E / border #DEA123 / hover glyph: −
+   Zoom:     #28C940 / border #1AAB29 / hover glyph: +
+   Inactive: all become identical #CCCCCC gray dots
+
+   Each has: base fill, 1px darker border, upper-left gloss crescent
+   (white ~40% opacity), glyph appears on hover.
+
+   Apple: "When a document has unsaved changes, the close button should
+   display a dot." (dark dot in center of the red circle)
+
+c) TOOLBAR
+   Unified with title bar (same gradient, no visible boundary).
+   Apple: "In Mac OS X v10.5 and later, all windows display the title
+   bar unified with the toolbar."
+   Contains action controls. 8px between toolbar controls.
+
+d) SIDEBAR (Source List)
+   Apple: "A source list that provides the primary navigation displays
+   a blue background."
+
+   This is the blue-gray #D8DEE8 tint. The cool tone makes it recede
+   visually, pushing attention toward the warm white content area.
+   The sidebar is navigation; the content is the destination.
+
+   Selected item: #3875D7 with #FFFFFF text.
+   Apple: "Should not contain more than two levels of hierarchy."
+
+e) CONTENT AREA
+   Pure white #FFFFFF. This is the "paper."
+   Alternating row tint: #D8E6F5 (light blue, aids scanning).
+   Apple: "Content views display a white background by default."
+
+f) BOTTOM BAR
+   Regular-size: 32px high. Small: 22px high.
+   Same gray gradient as title bar/toolbar.
+   Apple: "Because a bottom bar is part of the window frame, it has the
+   same gray gradient surface."
+
+g) SCROLLBARS
+   Aqua blue gel capsule (#3875D7) with white gloss highlights.
+   White track with thin gray border. Arrows at both ends.
+   Apple: "The scroller size reflects how much of the content is visible."
+   "Scroll bars in inactive windows have an inactive appearance."
+
+
+VI. THE DOCK
+=============
+The dock is a shelf. Not a toolbar. Not a panel. A shelf.
+
+Apple: "The Dock is more than just a tool for users. Developers need
+to account for its presence."
+
+WHY A SHELF?
+A shelf communicates permanence. Things on a shelf are your personal
+collection — always available, deliberately placed. A toolbar implies
+function-specific actions; a shelf implies identity.
+
+PHYSICAL PROPERTIES:
+  Shape:        Trapezoid (wider bottom, narrower top)
+  Perspective:  Top edge ~76% of bottom edge width
+  Material:     Semi-transparent glass (~75% opacity)
+  Surface:      Wallpaper visible through it
+  Top edge:     Thin white highlight line (light catching glass edge)
+  Bottom edge:  Meets screen edge exactly
+
+ICON BEHAVIOR:
+  Position:     Icons rest ON the shelf surface
+  Visibility:   Top ~20% of icon extends above shelf edge
+  Reflections:  Mirrored at ~25% opacity, fading over ~40% of icon height
+  Spacing:      ~6px between icons
+  Separator:    Thin vertical line between apps and documents/folders
+
+  Apple on clicking:
+  "Clicking an application icon in the Dock should always result in a
+  window becoming active."
+  - Not running: launch and open a window
+  - Running, has windows: bring all to front
+  - Running, no windows: open a new window
+  - Minimized: expand last minimized window
+
+INDICATORS:
+  Running apps show a small glowing dot below their icon, ON the shelf.
+  Apple: "Superimposing a small image on an application's Dock tile icon"
+  (for badges like unread message counts).
+
+MAGNIFICATION:
+  Parabolic (cosine falloff). Icon under cursor grows most, neighbors
+  proportionally less. Serves Fitts's law (larger target = easier click)
+  and delight.
+
+DOCK MENUS:
+  Apple: Control-clicking shows: Show In Finder, Hide, Quit, Keep In Dock.
+  Custom items appear above standard items, only when app is open.
+
+
+VII. THE MENU BAR
+==================
+Apple: "The menu bar extends across the top of the main screen. There is
+only one menu bar; don't put menu bars in windows."
+
+WHY THE TOP EDGE?
+Fitts's law: screen edges have infinite size as click targets. You can
+throw the cursor to the top without overshooting. The menu bar is
+trivially easy to hit.
+
+VISUAL PROPERTIES:
+  Height:       22px
+  Translucent:  Wallpaper bleeds through (subtle, not heavy)
+  Bottom edge:  Very subtle shadow/separator line
+
+CONTENTS (left to right):
+  1. Apple logo (bold black, ~16px)
+  2. App name (BOLD — "Finder", "Kate", etc.)
+  3. App menus (regular weight — File, Edit, View...)
+  4. Spacer
+  5. System tray icons (right side)
+  6. Clock (e.g., "Tue 3:58 AM")
+  7. Spotlight magnifying glass (far right)
+
+Apple on the app name being bold: the active app name is in the
+"Emphasized system font" (13pt bold). This is the ONLY bold text in
+the menu bar — it tells you who owns the menus right now.
+
+MENU ORDER:
+  Apple menu → App menu → File → Edit → Format → View →
+  [app-specific] → Window → Help
+
+  Apple: "Even if all items in a menu are unavailable, the menu title
+  is not dimmed." Menus don't disappear — they stay for stability.
+
+
+VIII. CONTROLS
+===============
+
+PUSH BUTTONS:
+  Apple: "A push button performs an instantaneous action."
+  "All push buttons should be clear in appearance, without color,
+  except the default button."
+
+  The default button pulses with blue tint. This draws the eye to the
+  most likely action.
+
+  Spacing: 12px between regular buttons, 10px small, 8px mini.
+
+RADIO BUTTONS:
+  Apple: "A group provides mutually exclusive, but related, choices."
+  2 to 5 items. More than 5: use a pop-up menu.
+  "A radio button should never initiate an action."
+  Labels: sentence-style capitalization.
+
+CHECKBOXES:
+  On-off choices. Can be indented for dependent relationships.
+  Sentence-style capitalization.
+
+SCROLLBARS:
+  Blue gel capsule = interactive (blue is the "interactive" color).
+  3D gel shape = grippable (invites physical grabbing gesture).
+  Arrows at both ends = increment without dragging.
+  Scroller size proportional to visible content.
+
+PROGRESS INDICATORS:
+  Three types:
+  - Determinate bar: known duration, fills left to right
+  - Indeterminate bar: unknown duration, spinning stripes
+  - Spinning circle: for constrained spaces
+
+
+IX. TYPOGRAPHY
+===============
+All Lucida Grande. Apple designed it for screen readability at small
+sizes with pixel-grid-optimized glyphs.
+
+  System font:            13pt Regular  (menus, dialogs, full-size controls)
+  Emphasized system:      13pt Bold     (alert messages, SPARINGLY)
+  Small system:           11pt Regular  (info text, column heads, small controls)
+  Emphasized small:       11pt Bold     (group titles without boxes)
+  Mini system:            9pt Regular   (mini controls, panel labels)
+  Label font:             10pt Regular  (toolbar button labels, tick marks)
+  View font:              12pt Regular  (text in lists and tables)
+  Menu bar:               14pt Regular  (slightly larger for readability at top)
+  Title bar:              13pt Bold     (centered window title)
+  Monospace:              Monaco/Menlo 10pt
+
+CAPITALIZATION RULES:
+  Title style (menus, buttons, labels): Capitalize Every Word Except
+  articles (a, an, the), conjunctions (and, or), short prepositions.
+
+  Sentence style (checkboxes, radio buttons, messages): First word
+  capitalized, rest lowercase unless proper nouns.
+
+RENDERING:
+  Subpixel antialiasing (RGB order). Triples effective horizontal
+  resolution for text. Font smoothing is automatic with system fonts.
+
+
+X. LAYOUT AND SPACING
+======================
+Apple provides exact pixel measurements. These are not suggestions.
+
+WINDOW MARGINS:
+  Side and bottom:   20px
+  Top (below toolbar): 14px
+
+BETWEEN CONTROLS:
+  Individual controls:  8px
+  Between groups:      12px
+  Label to first control: 8px
+
+SEPARATORS:
+  12px above and below horizontal separators
+
+GROUP BOXES:
+  20px from group box edge to window edge
+  16px inside group box to bottom control
+  10px inside group box to top control
+
+BOTTOM BARS:
+  Regular: 32px high, controls 3px from top
+  Small: 22px high, controls 1px from top
+  8px between controls, 8px from left edge
+
+TAB VIEWS:
+  12-14px below toolbar
+  20px inset margins
+  Tab heights: Regular 20px, Small 17px, Mini 15px
+
+PUSH BUTTON SPACING:
+  Regular: 12px minimum
+  Small: 10px
+  Mini: 8px
+
+FUNDAMENTAL LAYOUT PRINCIPLES:
+  Apple: "Center equalization — the visual weight is balanced on the
+  right and left side of the content area. It does not mean center
+  justification."
+
+  Labels: right-aligned to their colons.
+  Controls: left-aligned in groups.
+
+
+XI. ICONS
+==========
+Apple: "Aqua offers a photo-illustrative icon style — it approaches
+the realism of photography but uses the features of illustrations."
+
+ICON GENRES (each has a specific perspective and tone):
+
+  Application icons:
+    "Vibrant and inviting." Bright, saturated colors.
+    Perspective: slightly diminishing (wider at bottom) — "as if
+    sitting on a desk in front of you."
+
+  Utility icons:
+    "Convey a more serious tone." Desaturated, predominantly gray.
+    Perspective: straight-on — "as if on a shelf in front of you."
+
+  Document icons:
+    Paper with top-right corner folded. Shadow behind = hovering.
+
+  Toolbar icons:
+    "Simple, streamlined representations using simple shapes,
+    constrained shading, and just enough detail."
+    Straight-on perspective. 32x32 for icon buttons, ≤19x19 for
+    rectangular toolbar controls.
+
+REQUIRED SIZES:
+  512×512, 128×128, 32×32 (hint), 16×16 (hint)
+
+ICON DESIGN RULES:
+  Apple: "Perspective and shadows are the most important components."
+  - Single light source from above
+  - Icons of real objects should look like real materials
+  - Smooth gradients over sharp color delineations
+  - Use transparency only when convincing
+  - "Avoid using Aqua interface elements in your icons"
+
+
+XII. ANIMATION AND TIMING
+===========================
+Apple: "Use animation wisely, as a subtle enhancement to the user
+experience, not as the focus. Avoid animating everything."
+
+Every animation serves exactly one purpose: spatial communication.
+Where did it go? Where did it come from? What does it belong to?
+
+  Minimize: window genies into dock icon → shows WHERE it went
+  Sheet: unfurls from title bar → shows WHERE it came from
+  Drawer: slides from beneath window → shows it BELONGS to window
+  Dock launch: icon bounces → shows the app is LOADING
+  Stack: springs from dock icon → shows WHAT'S inside
+
+Speed: fast. Communicate, then get out of the way.
+AnimationDurationFactor ~0.5x. Snappy, not languid.
+
+
+XIII. TRANSPARENCY AND TRANSLUCENCY
+=====================================
+Apple: "Transparency effects add a dimensional quality to windows."
+
+Where transparency appears:
+  Menu bar: subtle wallpaper bleed-through
+  Dock shelf: wallpaper visible through glass surface
+  Panels: dark translucent background with white/gray text
+  Sheets: slight transparency showing parent window dimmed behind
+
+Rules:
+  Apple: "Use transparency only when it is convincing and when it
+  helps complete the story."
+  - Don't make things transparent for effect
+  - Transparent elements must remain readable
+  - Controls on translucent backgrounds need contrast adjustment
+
+
+XIV. WHY ALL OF THIS MATTERS
+==============================
+Every principle reinforces every other:
+
+  Consistent lighting → elements feel unified
+  Physical metaphors → instant understanding without labels
+  Color restraint → important things stand out
+  Depth via shadows → spatial hierarchy is clear
+  Translucency → context awareness (you see what's behind)
+  Animation → spatial memory (you know where things went)
+  Forgiveness → freedom to explore
+  Stability → confidence in the environment
+
+Apple: "Aesthetic integrity means that information is well organized
+and consistent with principles of good visual design. Keep graphics
+simple, and use them only when they truly enhance usability."
+
+The Aqua interface is not a style. It is a communication system.
+Every gradient, shadow, color, and animation carries information.
+Remove any element and the communication degrades. Add unnecessary
+elements and the signal-to-noise ratio drops.
+
+Snow Leopard (10.6) represents the peak refinement of this system.
+Every pixel serves a purpose. Nothing is decorative for its own sake.
+The gloss on a button says "I'm raised and pressable." The shadow
+under a window says "I'm floating." The blue in a scrollbar says
+"I'm interactive." The translucent dock says "I'm here but I'm not
+covering your work."
+
+This is the standard.

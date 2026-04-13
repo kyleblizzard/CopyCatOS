@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>ClockPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>kello, valikkorivi</string>
+				<key>title</key>
+				<string>Päivämäärän ja ajan esittäminen valikkorivillä</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>kuulorajoitteinen, vammainen, kuuro, avusta, ääni, ilmoittaminen, avustaminen</string>
+				<key>title</key>
+				<string>Ajan kertominen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>sekunnit, aamupäivä, iltapäivä, arkipäivä, 24 tunnin</string>
+				<key>title</key>
+				<string>Kellon asettaminen</string>
+			</dict>
+		</array>
+	</dict>
+	<key>DateTimePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>automaattinen, automatisoi, automaattisesti, automatisoiminen</string>
+				<key>title</key>
+				<string>Päivämäärän ja ajan asettaminen</string>
+			</dict>
+		</array>
+	</dict>
+	<key>TimeZonePref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>aikavyöhykkeen asettaminen</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

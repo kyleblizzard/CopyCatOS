@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Main</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>geselecteerd, geselecteerde, tekst, markeren, markering, markeer, markeringen</string>
+				<key>title</key>
+				<string>Markeringskleur</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>Apple-menu, programma's, documenten, servers</string>
+				<key>title</key>
+				<string>Aantal recente onderdelen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>bureaublad, aanpassen, persoonlijk, aangepast, aanpassing, personaliseren</string>
+				<key>title</key>
+				<string>Weergave van knoppen, menu's en vensters</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>pijlen, soepel, minimaliseren, venster, springen, schuifbalk, anti-aliasing, minimaliseer, gaan</string>
+				<key>title</key>
+				<string>Werking schuifbalken</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>anti-aliasing, onscherp, rafelig, vaag, tekst, grootte, lcd, flat, beeldscherm, scherm, wazig, anti-alias</string>
+				<key>title</key>
+				<string>Anti-aliasing</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

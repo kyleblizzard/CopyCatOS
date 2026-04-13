@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Hearing</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>Uniwersalny, dostęp, dostępność, inwalidzi, upośledzenie, głusi, niedosłyszący, słuch, funkcje wspomagające</string>
+				<key>title</key>
+				<string>Miganie ekranu przy komunikatach</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Keyboard</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>Uniwersalny, dostęp, dostępność, inwalidzi, upośledzenie, ruchowo, niepełnosprawni, wolniej, funkcje wspomagające, łatwe, Lepkie klawisze, tempo powtarzania, klawisz modyfikujący, czułość, korygować, korekty, pisać, wolniej, zwalniać, korygowanie, pisanie</string>
+				<key>title</key>
+				<string>Łatwiejsze używanie klawiatury</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Mouse</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>Uniwersalny, dostęp, dostępność, inwalidzi, upośledzenie, ruchowo, niepełnosprawni, wolniej, funkcje wspomagające, łatwe, klawisze, numeryczne, klawiatura, wskaźnik, kursor, powiększać, przybliżać, powiększenie, korygować, korekty, wolniej, zwalniać, korygowanie, powiększone, powiększanie, przybliżone, przybliżanie</string>
+				<key>title</key>
+				<string>Łatwiejsze używanie myszy i gładzika</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Display</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>Uniwersalny, dostęp, dostępność, inwalidzi, upośledzenie, niepełnosprawni, niedowidzący, niewidomi, wzrok, widoczne, czytanie, wyświetlanie, zwiększony, kontrast, czarne, białe, szare, korekty, czytać, widzieć, wyświetlać, zwiększać, korygować, skala szarości</string>
+				<key>title</key>
+				<string>Łatwiejsze czytanie z ekranu</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_VoiceOver</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>mówiony, interfejs, słyszenie, czytnik, ekranu, Uniwesalny, dostęp, dostępność, inwalidzi, upośledzenie, głusi, niedowidzący, niewidomi, wzrok, voice over</string>
+				<key>title</key>
+				<string>Włącz i wyłącz VoiceOver</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Włącz urządzenia wspomagające</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>pasek menu</string>
+				<key>title</key>
+				<string>Pokazuj Uniwersalny dostęp w pasku menu</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Zoom</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>Uniwersalny, dostęp, dostępność, inwalidzi, upośledzenie, niepełnosprawni, niedowidzący, niewidomi, wzrok, widoczne, powiększać, przybliżać, przybliżenie, czytać, widzieć, wyświetlać, zwiększać, większe, maksymalne, minimalne, przewijać, mysz, kółko, kulka, kulka myszy, kółko myszy, powiększanie, powiększone, przybliżone, przybliżenie, czytanie, widzenie, wyświetlanie, zwiększanie, zmniejszanie</string>
+				<key>title</key>
+				<string>Powiększanie fragmentu ekranu</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

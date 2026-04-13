@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Options</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>skærme, computerskærme, monitorer, lysne, dæmpe, vågeblus, afbryde vågeblus, lukke ned, starte, strøm, til, fra, elektricitet, grøn, spare, bespare, besparelse, bevare, miljø, lade, tilslutte, afmontere, optimere, processor, automatisk, lysstyrke, sort, tomt, mørkne, dæmpe, dæmpet, på vågeblus, sove, vågne, vågen, vågne op, nedlukning, luk ned, sætte strøm til, slå, spare, bespare, opladt, oplader, tilsluttet, tilslutte, afmontere, af-monteret, afmontere, af-montere, optimeret, optimere, optimering, automatiseret, automatisere, auto-matisk</string>
+				<key>title</key>
+				<string>Spar på strøm</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>starte, starte igen, automatisk, start, starte op, genstarte, genstart, automatiseret, automatisere, auto-matisk</string>
+				<key>title</key>
+				<string>Genstart efter strømafbrydelse</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>menulinje</string>
+				<key>title</key>
+				<string>Vis batteristatus på menulinje</string>
+			</dict>
+		</array>
+		<key>portableOnly</key>
+		<false/>
+	</dict>
+	<key>PortableOptions</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>batterilevetid, strømforsyning, kabel, bærbar, PowerBook, iBook, MacBook, laptop, notebook, note book</string>
+				<key>title</key>
+				<string>Spar på batteri</string>
+			</dict>
+		</array>
+		<key>portableOnly</key>
+		<true/>
+	</dict>
+	<key>Schedule</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>vågeblus, afbryde vågeblus, afbryder, til, fra, automatisk, planlægge, planlagt, på vågeblus, sove, vågne, vågen, vågne op, opvågning, nedlukning, lukke ned, sætte strøm til, slå, slå til, automatiseret, automatisere, auto-matisk</string>
+				<key>title</key>
+				<string>Planlæg start, vågeblus eller nedlukning</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Sleep</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Vågeblusindstillinger</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

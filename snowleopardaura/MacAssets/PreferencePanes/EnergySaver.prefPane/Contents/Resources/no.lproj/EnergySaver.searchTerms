@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Options</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>skjermer, monitorer, gjøre lysere, dempe, svale, vekke, slå av, starte, starte opp, oppstart, strøm, på, av, elektrisitet, grønn, spare, redusere,sparing, reduksjon, miljø, miljøet, lade, plugg, koblet fra, optimalisere, ytelse, prosessor, automatisk, lysstyrke, svart, tom, mørkne, nedtonet, nedtone, nedtoning, vekke, våkne, vekking, slå av, lukke, arkivering, spare, bevare, ladet, lader, tilkoblet, koble til strøm, koble fra strøm, optimalisere, optimalisering, automatisert, automatisere, automatisk</string>
+				<key>title</key>
+				<string>Spare strøm</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>starte opp, starte på nytt, omstart, automatisk, oppstart, starte, reset, starter på nytt, automatisert, automatisere, automatisk</string>
+				<key>title</key>
+				<string>Starte på nytt etter strømbrudd</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>menylinje</string>
+				<key>title</key>
+				<string>Vis batteristatus i menylinjen</string>
+			</dict>
+		</array>
+		<key>portableOnly</key>
+		<false/>
+	</dict>
+	<key>PortableOptions</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>batteritid, batterivarighet, batteriliv, adapter, strømforsyning, strømforsyningsenhet, kabel, strømkabel, bærbar, PowerBook, iBook, MacBook, laptop, notebook</string>
+				<key>title</key>
+				<string>Spare batteri</string>
+			</dict>
+		</array>
+		<key>portableOnly</key>
+		<true/>
+	</dict>
+	<key>Schedule</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>dvale, vekke, starte opp, strøm, på, av, automatisk, planlagt, planlegge, dvalemodus, våken, våkne, våkning, vekking, slå av, automatisert, automatisere, automatisk</string>
+				<key>title</key>
+				<string>Planlegge oppstart, dvale eller avslåing</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Sleep</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Dvaleinnstillinger</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

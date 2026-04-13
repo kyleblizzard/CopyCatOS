@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>apps</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>applicazioni, giochi, famiglia, genitori, controlli, censura, sicurezza, privacy, sicurezza, bambini, bimbi, limiti, proteggi, permetti, permessi, privilegi, amministratori, amministrazione, utenti, account, privato, sicuro, garanzia, sicurezza dei bambini, bambini sicuri, limitare, restringere, limitazione, restrizione, programmi, protetto, protezione, tutela</string>
+				<key>title</key>
+				<string>Limita l'uso del computer</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Applica restrizioni su Dock</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>semplifica, facile, semplice, semplificare, semplificato, finder semplice</string>
+				<key>title</key>
+				<string>Finder semplificato</string>
+			</dict>
+		</array>
+	</dict>
+	<key>logs</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>famiglia, monitor, resoconto, traccia, gestisci, monitorare, login, tracciare, gestire</string>
+				<key>title</key>
+				<string>Resoconto controlli censura</string>
+			</dict>
+		</array>
+	</dict>
+	<key>other</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Limita l'uso delle stampanti</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>compatto, digitale, dischi, dischi, ottico</string>
+				<key>title</key>
+				<string>Limita la masterizzazione dei dischi</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Applica restrizioni sul cambiamento della password</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>dizionario, volgarità, bestemmia, bestemmiare, parolaccia</string>
+				<key>title</key>
+				<string>Nascondi volgarità nel dizionario</string>
+			</dict>
+		</array>
+	</dict>
+	<key>people</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>famiglia, genitori, controlli, censura, sicurezza, privacy, sicurezza, bambini, bimbi, proteggi, permetti, permessi, privilegi, amministratori, amministrazione, utenti, account, mail, istantaneo, messaggi, invio messaggi, ichat, IM, testo, contatto, contatti, amici, privato, sicuro, sicurezza, sicurezza dei bambini, tutela dei bambini, limitare, restringere, limitazione, restrizione, protetto, protezione, protezione, inviare messaggi, chattare, scrivere testo, eseguire facetime</string>
+				<key>title</key>
+				<string>Limita e-mail e chat</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>famiglia, controlli, note, notificare, censura</string>
+				<key>title</key>
+				<string>Notifica ai genitori</string>
+			</dict>
+		</array>
+	</dict>
+	<key>time</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>famiglia, censure, censura, controlli, sicurezza, privacy, sicuri, bambini, bimbi, restrizione, gestire, timer, ore serali, scuola, notti, permesso, restrizioni, gestire</string>
+				<key>title</key>
+				<string>Limiti di tempo</string>
+			</dict>
+		</array>
+	</dict>
+	<key>web</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>famiglia, genitori, controlli, censura, sicurezza, privacy, sicurezza, bambini, bimbi, proteggi, permetti, permessi, privilegi, amministratori, amministrazione, utenti, account, web, pagine web, siti web, Safari, browser, filtri adulti, contenuti, pornografia, X-rated, privato, sicuro, sicurezza, sicurezza dei bambini, tutela dei bambini, limitare, restringere, limitazione, restrizione, protetto, protezione, protezione, pagine, siti, scegliere, filtrare, filtrato</string>
+				<key>title</key>
+				<string>Limita accesso a Internet</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>gestisci, inappropriato, bestemmia, imprecare, contenuti espliciti, esplicito, cattivo, linguaggio, osceno, oscenità, parole, pornografia, parolaccia, parolacce, parole indecenti, filtrato, filtrare, non filtrato, non filtrato</string>
+				<key>title</key>
+				<string>Filtro volgarità</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

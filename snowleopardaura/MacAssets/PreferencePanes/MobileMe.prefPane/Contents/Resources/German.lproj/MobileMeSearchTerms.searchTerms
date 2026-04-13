@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>account</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisierbare Indexwörter</string>
+				<key>index</key>
+				<string>Benutzer, Mitgliedschaft, Testabo, Testmitgliedschaft, Mitglied, Name, Kennwort, Registrieren, Anmelden, .Mac, dotmac, itools</string>
+				<key>title</key>
+				<string>Bei MobileMe registrieren</string>
+			</dict>
+		</array>
+	</dict>
+	<key>idisk</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisierbare Indexwörter</string>
+				<key>index</key>
+				<string>Speicher, synchronisieren, Öffentlicher Ordner, Kennwort, Spiegel, Medium, Festplatte, lokal, E-Mail, Sync, Synchronisieren, Synchronisierung, Kennwörter</string>
+				<key>title</key>
+				<string>iDisk</string>
+			</dict>
+		</array>
+	</dict>
+	<key>mymacs</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisierbare Indexwörter</string>
+				<key>index</key>
+				<string>freigeben, gemeinsam nutzen, bereitstellen, Zugang, Netzwerk, Freigabe, Mein Mac, Meine Macs</string>
+				<key>title</key>
+				<string>Zugang zu meinem Mac</string>
+			</dict>
+		</array>
+	</dict>
+	<key>sync</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisierbare Indexwörter</string>
+				<key>index</key>
+				<string>Synchronisierung, synchronisieren, Sync, MobileMe, dotmac, .Mac, Menüleiste</string>
+				<key>title</key>
+				<string>Synchronisierungsstatus in der Menüleiste anzeigen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisierbare Indexwörter</string>
+				<key>index</key>
+				<string>Synchronisieren</string>
+				<key>title</key>
+				<string>MobileMe-Synchronisierung starten oder stoppen</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Options</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string>дисплеи, экраны, мониторы, увеличить яркость, уменьшить яркость, сон, проснуться, завершение работы, включение, питание, включить, выключить, электричество, экологичный, сохранять, экономить, экономия, сохранение, экология, заряжать, подключить, отключен, оптимизировать, производительность, процессор, автоматический, яркость, черный, пустой, затемнение, снижение яркости, переход в режим сна, режим сна, пробуждение, работать, рабочий, просыпаться, завершение работы, завершать работу, включение питания, включить, включение, сохранение, экономия, заряженный, заряжаться, подключенный, подключаться, отключенный, отключаться, оптимизированный, оптимизироваться, оптимизация, автоматизированный, автоматизация, автоматически</string>
+				<key>title</key>
+				<string>Экономия энергии</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string>включение, перезапуск, автоматически, запуск, запускаться, перезагрузить, перезагружаться, автоматизированный, автоматизация, автоматически</string>
+				<key>title</key>
+				<string>Перезагрузиться после сбоя энергоснабжения</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string>строка меню</string>
+				<key>title</key>
+				<string>Показывать статус аккумулятора в строке меню</string>
+			</dict>
+		</array>
+		<key>portableOnly</key>
+		<false/>
+	</dict>
+	<key>PortableOptions</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string>время работы аккумулятора, адаптер, кабель, портативный, PowerBook, iBook, MacBook, портативный компьютер, ноутбук</string>
+				<key>title</key>
+				<string>Экономия заряда аккумулятора</string>
+			</dict>
+		</array>
+		<key>portableOnly</key>
+		<true/>
+	</dict>
+	<key>Schedule</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string>сон, пробудиться, включение, питание, включить, выключить, автоматический, запланированный, расписание, режим сна, в режиме сна, пробуждение, работать, включаться, завершение работы, выключаться, питание, включить, включение, автоматизировано, автоматизация, автоматически</string>
+				<key>title</key>
+				<string>Расписание включения, перехода в режим сна и выключения</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Sleep</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Настройки режима сна</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

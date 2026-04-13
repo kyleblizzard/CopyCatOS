@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>LSI7202EP</key>
+	<string>Scheda Apple PCIe FC</string>
+	<key>LSI7202P</key>
+	<string>Scheda Apple PCI FC</string>
+	<key>LSI7202XP</key>
+	<string>Scheda Apple PCI-X FC</string>
+	<key>LSI7202XP-LC</key>
+	<string>Scheda Apple PCI-X FC</string>
+	<key>LSI7204EP</key>
+	<string>Scheda Apple PCIe 4G FC</string>
+	<key>LSI7204EP-LC</key>
+	<string>Scheda Apple PCIe 4G FC</string>
+	<key>LSI7404EP</key>
+	<string>Scheda Apple PCIe 4G FC</string>
+	<key>LSI7404EP-LC</key>
+	<string>Scheda Apple PCIe 4G FC</string>
+</dict>
+</plist>

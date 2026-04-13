@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>keyboardTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>taster, repeter, repetere, svar, funktion, Fn, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, taster, hastighed, skrive, forsinkelse, gentagelse, indtastning</string>
+				<key>title</key>
+				<string>Tastaturets følsomhed</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>se, syn, mørk, begrænset lys, dæmpe, nat, skrive, vise, belyse, belyst, indtastning</string>
+				<key>title</key>
+				<string>Oplys tastatur</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>menulinje, paletter, tegnpalet, tastaturfremviser</string>
+				<key>title</key>
+				<string>Vis Tastatur- og tegnfremviser på menulinje</string>
+			</dict>
+		</array>
+	</dict>
+	<key>keyboardTab_ModifierKeys</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>Skiftelås, ctrl, Alternativ, Kommando</string>
+				<key>title</key>
+				<string>Nulstil kombitaster</string>
+			</dict>
+		</array>
+	</dict>
+	<key>shortcutsTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>tjenester, Front Row, Ordbog, funktion, taster, Fn, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, fuld, Tab, navigere, fremhæve, Universel adgang, tilgængelighed, handicappet, besværet, mobilitet, forhindret, hjælpemidler, genveje, fremhævelse, fremhæv, markere, markering</string>
+				<key>title</key>
+				<string>Tastaturgenveje</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

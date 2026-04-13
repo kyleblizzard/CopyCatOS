@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Formats</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>regionalne, międzynarodowe, narodowe, miary, jednostki, style, metryczny, kalendarz, gregoriański, buddyjski, hebrajski, islamski, japoński, chiński, koptyjski, indyjski, perski, chiński, republiki chińskiej, dostosować, dostosowane, dostosowywanie, dostosuj, regionalnych, regionie, regionu, międzynarodowych, narodowych, jednostek, stylów, stylu, metrycznego, kalendarza, regionu, regionie</string>
+				<key>title</key>
+				<string>liczba, liczby, liczb, formaty daty i czasu, liczbowe, format</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>pieniądze, pieniężne, waluty, walutowe</string>
+				<key>title</key>
+				<string>Waluty</string>
+			</dict>
+		</array>
+	</dict>
+	<key>InputMenu</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>metoda, sposób, pasek menu, pasku menu, paska menu</string>
+				<key>title</key>
+				<string>Pokazuj menu klawiatury w pasku menu</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>pisanie, wpisywanie, źródła, klawiatury, klawisze, układy klawiatury, układy klawiszy, układ klawiatury, układ klawiszy, klawiatura, qwerty, pro, pc, standardowy, standardowa, iso, rozszerzony, rozszerzona, extended, Dvorak, afgańska, arabska, armeńska, austriacka, azerska, belgijska, brazylijska, brytyjska, bułgarska, białoruska, kanadyjska, czirokeska, chorwacka, czeska, duńska, devanagari, holenderska, estońska, faroese, fińska, francuska, niemiecka, grecka, gudżaracka, gurmukhi, hawajska, hebrajska, węgierska, islandzka, inuktitut, irlandzka, włoska, jawajska, kazachska, łotewska, litewska, macedońska, maltańska, maoryska, nepalska, sami, norweska, perska, polska, portugalska, rumuńska, rosyjska, serbska, słowacka, słoweńska, hiszpańska, szwedzka, szwajcarska, tajska, tybetańska, turecka, amerykańska, us, ujgurska, ukraińska, Unicode, hex, szesnastkowa, wietnamska, walijska, maszynistki, programisty</string>
+				<key>title</key>
+				<string>Układy klawiatury</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>główny, główne, języki, tryb, źródła, międzynarodowe, zagraniczne, obce, znaki, Unicode, japońsie, Kotoeri, Hiragana, Katakana, Romaji, Ainu, chińskie, chiński, tradycyjne, tradycyjny, uproszczone, uproszczony, Hanin, Wubu, koreański, Hangul, wietnamski, Telex, Tamil, Anjal</string>
+				<key>title</key>
+				<string>Metoda wprowadzania języków</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>paleta, symbol, podgląd, symbole, znak, Unicode, japońska, Kana, znaki, źródła, klawisze, Keycaps, znaki przestankowe, japońskie, japońskiej, japońskich, znaków, klawiszy, rozkład, znaków, na, klawiaturze, palecie, palety</string>
+				<key>title</key>
+				<string>Palety</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>źródło wprowadzania, układ klawiszy, układ klawiatury, klawiatura, dokument</string>
+				<key>title</key>
+				<string>Używaj jednego układu klawiatury we wszystkich dokumentach</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>źródło wprowadzania, układ klawiszy, układ klawiatury, klawiatura, dokument</string>
+				<key>title</key>
+				<string>Pozwalaj używać różnych układów klawiatury w każdym dokumencie</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Language</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>języki, dostosować, dostosuj, dostosowanie, języka, języków, narodowe, międzynarodowe, angielski, japoński, francuski, niemiecki, hiszpański, włoski, portugalski, holenderski, szwedzki, fiński, norweski, Bokmål, duński, polski, rosyjski, chiński, uproszczony, tradycyjny, koreański, afrykanerski, australijski, ajmarski, azerbejdżański, indonezyjski, malajski, bislama, bośniacki, bretoński, brytyjski, kanadyjski, kataloński, czeski, korsykański, hawajski, ido, zuluski, islandzki, kalaallisut, kornwalijski, kinyarwanda, swahili, suahili, haitański, łaciński, litewski, łotewski, luksemburski, węgierski, malgaski, maltański, maoryski, neapolitański, nynorsk, oksytański, uzbecki, oromo, austriacki, brazylijski, quechua, rumuński, rundi, sami, albański, sycylijski, słowacki, słoweński, somalijski, tagalog, tatarski, klingoński, turecki, turkmeński, USA, amerykański, wietnamski, flamandzki, waloński, grecki, azerbejdżański, białoruski, bułgarski, kirgiski, kazachski, macedoński, mongolski, serbski, tadżycki, ukraiński, gruziński, armeński, jidysz, hebrajski, urdu, pasztuński, arabski, perski, konkani, nepalski, marathi, sanskryt, hindi, pendżabski, gudżaracki, tamilski, tajski, tybetański, dżongkha, irokeski, inuktikut, ujgurski, własny, własne, dostosować, dostosowane, dostosowywanie, sortowanie, sortowania</string>
+				<key>title</key>
+				<string>Wybór języka i priorytety językowe</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Text</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>ułamki, zastąp, zastępowanie, podstaw, podstawianie</string>
+				<key>title</key>
+				<string>Zastępowanie symboli i tekstu</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>język, sprawdź pisownię, sprawdzanie pisowni</string>
+				<key>title</key>
+				<string>Pisownia</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>język</string>
+				<key>title</key>
+				<string>przenoszenie wyrazów</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>inteligentny cudzysłów</string>
+				<key>title</key>
+				<string>Styl cudzysłowów</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

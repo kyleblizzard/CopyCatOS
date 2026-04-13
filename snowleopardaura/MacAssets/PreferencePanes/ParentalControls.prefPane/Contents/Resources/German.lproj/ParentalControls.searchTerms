@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>apps</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisierbare Indexwörter</string>
+				<key>index</key>
+				<string>Programme, Spiele, Familie, Eltern, Kindersicherung, Steuerung, Sicherheit, Privatsphäre, Schutz, Datenschutz, Kinder, Minderjährige, Grenzen, schützen, erlauben, Erlaubnis, Zugriffsrechte, Administratoren, administrativ, Benutzer, Accounts, privat, sicher, sichern, Kinderschutz, kindergesichert, begrenzen, eingeschränkt, einschränkend, Einschränkungen, Anwendungen, geschützt, beschützen, Sicherung</string>
+				<key>title</key>
+				<string>Computerverwendung beschränken</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisierbare Indexwörter</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Dock beschränken</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisierbare Indexwörter</string>
+				<key>index</key>
+				<string>vereinfachen, einfach, einfacher, vereinfachend, vereinfacht, einfacher Finder</string>
+				<key>title</key>
+				<string>Einfacher Finder</string>
+			</dict>
+		</array>
+	</dict>
+	<key>logs</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisierbare Indexwörter</string>
+				<key>index</key>
+				<string>Familie, überwachen, Protokoll, nachforschen, verwalten, beobachten, protokollieren, Nachforschung, Verwaltung</string>
+				<key>title</key>
+				<string>Kindersicherungs-Protokolle</string>
+			</dict>
+		</array>
+	</dict>
+	<key>other</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Druckerverwendung beschränken</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>Compact, digital, Medien, Medium, CD, DVD, CDs, DVDs, optisch</string>
+				<key>title</key>
+				<string>Brennenzugriff beschränken</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Ändern des Kennworts beschränken</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisierbare Indexwörter</string>
+				<key>index</key>
+				<string>Lexikon, Wörterbuch, anstößige Ausdrücke, fluchen, Flüche, Fluch</string>
+				<key>title</key>
+				<string>Anstößige Ausdrücke im Lexikon ausblenden</string>
+			</dict>
+		</array>
+	</dict>
+	<key>people</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisierbare Indexwörter</string>
+				<key>index</key>
+				<string>Familie, Eltern, Kindersicherung, Steuerung, Sicherheit, Privatsphäre, Schutz, Datenschutz, Kinder, Minderjährige, einschränken, schützen, erlauben, Erlaubnis, Zugriffsrechte, Administratoren, administrativ, Benutzer, Accounts, Mail, Telegramm, Nachricht, E-Mail, iChat, Instant, Messaging, Text, Freund, Freunde, Kontakte, privat, sicher, sichern, Kinderschutz, kindergesichert, begrenzen, eingeschränkt, einschränkend, Einschränkungen, geschützt, beschützen, Sicherung, e-mailen, chatten, simsen, SMS, Facetime, Videotelefonat</string>
+				<key>title</key>
+				<string>E-Mails und Chats beschränken</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisierbare Indexwörter</string>
+				<key>index</key>
+				<string>Familie, Steuerung, bemerken, informieren, benachrichtigen, Kindersicherung</string>
+				<key>title</key>
+				<string>Eltern benachrichtigen</string>
+			</dict>
+		</array>
+	</dict>
+	<key>time</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisierbare Indexwörter</string>
+				<key>index</key>
+				<string>Familie, Eltern, Kindersicherung, Steuerung, Sicherheit, Privatsphäre, Datenschutz, Schutz, Kinder, Minderjährige, einschränken, verwalten, Zugriffszeiten, Timer, Zeitplan, Nachtruhe, Schule, nachts, Nacht, Sperrzeit, Einschränkung, Verwaltung</string>
+				<key>title</key>
+				<string>Zugriffszeiten</string>
+			</dict>
+		</array>
+	</dict>
+	<key>web</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisierbare Indexwörter</string>
+				<key>index</key>
+				<string>Familie, Eltern, Kindersicherung, Steuerung, Sicherheit, Privatsphäre, Schutz, Datenschutz, Kinder, Minderjährige, einschränken, schützen, erlauben, Erlaubnis, Zugriffsrechte, Administratoren, administrativ, Benutzer, Accounts, Web, Webseiten, Websites, Safari, Browser, Filter, erwachsen, Erwachsene, Inhalt, Pornografie, jugendgefährdend, anstößig, privat, sicher, sichern, Kinderschutz, kindergesichert, begrenzen, eingeschränkt, einschränkend, Einschränkungen, geschützt, beschützen, Sicherung, Seiten, Sites, surfen, gefiltert, filtern</string>
+				<key>title</key>
+				<string>Internetzugriff beschränken</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisierbare Indexwörter</string>
+				<key>index</key>
+				<string>verwalten, unangemessen, fluchen, Schimpfwort, Schimpfwörter, Kraftausdruck, Kraftausdrücke, anstößig, vulgär, Sprache, obszön, unanständig, Obszönität, Wörter, Pornografie, gefiltert, filtern, ungefiltert, nicht gefiltert</string>
+				<key>title</key>
+				<string>Anstößige Ausdrücke filtern</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

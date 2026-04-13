@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>SpeechRecognition</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>Særlige, behov, tilgjengelighet, funksjonshemmet, handikappet, syn, blind, synlig, hørsel, svekket, tale, snakke, talbare, objekter, speakable, items, talte, kommandoer, objekter, gjenkjenne, gjenkjenning, hjelpe, assistere, assistanse, stemmer, kalibrere, kalibrasjon, justere, justering, lytte, høre, tast, knapp, snarveier, tilpasse, egendefinere, mikrofon, volum, tilpassed, tilpasser</string>
+				<key>title</key>
+				<string>Talegjenkjenning</string>
+			</dict>
+		</array>
+	</dict>
+	<key>TTS</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliserbare indeksord</string>
+				<key>index</key>
+				<string>talesyntese, tale, syntese, talegenerering, TTT, talte, annonseringer, annonsere, tale, tekst, snakke, stemme, varsling, annonsere, advarsler </string>
+				<key>title</key>
+				<string>Tekst-til-tale</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

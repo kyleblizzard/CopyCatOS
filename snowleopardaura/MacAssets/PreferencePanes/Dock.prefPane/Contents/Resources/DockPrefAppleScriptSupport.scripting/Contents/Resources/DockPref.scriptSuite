@@ -1,0 +1,64 @@
+{
+	Name = DockPref;
+	AppleEventCode = dpas;
+	Classes = {
+		DockPref = {
+			AppleEventCode = dpao;
+			Superclass = "NSCoreSuite.AbstractObject";
+			Attributes = {
+				magnification = {
+					AppleEventCode = dmag;
+					ReadOnly = NO;
+					Type = "NSNumber<Bool>";
+				};
+				docksize = {
+					AppleEventCode = dsze;
+					ReadOnly = NO;
+					Type = "NSNumber<Float>";
+				};
+				magsize = {
+					AppleEventCode = dmsz;
+					ReadOnly = NO;
+					Type = "NSNumber<Float>";
+				};
+				autohide = {
+					AppleEventCode = dahd;
+					ReadOnly = NO;
+					Type = "NSNumber<Bool>";
+				};
+				animate = {
+					AppleEventCode = dani;
+					ReadOnly = NO;
+					Type = "NSNumber<Bool>";
+				};
+				edge = {
+					AppleEventCode = dpse;
+					ReadOnly = NO;
+					Type = "NSNumber<Edges>";
+				};
+				effect = {
+					AppleEventCode = deff;
+					ReadOnly = NO;
+					Type = "NSNumber<Effects>";
+				};
+			};
+		};
+	};
+	Enumerations = {
+		Edges = {
+			AppleEventCode = dpls;
+			Enumerators = {
+				Bottom = bott;
+				Left = left;
+				Right = righ;
+			};
+		};
+		Effects = {
+			AppleEventCode = dpef;
+			Enumerators = {
+				Genie = geni;
+				Scale = scal;
+			};
+		};
+	};
+}

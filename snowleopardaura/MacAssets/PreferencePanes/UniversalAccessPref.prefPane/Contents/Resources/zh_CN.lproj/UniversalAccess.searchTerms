@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Hearing</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>万能, 辅助, 辅助功能, 伤残, 残疾, 受限制, 聋, 听, 听力, 受损, 辅助的</string>
+				<key>title</key>
+				<string>闪动屏幕以警告</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Keyboard</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>万能, 辅助, 辅助功能, 伤残, 残疾, 受限制, 移动性, 受损伤, 慢速, 辅助的, 容易, 粘滞键, 重复速率, 修饰键, 灵敏度, 调整, 调整, 键入, 较慢, 慢, 调整, 键入</string>
+				<key>title</key>
+				<string>让键盘更易于使用</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Mouse</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>万能, 辅助, 辅助功能, 伤残, 残疾, 受限制, 移动性, 受损伤, 慢速, 辅助的, 容易, 按键, 数字, 小键盘, 鼠标指针, 光标, 键盘, 扩大, 放大, 放大, 调整, 调整, 较慢, 慢, 调整, 以扩大, 扩大, 已放大, 放大</string>
+				<key>title</key>
+				<string>让鼠标和触控板更易于使用</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Display</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>万能, 辅助, 辅助功能, 伤残, 残疾, 受限制, 盲人, 视力, 视觉, 可见的, 受损伤, 阅读, 观看, 增强, 对比度, 黑, 白, 灰度, 调整, 阅读, 看到, 观看, 增强, 调整, 灰度</string>
+				<key>title</key>
+				<string>让显示器更易于看到</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_VoiceOver</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>spoken, interface, hearing, 语音, 界面, 听力, 屏幕, 阅读, screen, reader, Universal, 万能, 通用, access, accessibility, disabled, handicapped, limited, blind, sight, vision, visible, impaired, 辅助, 辅助功能, 停用, 残疾, 障碍, 有限, 盲人, 视力, 视觉, 可视, 受损, voice over</string>
+				<key>title</key>
+				<string>打开和关闭 VoiceOver</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>启用辅助设备</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>菜单栏</string>
+				<key>title</key>
+				<string>在菜单栏中显示“万能辅助”</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Zoom</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>万能, 辅助, 辅助功能, 伤残, 残疾, 受限制, 盲人, 视力, 视觉, 可见的, 受损伤, 扩大, 放大, 放大, 阅读, 看到, 观看, 增大, 减小, 较大, 较大, 最大, 最小, 滚动, 鼠标, 滚轮, 珠, 滚珠, 滚轮, 鼠标滚珠, 鼠标滚轮, 缩放, 已增大, 增大, 已放大, 放大, 阅读, 看到, 观看, 增大, 减小</string>
+				<key>title</key>
+				<string>缩放以扩大屏幕</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

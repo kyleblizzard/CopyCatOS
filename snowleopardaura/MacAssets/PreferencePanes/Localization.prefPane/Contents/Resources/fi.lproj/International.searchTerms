@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Formats</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>alueellinen, kansainvälinen, mittayksikkö, yksiköt, tyylit, metrinen, kalenteri, gregoriaaninen, buddhalainen, heprealainen, islamilainen, japanilainen, kiinalainen, koptinen, etiopialainen, intialainen, persialainen, kiinan kansantasavalta, muokkaa, muokattu, muokkaaminen, muokkaus</string>
+				<key>title</key>
+				<string>Numero-, päivämäärä- ja aikamuodot</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>raha, valuutta</string>
+				<key>title</key>
+				<string>valuutta</string>
+			</dict>
+		</array>
+	</dict>
+	<key>InputMenu</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>menetelmä, valikkorivi</string>
+				<key>title</key>
+				<string>syöttövalikon näyttäminen valikkorivillä</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>kirjoita, kirjoittaminen, lähteet, Qwerty, Pro, PC, standardi, ISO, laajennettu, Dvorak, afgaani, arabialainen, armenialainen, itävaltalainen, azeri, belgialainen, brasilialainen, brittiläinen, bulgarialainen, valkovenäläinen, kanadalainen, cherokee, kroatialainen, tsekkiläinen, tanskalainen, devanagari, hollantilainen, virolainen, fäärsaarelainen, suomalainen, ranskalainen, saksalainen, kreikkalainen, gujarati, gurmukhi, havaijilainen, heprealainen, unkarilainen, islantilainen, inuktitut, irlantilainen, italialainen, jawi, kazakki, latvialainen, liettualainen, makedonialainen, maltalainen, maori, nepalilainen, saamelainen, norjalainen, persialainen, puolalainen, portugalilainen, romanialainen, venäläinen, serbialainen, slovakialainen, slovenialainen, espanjalainen, ruotsalainen, sveitsiläinen, thai, tiibettiläinen, turkkilainen, yhdysvaltalainen, uiguuri, ukrainalainen, Unicode, heksa, vietnamilainen, walesilainen</string>
+				<key>title</key>
+				<string>Näppäimistöasettelut</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>pää, kielet, tila, lähteet, kansainvälinen, vieras, merkit, Unicode, japani, kotoeri, hiragana, katakana, romaji, ainu, kiina, perinteinen, hanin, yksinkertaistettu, wubi, korea, hangul, vietnam, telex, tamil, anjal</string>
+				<key>title</key>
+				<string>kielten syöttötavat</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>paletti, symboli, katseluohjelma, symbolit, merkki, Unicode, japani, kana, merkit, lähteet, näppäimet, välimerkit</string>
+				<key>title</key>
+				<string>Paletit</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>syöttö, lähde, dokumentti</string>
+				<key>title</key>
+				<string>Käytä yhtä syöttölähdettä kaikille dokumenteille</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>syöttö, lähde, dokumentti</string>
+				<key>title</key>
+				<string>Salli eri syöttölähde jokaiselle dokumentille</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Language</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>kielet, muokkaa, kansainvälinen, englanti, japani, ranska, saksa, espanja, italia, portugali, hollanti, ruotsi, suomi, norja, bokmål, tanska, venäjä, puola, kiina, yksinkertaistettu, perinteinen, korea, afrikaans, australia, aymara, azerbaijani, indonesia, malaiji, bislama, bosnia, breton, brittienglanti, kanada, katalaani, tsekki, korsika, wales, sveitsi, navajo, viro, esperanto, baski, tonga, fääri, sveitsi, irlanti, gaeli, iiri, manx, manksi, skottienglanti, galicia, guarani, kroatia, havaiji, ido, zulu, islanti, kalaallisut, eskimo, korni, ruanda, swahili, haiti, latina, latvia, luxemburg, liettua, unkari, malagasy, malta, maori, napoli, nynorsk, oksitaani, uzbekki, oromo, itävalta, brasilia, ketsua, romania, rundi, saame, albania, sisilia, slovakia, slovenia, somali, tagalog, tataari, klingon, turkki, turkmeeni, amerikanenglanti, vietnam, flaami, walloon, kreikka, valkovenäjä, bulgaria, kirgiisi, kazakki, makedonia, mongolia, serbia, tadjikki, ukraina, georgia, armenia, jiddish, heprea, urdu, pashto, arabia, persia, konkani, nepali, marathi, sanskriitti, hindi, punjabi, gujarati, tamili, thai, tiibet, dzongkha, cherokee, inuktitut, uiguuri, muokattu, muokkaaminen, muokkaus, järjestäminen</string>
+				<key>title</key>
+				<string>Kieliasetus ja -prioriteetti</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Text</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>murtoluvut, osat, korvata, korvaus, korvaaminen, korvike</string>
+				<key>title</key>
+				<string>Symbolien ja tekstin korvaaminen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>kieli, oikeinkirjoitus, kirjoitusvirhe</string>
+				<key>title</key>
+				<string>Oikeinkirjoitus</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>kieli</string>
+				<key>title</key>
+				<string>Sananjaot</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>älykkäät lainausmerkit</string>
+				<key>title</key>
+				<string>Lainausmerkin tyyli</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

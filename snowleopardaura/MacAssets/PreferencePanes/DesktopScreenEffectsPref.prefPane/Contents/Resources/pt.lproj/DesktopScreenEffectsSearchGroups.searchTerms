@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>DesktopPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>fotografias, fundo, mesa, papel de parede, padrão, personalizar, fotos, imagens, mesa, superior, parede, papel, personalizado, personalizando, personalização</string>
+				<key>title</key>
+				<string>Imagem para Mesa</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Barra de menus translúcida</string>
+			</dict>
+		</array>
+	</dict>
+	<key>ScreenSaverPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>senhas, bloquear, desativar, iniciar, RSS, visualizador, documentos, notícias, títulos, iTunes, álbuns, arte, aleatório, fotografias, imagens, personalizar, protetores de tela, pacotes de notícias, fotos, senhas, bloqueando, desativando, iniciando, personalizado, personalizando, personalização</string>
+				<key>title</key>
+				<string>Protetor de tela</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>cantos de tela ativos</string>
+				<key>title</key>
+				<string>Cantos de acesso rápido</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Mostrar relógio com protetor de tela</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>account</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>gebruiker, account, abonnement, lidmaatschap, proef, lid, naam, wachtwoord, registreren, aanmelden, puntmac, dotmac, itools</string>
+				<key>title</key>
+				<string>Aanmelden bij MobileMe</string>
+			</dict>
+		</array>
+	</dict>
+	<key>idisk</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>opslag, synchroniseren, publieke map, map 'Public', wachtwoord, mirror, schijf, lokaal, mail, synchronisatie, wachtwoord</string>
+				<key>title</key>
+				<string>iDisk</string>
+			</dict>
+		</array>
+	</dict>
+	<key>mymacs</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>delen, deling, terug, netwerk, mijnmac, mijnmacs</string>
+				<key>title</key>
+				<string>Terug naar mijn Mac</string>
+			</dict>
+		</array>
+	</dict>
+	<key>sync</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>synchronisatie, MobileMe, dotmac, puntmac, menubalk</string>
+				<key>title</key>
+				<string>Synchronisatiestatus in menubalk tonen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>sync</string>
+				<key>title</key>
+				<string>MobileMe-synchronisatie starten of stoppen</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Main</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>muokkaa, ohjausliuska, työkalupalkki, muuta kokoa, suurempi, pienenpi, sijainti, keskellä, pöytäkone, vasen, oikea, alhaalla, kulmat, jousi, pomppu, skaalaa, animoi, pullonhenki, kätke, näytä, suurenna, pienennä, suurenna, suurempi, muokattu, muokkaaminen, muokkaus, työkalupalkki, kokoa muutettu, koon muuttaminen, sijoittaminen, keskittäminen, jousitus, pomppiminen, skaalaus, animointi, animaatio, kätkeminen, kätketty, näyttäminen, näytetty, suurentaminen, suurennus, pienennetty, pienentäminen, suurennettu, suurentaminen</string>
+				<key>title</key>
+				<string>Dock-asetukset</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

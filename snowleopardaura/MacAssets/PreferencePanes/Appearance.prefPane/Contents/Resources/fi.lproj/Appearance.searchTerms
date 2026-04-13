@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Main</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>valittu, teksti, korostaminen, korosta</string>
+				<key>title</key>
+				<string>korostusväri</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>Omenavalikko, ohjelmat, dokumentit, palvelimet</string>
+				<key>title</key>
+				<string>Äskeisten kohteiden määrä</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>työpöytä, muokkaa, personalisoi, muokkaaminen, muokkaus, personalisoiminen</string>
+				<key>title</key>
+				<string>Painikkeiden, valikoiden ja ikkunoiden ulkoasu</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>nuolet, pehmeä, minimoi, pienennä, ikkuna, hyppää, vierityspalkki, pehmennys, minimointi, pienentäminen, hyppääminen</string>
+				<key>title</key>
+				<string>Vierityspalkin käytös</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokalisoitavat hakusanat</string>
+				<key>index</key>
+				<string>antialiasointi, sumea, sahalaitainen, pehmeä, teksti, koko, LCD, litteä, näyttö, monitori, sumennettu, anti aliasointi</string>
+				<key>title</key>
+				<string>kirjasinten pehmennys</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

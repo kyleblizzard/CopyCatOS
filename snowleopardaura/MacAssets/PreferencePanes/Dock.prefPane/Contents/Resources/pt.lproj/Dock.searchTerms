@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Main</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>personalizar, faixa de controle, barra de ferramentas, redimensionar, maior, menor, posição, centralizar, mesa, esquerda, direita, inferior, margens, abertura automática, saltar, escala, animar, gênio, ocultar, mostrar, ampliar, minimizar, maximizar, aumentar, maior, personalizado, personalizando, personalização, barra de controle, barra ferramentas, redimensionado, redimensionamento, posicionamento, centralização, abertura, salto, escala, animando, animação, ocultando, oculto, mostrando, mostrado, ampliando, ampliação, minimizado, minimização, maximizado, maximizando, ampliando</string>
+				<key>title</key>
+				<string>Ajustes do Dock</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

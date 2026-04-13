@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>SpeechRecognition</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>Universeel, Universele, toegang, toegankelijkheid, invalide, gehandicapt, handicap, zicht, blind, zien, zichtbaar, horen, doof, spreken, uitspreken, gesproken, onderdelen, commando's, onderdelen, herkennen, herkenning, assisteren, assistentie, helpen, hulp, praten, stem, stemmen, kalibreren, kalibratie, luisteren, horen, toets, toetscombinatie, sneltoets, aanpassen, aanpassing, microfoon, volume, oplezen, hardop, aangepast</string>
+				<key>title</key>
+				<string>Spraakherkenning</string>
+			</dict>
+		</array>
+	</dict>
+	<key>TTS</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>spraak, synthese, tekst-naar-spraak, gesproken, aankondigen aankondigingen, tekst, uitspreken, spreken, stem, spraak, snelheid, waarschuwingen, oplezen, praten, hardop</string>
+				<key>title</key>
+				<string>Tekst-naar-spraak</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>FileVault</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>kryptere, hjem, file vault, krypteret, kryptering, kodning</string>
+				<key>title</key>
+				<string>FileVault</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>godkende, adgangskode, godkendt, godkendelse</string>
+				<key>title</key>
+				<string>Hovedadgangskode</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Firewall</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>forhindre, blokere, netværk, porte, udp, arkivdeling, AFP, ekstern, SSH, forhindring, forhindre, blokeret, blokering, fire wall</string>
+				<key>title</key>
+				<string>Slå firewall til eller fra</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>fire wall</string>
+				<key>title</key>
+				<string>Avancerede indstillinger til firewall</string>
+			</dict>
+		</array>
+	</dict>
+	<key>General</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>skærm, skåner, adgangskode, godkende, låse, låse op, vågeblus, afbryde vågeblus, skærmskåner, adgangskode, godkendt, godkendelse, låst, låsning, ulåst, ikke låst, på vågeblus, ved at afbryde vågeblus</string>
+				<key>title</key>
+				<string>Bed om adgangskode for at afbryde vågeblus</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>logge, tilmelde, på, ind, automatisk, logning, log ind, tilmelding, logind, logpå</string>
+				<key>title</key>
+				<string>Slå automatisk log ind fra</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>låse, låse op, låst, låst op</string>
+				<key>title</key>
+				<string>Lås Systemindstillinger</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>tilmelde, fra, logge, logge af, logge ud, tilmelding, melde af, melde ud</string>
+				<key>title</key>
+				<string>Log ud, hvis passiv</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>vm, kryptere, krypteret, kryptering</string>
+				<key>title</key>
+				<string>Sikker virtuel hukommelse</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>infrarød, modtager, IR, infra-rød</string>
+				<key>title</key>
+				<string>Slå ekstern kontrol fra</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>sikker, privat, privatliv, sikkerhed, beskytte, beskyttelse, sikret, sikre, beskyttet, beskytning</string>
+				<key>title</key>
+				<string>Sikkerhedsindstillinger</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

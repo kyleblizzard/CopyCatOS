@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Formats</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>regionaal, internationaal, maateenheid, eenheden, stijlen, metriek, kalender, Gregoriaans, Boeddhistisch, Hebreeuws, Islamitisch, Japans, Chinees, Koptisch, Ethiopisch, Indiaas, Perzisch, Republiek China, aanpassen, aangepast, aanpassing, aanpassingen</string>
+				<key>title</key>
+				<string>Getalnotatie, datumnotatie en tijdnotatie</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>geld</string>
+				<key>title</key>
+				<string>Valuta-aanduiding</string>
+			</dict>
+		</array>
+	</dict>
+	<key>InputMenu</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>methode, menubalk</string>
+				<key>title</key>
+				<string>Invoermenu in menubalk tonen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>typen, bronnen, Qwerty, Pro, Pc, Standaard, ISO, Uitgebreid, Dvorak, Unicode, Hex, Afghaans, Amerikaans, Arabisch, Armeens, Azerbeidzjaans, Belgisch, Braziliaans, Brits, Bulgaars, Canadees, Cherokee, Deens, Devanagari, Duits, Ests, Faeröers, Fins, Frans, Grieks, Gujarati, Gurmukhi, Hawaïaans, Hebreeuws, Hongaars, Iers, IJslands, Inuktitut, Italiaans, Jawi, Kazaks, Kroatisch, Letlans, Litouws, Macedonisch, Maltees, Maori, Nederlands, Nepalees, Noors, Oejgoers, Oekraïens, Oostenrijks, Persisch, Pools, Portugees, Roemeens, Russisch, Samisch, Servisch, Sloveens, Slowaaks, Spaans, Thais, Tibetaans, Tsjechisch, Turks, Vietnamees, Welsh, Wit-Russisch, Zweeds, Zwitsers</string>
+				<key>title</key>
+				<string>Toetsenbordindelingen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>hoofdtaal, talen, modus, bronnen, internationaal, buitenlands, tekens, Unicode, Japans, Kotoeri, Hiragana, Katakana, Romaji, Ainu, Chinees, Traditioneel, Hanin, Vereenvoudigd, Wubi, Koreaans, Hangul, Vietnamees, Telex, Tamil, Anjal</string>
+				<key>title</key>
+				<string>Taalinvoermethoden</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>palet, symbool, viewer, symbolen, teken, Unicode, Japans, Kana, tekens, bronnen, Toetsen, interpunctie</string>
+				<key>title</key>
+				<string>Paletten</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>invoer, bron, document</string>
+				<key>title</key>
+				<string>Eén invoerbron voor alle documenten</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>invoer, bron, document</string>
+				<key>title</key>
+				<string>Verschillende invoerbronnen per document</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Language</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>talen, aanpassen, internationaal, Engels, Japans, Frans, Duits, Spaans, Italiaans, Portugees, Nederlands, Zweeds, Fins, Noors, Bokmål, Deens, Russisch, Pools, Chinees, vereenvoudigd, traditioneel, Koreaans, Afrikaans, Australisch, Aymara, Azerbeidzjaans, Indonesisch, Maleis, Bislama, Bosnisch, Bretons, Brits, Canadees, Catalaans, Tsjechisch, Corsicaans, Welsh, Zwitserland, Navajo, Ests, Esperanto, Baskisch, Tongaans, Faeröers, Zwitsers, Iers, Gaelic, Manx, Schots, Galicisch, Guarani, Kroatisch, Hawaïaans, Ido, Zulu, IJslands, Kalaallisut, Cornish, Kinyarwanda, Swahili, Haïtiaans, Latijn, Letlands, Luxemburgs, Litouws, Hongaars, Malagasi, Maltees, Maori, Napolitaans, Nynorsk, Occitaans, Oezbeeks, Oromo, Oostenrijks, Brazilië, Quechua, Roemeens, Rundi, Samisch, Albanees, Siciliaans, Slowaaks, Sloveens, Somalisch, Tagalog, Tataars, Klingon, Turks, Turkmeens, Amerikaans, Vietnamees, Vlaams, Waals, Grieks, Azerbeidzjaans, Wit-Russisch, Bulgaars, Kirgizisch, Kazaks, Macedonisch, Mongools, Servisch, Tadzjiki, Oekraïens, Georgisch, Armeens, Jiddisch, Hebreeuws, Urdu, Pashtoe, Arabisch, Perzisch, Konkani, Nepalees, Marathi, Sanskriet, Hindi, Punjabi, Gujarati, Tamil, Thais, Tibetaans, Dzongkha, Cherokee, Inuktitut, Uighur, aangepast, aanpassing, aanpassingen, sortering</string>
+				<key>title</key>
+				<string>Taalvoorkeuren en -prioriteit</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Text</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>breuken, vervangen, vervang, substitutie, substitueren</string>
+				<key>title</key>
+				<string>Vervanging symbolen en tekst</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>taal, spellingcontrole, spelling controleren</string>
+				<key>title</key>
+				<string>Spelling</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>taal</string>
+				<key>title</key>
+				<string>Woordafbrekingen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>slimme aanhalingstekens</string>
+				<key>title</key>
+				<string>Stijl aanhalingsteken</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

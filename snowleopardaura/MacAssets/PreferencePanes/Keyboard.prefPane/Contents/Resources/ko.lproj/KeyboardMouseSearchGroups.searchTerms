@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>keyboardTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>키, 지연, 반복, 반응, 기능, Fn, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, 키, 비율, 유형, 지연하기, 반복하기, 입력하기</string>
+				<key>title</key>
+				<string>키보드 감도</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>보기, 비젼, 어두운, 낮은 조명, 희미한, 밤, 입력, 봄, 라이트켜기, 라이트켜짐, 입력하기</string>
+				<key>title</key>
+				<string>키보드 백라이트켜기</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>메뉴 막대, 팔레트, 문자 팔레트, 키보드 보기</string>
+				<key>title</key>
+				<string>메뉴 막대에서 키보드 및 문자 보기 표시</string>
+			</dict>
+		</array>
+	</dict>
+	<key>keyboardTab_ModifierKeys</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>Caps Lock, Control, Option, Command</string>
+				<key>title</key>
+				<string>조합키 재설정</string>
+			</dict>
+		</array>
+	</dict>
+	<key>shortcutsTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>로컬라이즈가 가능한 인덱스 단어</string>
+				<key>index</key>
+				<string>서비스, Front Row, 사전, 기능, 키, Fn, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, 전체, Tab, 탐색, 선택, 손쉬운 사용, 연결성, 비활성화됨, 장애, 이동성, 장애, 보조, 단축키, 강조 표시, 선택 표시하기, 선택 표시, 반전, 반전, 반전하기</string>
+				<key>title</key>
+				<string>키보드 단축키</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

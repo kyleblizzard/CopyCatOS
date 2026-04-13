@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>account</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>使用者, 會員, 試用, 會員, 姓名, 密碼, 登錄, .Mac, itools</string>
+				<key>title</key>
+				<string>註冊 MobileMe</string>
+			</dict>
+		</array>
+	</dict>
+	<key>idisk</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>儲存空間, 同步, 公用檔案夾, public 檔案夾, 密碼, 映射, 光碟, 磁碟, 本機, 郵件, 同步, 進行同步, 同步化, 密碼</string>
+				<key>title</key>
+				<string>iDisk</string>
+			</dict>
+		</array>
+	</dict>
+	<key>mymacs</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>共享, 返回, 網路, 共享, 我的 mac, 我的mac</string>
+				<key>title</key>
+				<string>返回我的 Mac</string>
+			</dict>
+		</array>
+	</dict>
+	<key>sync</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>同步, MobileMe, .Mac, 選單列</string>
+				<key>title</key>
+				<string>在選單列中顯示同步狀態</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>同步</string>
+				<key>title</key>
+				<string>開始或停止 MobileMe 同步</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

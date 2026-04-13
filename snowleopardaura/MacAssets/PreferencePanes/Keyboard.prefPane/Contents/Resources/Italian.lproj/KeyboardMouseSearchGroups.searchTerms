@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>keyboardTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Termini dell'indice localizzabili</string>
+				<key>index</key>
+				<string>tasti, ritardo, ripeti, risposta, funzione, Fn, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, chiavi, frequenza, tipo, ritardare, ripetere, digitare</string>
+				<key>title</key>
+				<string>Sensibilità tastiera</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Termini dell'indice localizzabili</string>
+				<key>index</key>
+				<string>visualizzare, visione, scuro, scarsa luminosità, attenuare luminosità, notte, tipo, vista, illuminazione, illuminato, digitare</string>
+				<key>title</key>
+				<string>Illumina la tastiera</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>barra menu, tavolozze, tavolozza caratteri, visore tastiera</string>
+				<key>title</key>
+				<string>Mostra Visore tastiera e caratteri nella barra dei menu</string>
+			</dict>
+		</array>
+	</dict>
+	<key>keyboardTab_ModifierKeys</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Termini dell'indice localizzabili</string>
+				<key>index</key>
+				<string>Blocco maiuscole, Controllo, Opzione, Comando</string>
+				<key>title</key>
+				<string>Reimposta i tasti modificatori</string>
+			</dict>
+		</array>
+	</dict>
+	<key>shortcutsTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Termini dell'indice localizzabili</string>
+				<key>index</key>
+				<string>servizi, Front Row, Dizionario, funzione, tasti, Fn, F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12, pieno, tabulatore, naviga, navigare, evidenzia, Accesso Universale, accessibilità, disabilitato, con handicap, mobilità, disabili, assistenza, abbreviazioni, evidenziare, evidenzia, evidenziare</string>
+				<key>title</key>
+				<string>Abbreviazioni da tastiera</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

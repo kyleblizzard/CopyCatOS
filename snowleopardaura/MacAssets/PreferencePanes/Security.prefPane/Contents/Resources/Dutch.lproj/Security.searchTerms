@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>FileVault</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>coderen, thuismap, file vault, gecodeerd, codering</string>
+				<key>title</key>
+				<string>FileVault</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>identiteitscontrole, wachtwoord, herkend, identiteit, controleren, geïdentificeerd</string>
+				<key>title</key>
+				<string>Hoofdwachtwoord</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Firewall</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>voorkomen, blokkeren, netwerk, poorten, udp, bestandsdeling, AFP, remote, op afstand, preventie, blokkade, geblokkeerd, firewall</string>
+				<key>title</key>
+				<string>Firewall in- of uitschakelen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>fire wall</string>
+				<key>title</key>
+				<string>Geavanceerde firewallinstellingen</string>
+			</dict>
+		</array>
+	</dict>
+	<key>General</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>scherm, beveiliging, wachtwoord, identiteitscontrole, vergrendelen, ontgrendelen, sluimeren, sluimerstand, code, identiteit controleren, vergrendeld, ontgrendeld, vergrendeling, ontgrendeling</string>
+				<key>title</key>
+				<string>Om wachtwoord vragen bij opheffen sluimerstand</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>inloggen, aanmelden, meld aan, log in</string>
+				<key>title</key>
+				<string>Automatisch inloggen uitschakelen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>vergrendelen, ontgrendelen, vergrendeling, ontgrendeling</string>
+				<key>title</key>
+				<string>Systeemvoorkeuren vergrendelen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>afmelden, uitloggen, afgemeld, uitgelogd</string>
+				<key>title</key>
+				<string>Uitloggen bij inactiviteit</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>vm, coderen, gecodeerd, codering</string>
+				<key>title</key>
+				<string>Beveiligd virtueel geheugen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>infrarood, ontvanger, IR</string>
+				<key>title</key>
+				<string>Afstandsbediening uitschakelen</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Lokaliseerbare indextermen</string>
+				<key>index</key>
+				<string>veilig, privaat, privacy, privé, veilig, veiligheid, beveiliging, beschermen, beveiligd, beschermd</string>
+				<key>title</key>
+				<string>Beveiligingsinstellingen</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

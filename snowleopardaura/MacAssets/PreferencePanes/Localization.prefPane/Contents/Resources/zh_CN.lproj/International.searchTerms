@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Formats</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词语</string>
+				<key>index</key>
+				<string>地区的, 地区, 区域, 多语言, 国际, 测量, 单位, 样式, 公制, 日历, 公历, 佛教日历, 希伯来日历, 伊斯兰日历, 日文,日本日历, 中文, 中国, 农历, 科普特文, 科普特日历, 埃塞俄比亚文, 埃塞俄比亚日历, 印度文, 印度日历, 波斯文, 波斯日历, 中华民国, 中华民国日历, 自定, 已自定, 正在自定, 自定
+
+</string>
+				<key>title</key>
+				<string>数字, 日期, 与时间格式</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词语</string>
+				<key>index</key>
+				<string>货币</string>
+				<key>title</key>
+				<string>指定货币</string>
+			</dict>
+		</array>
+	</dict>
+	<key>InputMenu</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词语</string>
+				<key>index</key>
+				<string>方法, 菜单栏</string>
+				<key>title</key>
+				<string>在菜单栏中显示输入法菜单</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词语</string>
+				<key>index</key>
+				<string>键入, 键入, 源, 标准键盘, Pro, PC, 标准, ISO, 扩展, 德沃夏克文, 阿富汗文, 阿拉伯文, 亚美尼亚文, 奥地利文, 阿塞拜疆文, 比利时文, 巴西文, 英国英文, 保加利亚文, 白俄罗斯文, 加拿大文, 切罗基文, 克罗地亚文, 捷克文, 丹麦文, 梵文, 荷兰文, 爱沙尼亚文, 法罗文, 芬兰文, 法文, 德文, 希腊文, 古吉拉特文, 果鲁穆奇文, 夏威夷文, 希伯来文, 匈牙利文, 冰岛文, 伊努伊特文, 爱尔兰文, 意大利文, 爪哇文, 哈萨克文, 拉脱维亚文, 立陶宛文, 马其顿文, 马耳他文, 毛利文, 尼泊尔文, 萨米文, 挪威文, 波斯文, 波兰文, 葡萄牙文, 罗马文, 俄文, 塞尔维亚文, 斯洛伐克文, 斯洛文尼亚文, 西班牙文, 瑞典文, 瑞士文, 泰文, 藏文, 土耳其文, 美国英文, 维吾尔文, 乌克兰文, Unicode, 十六进制, 越南文, 威尔士文</string>
+				<key>title</key>
+				<string>键盘布局</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词语</string>
+				<key>index</key>
+				<string>主, 语言, 模式, 源, 多语言, 外国, 字符, Unicode, 日文, Kotoeri, 平假名, 片假名, 罗马字, 阿依努文, 中文, 繁体, 汉音, 简体, 五笔, 韩文, 韩文, 越南文, 电报, 泰米尔文, Anjal</string>
+				<key>title</key>
+				<string>语言输入法</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词语</string>
+				<key>index</key>
+				<string>调板, 符号, 查看器, 符号, 字符, Unicode, 日文, Kana, 字符, 源, 键冒, 键, 键冒, 标点符号</string>
+				<key>title</key>
+				<string>调板</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>输入, 源, 文稿</string>
+				<key>title</key>
+				<string>所有文稿使用一种输入源</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>输入, 源, 文稿</string>
+				<key>title</key>
+				<string>允许每个文稿使用不同的输入源</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Language</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词语</string>
+				<key>index</key>
+				<string>语言, 自定, 多语言, 英语, 日语, 法语, 德语, 西班牙语, 意大利语, 葡萄牙语, 荷兰语, 瑞典语, 芬兰语, 挪威语, 波克默尔语, 丹麦语, 俄语, 波兰语, 汉语, 简体, 繁体, 韩语, 公用荷兰语, 澳大利亚语, 艾马拉语, 阿塞拜疆语, 印尼语, 马来语, 比斯拉玛语, 波斯尼亚语, 布列塔尼语, 英国英语, 加拿大, 加泰罗尼亚语, 捷克语, 科西嘉语, 威尔士语, 瑞士语, 纳瓦霍语, 爱沙尼亚语, 世界语, 巴斯克语, 汤加语, 法罗语, 瑞士, 爱尔兰语, 盖尔语, 曼岛语, 苏格兰语, 加利西亚语, 瓜拉尼语, 克罗地亚语, 夏威夷语, 伊多语, 祖鲁语, 冰岛语, 格陵兰语, 康沃尔语, 基尼阿万达语, 斯瓦希里语, 海地语, 拉丁语, 拉脱维亚语, 卢森堡语, 立陶宛语, 匈牙利语, 马尔加什语, 马尔他语, 毛利语, 那不勒斯语, 尼诺斯克语, 欧西坦语, 乌兹别克语, 奥洛莫语, 奥地利语, 巴西语, 盖楚瓦语, 罗马尼亚语, 基隆迪语, 萨米语, 阿尔巴尼亚语, 西西里语, 斯洛伐克语, 斯洛文尼亚语, 索马里语, 他加禄语, 鞑靼语, 克林贡语, 土耳其语, 土库曼语, 美国英语, 越南语, 佛兰德语, 瓦隆语, 希腊语, 阿塞拜疆语, 白俄罗斯语, 保加利亚语, 吉尔吉斯语, 哈萨克语, 马其顿语, 蒙古语, 塞尔维亚语, 塔吉克语, 乌克兰语, 格鲁吉亚语, 亚美尼亚语, 依地语, 希伯来语, 乌尔都语, 普什图语, 阿拉伯语, 波斯语, 孔卡尼语, 尼泊尔语, 马拉地语, 梵语, 北印度语, 旁遮普语, 古吉拉特语, 坦米尔语, 泰国语, 藏语, 不丹语, 切罗基语, 伊努伊特语, 维吾尔语, 自定, 自定, 自定, 排序</string>
+				<key>title</key>
+				<string>语言偏好设置和优先级</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Text</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词语</string>
+				<key>index</key>
+				<string>fractions, 部分, replace, 替换, replacing, substitute, substituting</string>
+				<key>title</key>
+				<string>符号和文本替换</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词语</string>
+				<key>index</key>
+				<string>language, 语言, spell check, 拼写检查, spell checking</string>
+				<key>title</key>
+				<string>拼写</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词语</string>
+				<key>index</key>
+				<string>language, 语言</string>
+				<key>title</key>
+				<string>断词</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词语</string>
+				<key>index</key>
+				<string>智能引号</string>
+				<key>title</key>
+				<string>引号样式</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

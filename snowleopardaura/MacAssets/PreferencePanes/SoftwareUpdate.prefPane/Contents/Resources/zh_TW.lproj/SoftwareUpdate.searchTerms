@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>InstalledUpdates</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>應用程式, 程式</string>
+				<key>title</key>
+				<string>檢視已安裝的軟體更新</string>
+			</dict>
+		</array>
+	</dict>
+	<key>UpdateSoftware</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>本地化索引詞</string>
+				<key>index</key>
+				<string>安裝, 下載, 自動, 排程, 應用程式, 程式, 更新的, 更新, 已下載, 正在下載, 已安裝, 正在安裝, 自動的, 自動化, 自動地, 排程</string>
+				<key>title</key>
+				<string>檢查軟體更新</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

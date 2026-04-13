@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Main</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>quente</string>
+				<key>title</key>
+				<string>Cantos de Tela Ativos</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>personalizar, mesa, teclado, teclas de função, Fn, botões do mouse, janelas, aplicativos, programas, personalizado, personalizando, personalização</string>
+				<key>title</key>
+				<string>Atalhos do Exposé</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>personalizar, mesa, teclado, teclas de função, Fn, botões do mouse, personalizado, personalizando, personalização</string>
+				<key>title</key>
+				<string>Atalhos do Dashboard</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Spaces</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>organizar, áreas de trabalho, aplicativos, programas, mesas, organizado, organizando</string>
+				<key>title</key>
+				<string>Configurar o Spaces</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Atalhos do Spaces</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>barra de menus</string>
+				<key>title</key>
+				<string>Mostrar os spaces na barra de menus</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

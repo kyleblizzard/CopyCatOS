@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Hearing</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>Universal, acesso, acessibilidade, deficiência, deficiente, limitado, auditivo, ouvir, audição, surdo, auxiliar</string>
+				<key>title</key>
+				<string>Mostrar clarão na tela com os alertas</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Keyboard</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>Universal, acesso, acessibilidade, deficiência, deficiente, limitado, mobilidade, deficiente físico, mais lento, auxiliar, fácil, Teclas de Ação Conjunta, velocidade de repetição, modificador, sensibilidade, ajustar, ajustes, digitar, mais lento, devagar, ajustando, digitando</string>
+				<key>title</key>
+				<string>Facilitar o uso do teclado</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Mouse</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>Universal, acesso, acessibilidade, deficiência, deficiente, limitado, mobilidade, deficiente físico, mais lento, auxiliar, fácil, teclas, numérico, teclado numérico, ponteiro, cursor, teclado, aumentar, ampliar, ampliação, ajustar, ajustes, mais lento, devagar, ajustando, aumentado, aumentando, ampliado, ampliando</string>
+				<key>title</key>
+				<string>Facilitar o uso do mouse e do trackpad</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Display</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>Universal, acesso, acessibilidade, deficiência, deficiente, limitado, visual, vista, visão, visível, cego, ler, visualizar, melhorar, contraste, preto, branco, escala de cinzas, ajustes, leitura, vendo, visualizando, melhorando, ajustando, cinzas</string>
+				<key>title</key>
+				<string>Facilitar a visualização da tela</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_VoiceOver</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>falado, interface, audição, tela, leitor, Universal, acesso, acessibilidade, cego, deficiente, limitado, visual, vista, visão, visível, deficiência, narração</string>
+				<key>title</key>
+				<string>Ativar e desativar o VoiceOver</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Ativar dispositivos auxiliares</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>barra de menus</string>
+				<key>title</key>
+				<string>Mostrar Acesso Universal na barra de menus</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Zoom</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras localizáveis do índice</string>
+				<key>index</key>
+				<string>Universal, acesso, acessibilidade, deficiência, deficiente, limitado, visual, vista, visão, visível, cego, aumentar, ampliar, ampliação, ler, ver, visualizar, aumento, diminuir, grande, maior, máximo, mínimo, rolagem, mouse, roda, bola, esfera de rolagem, roda de rolagem, bola do mouse, roda do mouse, ampliando, aumentado, aumentando, ampliado, ampliação, lendo, vendo, visualizando, aumento, diminuindo</string>
+				<key>title</key>
+				<string>Zoom para ampliar a tela</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

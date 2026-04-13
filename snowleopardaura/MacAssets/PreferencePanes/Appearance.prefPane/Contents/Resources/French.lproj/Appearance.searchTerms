@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Main</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Termes d’indexation localisables</string>
+				<key>index</key>
+				<string>sélection, sélectionné, texte, surbrillance, ton clair, mise en surbrillance</string>
+				<key>title</key>
+				<string>Couleur de contraste</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Termes d’indexation localisables</string>
+				<key>index</key>
+				<string>menu pomme, menu Apple, applications, documents, serveurs</string>
+				<key>title</key>
+				<string>Nombre d’éléments récents</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Termes d’indexation localisables</string>
+				<key>index</key>
+				<string>bureau, personnaliser, personnalisé, personnalisation</string>
+				<key>title</key>
+				<string>Aspect des boutons, des menus et des fenêtres</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Termes d’indexation localisables</string>
+				<key>index</key>
+				<string>flèches, sans à-coups, réduire, placer dans Dock, fenêtre, saut, barre de défilement, lissage, lisser, sauter, aller à</string>
+				<key>title</key>
+				<string>Comportement de la barre de défilement</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Termes d’indexation localisables</string>
+				<key>index</key>
+				<string>anticrénelage, diffus, crénelé, flou, texte, taille, LCD, plat, affichage, écran, moniteur, anti crénelage</string>
+				<key>title</key>
+				<string>Lissage des polices</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Main</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>seleccionado, texto, destaque, destacar</string>
+				<key>title</key>
+				<string>Cor de destaque</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>menu Apple, aplicações, documentos, servidores</string>
+				<key>title</key>
+				<string>Número de elementos recentes</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>secretária, personalizar, personalização</string>
+				<key>title</key>
+				<string>Botão, menu e aspecto da janela</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>setas, suave, minimizar, janela, salto, barra de deslocamento, suavização, saltar</string>
+				<key>title</key>
+				<string>Comportamento das barras de deslocação</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Palavras de índice localizáveis</string>
+				<key>index</key>
+				<string>antialiasing, desfocagem, irregular, difuso, texto, tamanho, LCD, plano, monitor, ecrã, desfocado, anti-aliasing</string>
+				<key>title</key>
+				<string>Suavização de letra</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

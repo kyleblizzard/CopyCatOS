@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>DesktopPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>fotografie, sfondo, scrivania, sfondo scrivania, modello, personalizza, foto, immagini, scrivania, alto, piano, carta, personalizzate, personalizzare, personalizzazione</string>
+				<key>title</key>
+				<string>Immagini Scrivania</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Barra dei menu traslucida</string>
+			</dict>
+		</array>
+	</dict>
+	<key>ScreenSaverPref</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Parole dell'indice localizzabili</string>
+				<key>index</key>
+				<string>password, proteggi, disabilita, avvia, RSS, visualizzatore, feed, notizie, titoli, iTunes, album, arte, casuale, fotografie, immagini, personalizza, salvaschermo, newsfeed, foto, passare parole, proteggere, disattivare, iniziare, personalizzate, personalizzare, personalizzazione</string>
+				<key>title</key>
+				<string>Salvaschermo</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string>angoli schermo attivi</string>
+				<key>title</key>
+				<string>Angoli attivi</string>
+			</dict>
+			<dict>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Mostra orologio con il salvaschermo</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

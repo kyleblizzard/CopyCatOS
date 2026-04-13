@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>mouseTab</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string>двойное нажатие, щелчок, перемещение, перетаскивание, быстрее, скорость, медленнее, курсор, стрелка, указатель, нажатие, скорость перемещения, перетаскивание, медленно, замедление</string>
+				<key>title</key>
+				<string>Чувствительность мыши</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string>основная, вспомогательная, Dashboard, переключатель программ, Spotlight, сочетание клавиш, Exposé, Spaces, прокрутка, колесо прокрутки, шарик прокрутки, шарик, шарик мыши, колесо мыши, мышь Mighty Mouse, Mighty Mouse</string>
+				<key>title</key>
+				<string>Кнопки мыши</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Локализуемые ключевые слова</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Изменение масштаба мышью</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

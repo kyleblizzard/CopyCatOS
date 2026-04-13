@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>SpeechRecognition</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>Universal, 万能, access, 通用, 辅助, 辅助功能, 停用, 残疾, 障碍, 视力, 盲人, 视觉, 可视, 听力, 受损, 朗读, 可口述, 项目, 命令, 认识, 识别, 协助, 谈话, 语音, 校准, 听到, 键, 快捷, 自定, 耳机, 音量, 口述, 交谈, 核准, 聆听, 自定</string>
+				<key>title</key>
+				<string>语音识别</string>
+			</dict>
+		</array>
+	</dict>
+	<key>TTS</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>可本地化的索引词</string>
+				<key>index</key>
+				<string>语音, 合成, TTS, 口述, 通知, 朗读, 语音文本, 文本, 嗓音, 速度, 谈话, 警告, 提示</string>
+				<key>title</key>
+				<string>文本至语音</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

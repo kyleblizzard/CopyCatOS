@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>English</string>
+	<key>CFBundleExecutable</key>
+	<string>DesktopScreenEffectsPref</string>
+	<key>CFBundleIconFile</key>
+	<string>DesktopScreenEffectsPref.icns</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.apple.preference.desktopscreeneffect</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Desktop &amp; Screen Saver</string>
+	<key>CFBundlePackageType</key>
+	<string>BNDL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>3.0.1</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>3.0.1</string>
+	<key>NSMainNibFile</key>
+	<string>DesktopScreenEffectsPref</string>
+	<key>NSPrefPaneIconLabel</key>
+	<string>DesktopScreenEffectsPref</string>
+	<key>NSPrefPaneSearchParameters</key>
+	<string>DesktopScreenEffectsSearchGroups</string>
+	<key>NSPrincipalClass</key>
+	<string>Com_Apple_Preference_DTandSSPref</string>
+	<key>New item</key>
+	<string></string>
+</dict>
+</plist>

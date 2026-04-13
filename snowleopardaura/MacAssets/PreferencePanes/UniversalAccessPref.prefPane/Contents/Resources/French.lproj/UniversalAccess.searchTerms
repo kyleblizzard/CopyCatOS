@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Hearing</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Termes d’indexation localisables</string>
+				<key>index</key>
+				<string>Accès, universel, accessibilité, invalide, handicapé, mobilité, limitée, sourd, entendre, audition, malentendant, assistance</string>
+				<key>title</key>
+				<string>Faire clignoter l’écran lors d’une alerte</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Keyboard</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Termes d’indexation localisables</string>
+				<key>index</key>
+				<string>Accès, universel, accessibilité, invalide, handicapé, mobilité, limitée, réduite, ralentir, assistance, facile, touches à auto-maintien, vitesse de répétition, modificateur, sensibilité, ajuster, ajustements, taper, plus lentement, ralentir, ajustement, saisie</string>
+				<key>title</key>
+				<string>Simplifier l’utilisation du clavier</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Mouse</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Termes d’indexation localisables</string>
+				<key>index</key>
+				<string>Accès, universel, accessibilité, invalide, handicapé, mobilité, limitée, réduite, ralentir, assistance, facile, touches, pavé, numérique, pointeur, curseur, clavier, agrandir, grossir, agrandissement, ajuster, ajustements, plus lentement, ralentissement, agrandi, grossi, élargi, élargissement</string>
+				<key>title</key>
+				<string>Simplifier l’utilisation de la souris et du trackpad</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Display</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Termes d’indexation localisables</string>
+				<key>index</key>
+				<string>Accès, universel, accessibilité, invalide, handicapé, limité, aveugle, vue, vision, visible, malvoyant, lire, visualiser, améliorer, contraste, noir, blanc, gris, ajustements, lecture, visualisation, amélioration, ajustement, niveaux de gris</string>
+				<key>title</key>
+				<string>Simplifier la visualisation du moniteur</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_VoiceOver</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Termes d’indexation localisables</string>
+				<key>index</key>
+				<string>énoncé, interface, audition, écran, lecteur, universel, accès, accessibilité, invalide, handicapé, limité, aveugle, vue, vision, visible, malvoyant, voice over</string>
+				<key>title</key>
+				<string>Activer et désactiver VoiceOver</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Termes d’indexation localisables</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Activer les périphériques d’aide</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Termes d’indexation localisables</string>
+				<key>index</key>
+				<string>menubar</string>
+				<key>title</key>
+				<string>Afficher Accès universel dans la barre des menus</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Zoom</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Termes d’indexation localisables</string>
+				<key>index</key>
+				<string>Accès, universel, accessibilité, invalide, handicapé, limité, aveugle, vue, vision, visible, malvoyant, agrandir, grossir, agrandissement, lire, voir, augmenter, diminuer, plus grand, plus gros, maximum, minimum, faire défiler, souris, molette, boule, boule de défilement, molette de défilement, boule de souris, molette de souris, zoom, agrandi, agrandissement, grossi, grossissement, lecture, visualisation, affichage, augmentation, diminution</string>
+				<key>title</key>
+				<string>Zoomer pour agrandir l’écran</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

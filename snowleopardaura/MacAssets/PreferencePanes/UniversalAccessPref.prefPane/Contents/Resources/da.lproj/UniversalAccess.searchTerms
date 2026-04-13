@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Hearing</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>Universel, adgang, hjælpemiddel, invalid, handicappet, begrænset, døv, høre, hørelse, forhindret, hjælpe</string>
+				<key>title</key>
+				<string>Lad skærmen blinke ved advarsler</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Keyboard</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>Universel, adgang, hjælpemiddel, invalid, handicappet, begrænset, mobilitet, forhindret, langsom, hjælpe, let, klæbetaster, repetitionshastighed, kombi, følsomhed, justere, justering, skrive, langsommere, blive langsommere, indstille skrive</string>
+				<key>title</key>
+				<string>Gør tastatur lettere at bruge</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Mouse</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>Universel, adgang, hjælpemiddel, invalid, handicappet, begrænset, mobilitet, forhindret, langsom, hjælpe, let, taster, numerisk, blok, markøre, cursor, tastatur, gøre større, forstørre, forstørrelse, justere, justering, langsommere, blive langsommere, indstille, forstørret, forstørring, forstørrelsesglas</string>
+				<key>title</key>
+				<string>Gør mus og pegefelt lettere at bruge</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Display</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>Universel, adgang, hjælpemiddel, invalid, handicappet, begrænset, blind, syn, vision, synlig, forhindret, læse, vise, forbedre, kontrast, sort, hvid, gråtoner, justeringer, læsning, se, vise, forbedring, justering, gråtone</string>
+				<key>title</key>
+				<string>Gør skærm lettere at se</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_VoiceOver</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Localizable index words</string>
+				<key>index</key>
+				<string>talt, grænseflade, hørelse, computerskærm, læser, Universel, adgang, hjælpemiddel, invalid, handicappet, begrænset, syn, vision, synlig, forhindret, voice over</string>
+				<key>title</key>
+				<string>Slå VoiceOver til og fra</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string></string>
+				<key>title</key>
+				<string>Slå hjælpemidler til</string>
+			</dict>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>menulinje</string>
+				<key>title</key>
+				<string>Vis Universel adgang på menulinje</string>
+			</dict>
+		</array>
+	</dict>
+	<key>Seeing_Zoom</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Registerindgange, der kan oversættes</string>
+				<key>index</key>
+				<string>Universel, adgang, hjælpemiddel, invalid, handicappet, begrænset, blind, syn, vision, synlig, forhindret, forstørre, forstør, forstørrelse, læse, se, vise, forbedre, formindske, større, stor, maksimum, minimum, rulle, mus, hjul, kugle, rullekugle, rullehjul, musekugle, musehjul, zoome, forstørret, forstørring, forstørrelsesglas, læsning, visning, øgning, mindskning</string>
+				<key>title</key>
+				<string>Zoom for at forstørre skærm</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>

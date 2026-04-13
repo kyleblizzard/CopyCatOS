@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>English</string>
+	<key>CFBundleExecutable</key>
+	<string>WebClip</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.apple.widget.webclip.plugin</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Web</string>
+	<key>CFBundlePackageType</key>
+	<string>WBPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>6534</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>6534.51.13</string>
+	<key>NSPrincipalClass</key>
+	<string>WebClipper</string>
+	<key>WebPluginDescription</key>
+	<string>Plug-in to view a cropped portion of a web page</string>
+	<key>WebPluginMIMETypes</key>
+	<dict>
+		<key>application/x-apple-webclip-plug-in</key>
+		<dict>
+			<key>WebPluginExtensions</key>
+			<array>
+				<string>html</string>
+			</array>
+			<key>WebPluginTypeDescription</key>
+			<string>HTML Document</string>
+		</dict>
+	</dict>
+	<key>WebPluginName</key>
+	<string>Web Clip plug-in</string>
+</dict>
+</plist>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple Computer//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>AllowFileAccessOutsideOfWidget</key>
+	<true/>
+	<key>AllowNetworkAccess</key>
+	<true/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>English</string>
+	<key>CFBundleDisplayName</key>
+	<string>Business</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.apple.widget.phonebook</string>
+	<key>CFBundleName</key>
+	<string>Business</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.1.7</string>
+	<key>CFBundleVersion</key>
+	<string>1.1.7</string>
+	<key>CloseBoxInsetX</key>
+	<integer>8</integer>
+	<key>CloseBoxInsetY</key>
+	<integer>2</integer>
+	<key>Height</key>
+	<integer>51</integer>
+	<key>MainHTML</key>
+	<string>PhoneBook.html</string>
+	<key>Width</key>
+	<integer>335</integer>
+	<key>Parser</key>
+	<string>phoneBookParser.js</string>
+	<key>Plugin</key>
+	<string>YPComboBoxPlugin.plugin</string>
+	
+	<key>SyncExclusions</key>
+	<array>
+		<dict>
+			<key>key</key>
+			<string>http://www.apple.com/widgets/phoneBookParser.js</string>
+			<key>global</key>
+			<true/>
+		</dict>
+	</array>
+	</dict>
+</plist>

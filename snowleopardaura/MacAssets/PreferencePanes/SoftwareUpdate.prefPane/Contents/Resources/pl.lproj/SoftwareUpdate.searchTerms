@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>InstalledUpdates</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>programy, oprogramowanie</string>
+				<key>title</key>
+				<string>Wyświetl zainstalowane uaktualnienia programów</string>
+			</dict>
+		</array>
+	</dict>
+	<key>UpdateSoftware</key>
+	<dict>
+		<key>localizableStrings</key>
+		<array>
+			<dict>
+				<key>comments</key>
+				<string>Lokalizowane słowa kluczowe</string>
+				<key>index</key>
+				<string>instaluj, pobierz, automatycznie, zaplanowane, programy, oprogramowanie, uaktualnianie, pobrane, pobieranie, automatyczne, planowanie</string>
+				<key>title</key>
+				<string>Sprawdź dostępność uaktualnień programów</string>
+			</dict>
+		</array>
+	</dict>
+</dict>
+</plist>
