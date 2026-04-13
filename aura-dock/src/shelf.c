@@ -220,19 +220,20 @@ void shelf_draw_separator(DockState *state, double x)
     cairo_save(cr);
 
     // The separator is two thin vertical lines side by side:
-    // 1. A white line at alpha 80/255 (bright edge)
-    // 2. A black line at alpha 40/255 (shadow), offset 1px to the right
-    // Together they create a subtle etched groove effect.
+    // 1. A dark translucent line (shadow/groove)
+    // 2. A white highlight line offset 1px to the right (bright edge)
+    // Together they create the classic Snow Leopard etched groove effect.
+    // The separator spans the full shelf height for clear visibility.
 
-    // White highlight line
-    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 80.0 / 255.0);
+    // Dark groove line (left side of the etched pair)
+    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.35);
     cairo_set_line_width(cr, 1.0);
     cairo_move_to(cr, x + 0.5, shelf_y + 4);
     cairo_line_to(cr, x + 0.5, state->win_h - 4);
     cairo_stroke(cr);
 
-    // Black shadow line (1px to the right)
-    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 40.0 / 255.0);
+    // White highlight line (right side, catches the "light")
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.45);
     cairo_move_to(cr, x + 1.5, shelf_y + 4);
     cairo_line_to(cr, x + 1.5, state->win_h - 4);
     cairo_stroke(cr);

@@ -88,9 +88,9 @@ WM_PID=$!
 sleep 0.5
 
 # ─── Compositor for ARGB transparency ───
-# Crystal Compositor (Phase 1) initializes but rendering pipeline is WIP.
-# Using picom as compositor until Crystal's window tracking is complete.
-picom --config ~/AuraOS/aura-wm/session/picom.conf -b
+# Crystal Compositor is now handling compositing in manual mode.
+# picom is disabled — Crystal draws all windows via OpenGL.
+# picom --config ~/AuraOS/aura-wm/session/picom.conf -b
 sleep 0.3
 
 # ─── Desktop surface (wallpaper + icons) ───

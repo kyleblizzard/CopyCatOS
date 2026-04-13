@@ -124,7 +124,8 @@ static bool resolve_icon_path(const char *icon_name, char *out_path,
 
     // Search 3: other system icon themes (Breeze, Oxygen, Adwaita, etc.)
     static const char *system_themes[] = {
-        "breeze", "breeze-dark", "oxygen/base", "Adwaita", NULL
+        "breeze", "breeze-dark", "oxygen/base", "Adwaita",
+        "HighContrast", NULL
     };
     for (const char **theme = system_themes; *theme; theme++) {
         for (int i = 0; i < size_count; i++) {
@@ -586,7 +587,7 @@ static const DefaultItemDef default_items[] = {
     {"Finder",              "dolphin",        "org.kde.dolphin",            "dolphin",        false},
     {"Brave",               "brave-browser",  "com.brave.Browser",          "brave",          false},
     {"Kate",                "kate",           "org.kde.kate",               "kate",           false},
-    {"Terminal",            "konsole",        "org.kde.konsole",            "konsole",        false},
+    {"Terminal",            "konsole",        "utilities-terminal",         "konsole",        false},
     {"Strawberry",          "strawberry",     "strawberry",                 "strawberry",     true },
     {"Krita",               "krita",          "krita",                      "krita",          false},
     {"GIMP",                "gimp",           "gimp",                       "gimp",           false},

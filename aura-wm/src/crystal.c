@@ -532,11 +532,11 @@ bool crystal_init(AuraWM *wm)
     }
 
     // ── Step 11: Set up XComposite redirection ──
-    // Using Automatic mode during development — picom handles the actual
-    // compositing for now while Crystal's rendering pipeline is completed.
-    // When Crystal Phase 1 is fully working, this switches to Manual.
-    XCompositeRedirectSubwindows(wm->dpy, wm->root, CompositeRedirectAutomatic);
-    fprintf(stderr, "[crystal] XComposite redirect set (automatic mode — picom fallback)\n");
+    // Manual mode: Crystal is responsible for compositing all window contents
+    // onto the screen. Windows are redirected to off-screen pixmaps, and
+    // crystal_composite() draws them via OpenGL each frame.
+    XCompositeRedirectSubwindows(wm->dpy, wm->root, CompositeRedirectManual);
+    fprintf(stderr, "[crystal] XComposite redirect set (MANUAL mode — Crystal compositing)\n");
 
     // ── Step 12: Find ARGB visual ──
     // Needed for frame windows that want semi-transparent shadow regions.
