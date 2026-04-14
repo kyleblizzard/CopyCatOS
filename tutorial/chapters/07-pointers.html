@@ -78,25 +78,25 @@
 <span class="fn">good_double</span>(&amp;n);  <span class="cmt">// n is now 10</span></code></pre>
 
 <p>
-    <strong>2. Efficiency.</strong> The <code>AuraWM</code> struct is huge — it has an array of
+    <strong>2. Efficiency.</strong> The <code>CCWM</code> struct is huge — it has an array of
     256 <code>Client</code> structs inside it. If you passed it by value, C would copy the entire
     thing every time you called a function. That's thousands of bytes being duplicated for no
     reason. Passing a pointer is just passing an 8-byte address. Same access, zero waste.
 </p>
 
-<h2>Crystal's Pointers: The Real Deal</h2>
+<h2>MoonRock's Pointers: The Real Deal</h2>
 
 <p>
-    Now look at Crystal's function signatures with fresh eyes:
+    Now look at MoonRock's function signatures with fresh eyes:
 </p>
 
-<pre><code><span class="kw">bool</span> <span class="fn">crystal_init</span>(<span class="type">AuraWM</span> *wm);</code></pre>
+<pre><code><span class="kw">bool</span> <span class="fn">moonrock_init</span>(<span class="type">CCWM</span> *wm);</code></pre>
 
 <p>
-    <code>AuraWM *wm</code> is a pointer to an <code>AuraWM</code> struct. The function doesn't
+    <code>CCWM *wm</code> is a pointer to a <code>CCWM</code> struct. The function doesn't
     receive a copy of the entire window manager state — it receives the address of where that
     state lives. It can then read and modify any field of the window manager directly. When
-    Crystal sets <code>wm->running = false</code>, it's modifying the actual running flag, not
+    MoonRock sets <code>wm->running = false</code>, it's modifying the actual running flag, not
     a copy.
 </p>
 
@@ -134,7 +134,7 @@ c-&gt;y = <span class="num">200</span>;
 <p>
     <code>c-&gt;focused</code> means "go to the struct that c points to, and access its focused
     field." It's shorthand for <code>(*c).focused</code>, which nobody wants to type. You'll see
-    the arrow operator everywhere in Crystal's code — every function that takes <code>AuraWM *wm</code>
+    the arrow operator everywhere in MoonRock's code — every function that takes <code>CCWM *wm</code>
     uses <code>wm-&gt;</code> to access the window manager's state.
 </p>
 
@@ -146,7 +146,7 @@ c-&gt;y = <span class="num">200</span>;
     hasn't been initialized.
 </p>
 
-<pre><code><span class="type">Client</span> *<span class="fn">wm_find_client</span>(<span class="type">AuraWM</span> *wm, <span class="type">Window</span> w)
+<pre><code><span class="type">Client</span> *<span class="fn">wm_find_client</span>(<span class="type">CCWM</span> *wm, <span class="type">Window</span> w)
 {
     <span class="kw">for</span> (<span class="kw">int</span> i = <span class="num">0</span>; i < wm-&gt;num_clients; i++) {
         <span class="kw">if</span> (wm-&gt;clients[i].client == w)

@@ -13,9 +13,9 @@
 <h2>Nobody Writes Everything From Scratch</h2>
 
 <p>
-    Crystal Compositor is about 2,000 lines of C. But the functionality it uses — drawing to
+    MoonRock Compositor is about 2,000 lines of C. But the functionality it uses — drawing to
     the screen, managing windows, rendering with OpenGL, loading PNG images, doing math — that's
-    millions of lines of code. Crystal didn't write any of that. It uses <em>libraries</em>.
+    millions of lines of code. MoonRock didn't write any of that. It uses <em>libraries</em>.
 </p>
 
 <p>
@@ -26,18 +26,18 @@
     You just call its functions.
 </p>
 
-<h2>Crystal's Dependencies</h2>
+<h2>MoonRock's Dependencies</h2>
 
 <p>
-    Here are the libraries Crystal depends on, and what each one does:
+    Here are the libraries MoonRock depends on, and what each one does:
 </p>
 
 <ul>
-    <li><strong>Xlib</strong> (<code>x11</code>) — The fundamental X11 library. Creates windows, handles events, manages the display connection. This is how Crystal talks to the X server.</li>
-    <li><strong>XComposite</strong> (<code>xcomposite</code>) — Redirects windows to off-screen pixmaps so Crystal can composite them with effects.</li>
-    <li><strong>XDamage</strong> (<code>xdamage</code>) — Notifies Crystal when a window's contents change, so it only re-renders what's necessary.</li>
+    <li><strong>Xlib</strong> (<code>x11</code>) — The fundamental X11 library. Creates windows, handles events, manages the display connection. This is how MoonRock talks to the X server.</li>
+    <li><strong>XComposite</strong> (<code>xcomposite</code>) — Redirects windows to off-screen pixmaps so MoonRock can composite them with effects.</li>
+    <li><strong>XDamage</strong> (<code>xdamage</code>) — Notifies MoonRock when a window's contents change, so it only re-renders what's necessary.</li>
     <li><strong>XFixes</strong> (<code>xfixes</code>) — Miscellaneous X11 fixes and extensions, including cursor management.</li>
-    <li><strong>OpenGL</strong> (<code>gl</code>) — GPU-accelerated rendering. Crystal draws all windows as textured quads using GL.</li>
+    <li><strong>OpenGL</strong> (<code>gl</code>) — GPU-accelerated rendering. MoonRock draws all windows as textured quads using GL.</li>
     <li><strong>Cairo</strong> (<code>cairo</code>) — 2D vector graphics. Used for drawing title bars, text, and window decorations.</li>
     <li><strong>Pango</strong> (<code>pangocairo</code>) — Text layout and rendering. Draws window titles with proper font handling.</li>
     <li><strong>libpng</strong> (<code>libpng</code>) — Reads PNG image files. Used to load the traffic-light button assets.</li>
@@ -45,7 +45,7 @@
 </ul>
 
 <p>
-    That's a lot of libraries. Each one is a building block. Crystal orchestrates them all into
+    That's a lot of libraries. Each one is a building block. MoonRock orchestrates them all into
     a cohesive compositor. That's the art of systems programming — choosing the right libraries
     and wiring them together.
 </p>
@@ -104,7 +104,7 @@ gcc myapp.c -o myapp $(pkg-config --cflags --libs cairo x11 gl)</code></pre>
 </p>
 
 <p>
-    This is exactly what Crystal's build system (Meson) does behind the scenes. When
+    This is exactly what MoonRock's build system (Meson) does behind the scenes. When
     <code>meson.build</code> says <code>dependency('cairo')</code>, it's calling
     <code>pkg-config</code> under the hood.
 </p>
@@ -128,9 +128,9 @@ gcc myapp.c -o myapp $(pkg-config --cflags --libs cairo x11 gl)</code></pre>
 </ul>
 
 <p>
-    Crystal uses dynamic linking for everything. When it calls <code>glBindTexture()</code>, the
+    MoonRock uses dynamic linking for everything. When it calls <code>glBindTexture()</code>, the
     actual code for that function lives in <code>libGL.so</code> somewhere on your system. The
-    operating system loads it into memory when Crystal starts up and connects the function calls
+    operating system loads it into memory when MoonRock starts up and connects the function calls
     to the right addresses. This is called <em>dynamic linking</em>, and it's how most software
     on Linux works.
 </p>

@@ -20,8 +20,8 @@
 
 <p>
     We've already seen simple algorithms — linear search through the client array, iterating
-    over windows. But Crystal has a genuinely interesting algorithm hiding inside it: the
-    <strong>3-pass box blur approximation of Gaussian blur</strong>. It's how Crystal generates
+    over windows. But MoonRock has a genuinely interesting algorithm hiding inside it: the
+    <strong>3-pass box blur approximation of Gaussian blur</strong>. It's how MoonRock generates
     those soft, realistic shadows behind every window. Let's tear it apart.
 </p>
 
@@ -52,7 +52,7 @@
 </p>
 
 <p>
-    Crystal's algorithm works in five steps:
+    MoonRock's algorithm works in five steps:
 </p>
 
 <h3>Step 1: Create the Shadow Shape</h3>
@@ -115,7 +115,7 @@
 <h3>Step 4: Repeat Two More Times</h3>
 
 <p>
-    Crystal runs the horizontal+vertical pass three times. Each pass smooths the result further.
+    MoonRock runs the horizontal+vertical pass three times. Each pass smooths the result further.
     After one pass, the shadow has blocky, square edges. After two passes, it's smoother. After
     three passes, it's virtually indistinguishable from a true Gaussian blur.
 </p>
@@ -128,7 +128,7 @@
 <h3>Step 5: Upload to GPU</h3>
 
 <p>
-    The final blurred buffer is uploaded to the GPU as an OpenGL texture. Crystal draws it as
+    The final blurred buffer is uploaded to the GPU as an OpenGL texture. MoonRock draws it as
     a semi-transparent black quad behind the window. The alpha channel comes from the blur
     buffer — bright pixels are opaque shadow, dark pixels are transparent. The result: a soft,
     realistic drop shadow that fades smoothly from the window's edge.
@@ -145,7 +145,7 @@
 <p>
     This algorithm is a perfect example of a pattern you'll see everywhere in programming:
     take an expensive operation, find a mathematically equivalent but cheaper approximation,
-    and cache the result. Crystal's shadows look identical to a true Gaussian blur but compute
+    and cache the result. MoonRock's shadows look identical to a true Gaussian blur but compute
     in a fraction of the time.
 </p>
 

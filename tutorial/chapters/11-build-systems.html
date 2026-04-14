@@ -19,16 +19,16 @@
 </p>
 
 <p>
-    Crystal Compositor has 12 source files and depends on 9 libraries. The compile command would
+    MoonRock Compositor has 12 source files and depends on 9 libraries. The compile command would
     look something like:
 </p>
 
 <pre><code>gcc src/main.c src/wm.c src/events.c src/client.c src/frame.c \
-    src/decor.c src/assets.c src/ewmh.c src/input.c src/crystal.c \
+    src/decor.c src/assets.c src/ewmh.c src/input.c src/moonrock.c \
     src/struts.c src/resize.c \
     $(pkg-config --cflags --libs x11 xcomposite xdamage xfixes xext \
       xrender xrandr cairo cairo-xlib pangocairo libpng gl) \
-    -lm -o aura-wm</code></pre>
+    -lm -o cc-wm</code></pre>
 
 <p>
     Nobody wants to type that. And that's a simple project. Real-world C projects have hundreds
@@ -47,23 +47,23 @@
 <ul>
     <li><strong>Make</strong> — The classic. Uses a <code>Makefile</code>. Old, powerful, and has a syntax that can be, uh, adventurous.</li>
     <li><strong>CMake</strong> — Generates Makefiles (or Ninja files, or IDE projects) from a <code>CMakeLists.txt</code>. Very widely used.</li>
-    <li><strong>Meson</strong> — Modern, fast, and readable. Uses Python-like syntax. Generates Ninja build files. This is what AuraOS uses.</li>
+    <li><strong>Meson</strong> — Modern, fast, and readable. Uses Python-like syntax. Generates Ninja build files. This is what CopiCatOS uses.</li>
 </ul>
 
-<h2>Crystal's meson.build</h2>
+<h2>MoonRock's meson.build</h2>
 
 <p>
-    Here is the actual build file for the AuraOS window manager. Every line is doing something
+    Here is the actual build file for the CopiCatOS window manager. Every line is doing something
     meaningful:
 </p>
 
-<pre><code><span class="fn">project</span>(<span class="str">'aura-wm'</span>, <span class="str">'c'</span>,
+<pre><code><span class="fn">project</span>(<span class="str">'cc-wm'</span>, <span class="str">'c'</span>,
   version: <span class="str">'0.1.0'</span>,
   default_options: [<span class="str">'c_std=c11'</span>, <span class="str">'warning_level=2'</span>],
 )</code></pre>
 
 <p>
-    This declares the project: it's called <code>aura-wm</code>, it's written in C, version
+    This declares the project: it's called <code>cc-wm</code>, it's written in C, version
     0.1.0. It uses the C11 standard (not some ancient version of C) and warning level 2 (catch
     common mistakes but don't be overly paranoid).
 </p>
@@ -102,7 +102,7 @@ math_dep = cc.<span class="fn">find_library</span>(<span class="str">'m'</span>,
     we find it directly. Meson's compiler object knows how to search for it.
 </p>
 
-<pre><code>aura_wm_sources = [
+<pre><code>cc_wm_sources = [
   <span class="str">'src/main.c'</span>,
   <span class="str">'src/wm.c'</span>,
   <span class="str">'src/events.c'</span>,
@@ -112,13 +112,13 @@ math_dep = cc.<span class="fn">find_library</span>(<span class="str">'m'</span>,
   <span class="str">'src/assets.c'</span>,
   <span class="str">'src/ewmh.c'</span>,
   <span class="str">'src/input.c'</span>,
-  <span class="str">'src/crystal.c'</span>,
+  <span class="str">'src/moonrock.c'</span>,
   <span class="str">'src/struts.c'</span>,
   <span class="str">'src/resize.c'</span>,
 ]
 
-<span class="fn">executable</span>(<span class="str">'aura-wm'</span>,
-  aura_wm_sources,
+<span class="fn">executable</span>(<span class="str">'cc-wm'</span>,
+  cc_wm_sources,
   dependencies: [
     x11_dep, xcomposite_dep, xdamage_dep, xfixes_dep,
     xext_dep, xrender_dep, xrandr_dep,
@@ -130,7 +130,7 @@ math_dep = cc.<span class="fn">find_library</span>(<span class="str">'m'</span>,
 
 <p>
     This is the payoff. One <code>executable()</code> call that says: "Build a program called
-    <code>aura-wm</code> from these 12 source files, linked against these 13 libraries, and
+    <code>cc-wm</code> from these 12 source files, linked against these 13 libraries, and
     install it to the system's bin directory." That's the entire build recipe. Clean, readable,
     and correct.
 </p>

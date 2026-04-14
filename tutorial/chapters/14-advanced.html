@@ -28,7 +28,7 @@
 </p>
 
 <pre><code><span class="cmt">// Declare a function pointer type</span>
-<span class="kw">typedef void</span> (*<span class="type">EventHandler</span>)(<span class="type">AuraWM</span> *, <span class="type">XEvent</span> *);
+<span class="kw">typedef void</span> (*<span class="type">EventHandler</span>)(<span class="type">CCWM</span> *, <span class="type">XEvent</span> *);
 
 <span class="cmt">// Create an array of function pointers — one per event type</span>
 <span class="kw">static</span> <span class="type">EventHandler</span> handlers[LASTEvent];
@@ -41,7 +41,7 @@ handlers[ButtonPress]     = on_button_press;
 handlers[KeyPress]        = on_key_press;</code></pre>
 
 <p>
-    This is the actual event dispatch table from Crystal's <code>events.c</code>. Instead of a
+    This is the actual event dispatch table from MoonRock's <code>events.c</code>. Instead of a
     giant <code>switch</code> statement with a case for every event type, there's an array of
     function pointers. When an event arrives, the code looks up the handler:
 </p>
@@ -161,19 +161,19 @@ handlers[KeyPress]        = on_key_press;</code></pre>
         <strong>Static function:</strong> Only visible within the current file. This is C's
         version of "private."
 <pre><code><span class="kw">static void</span> <span class="fn">generate_shadow_texture</span>(...) { ... }
-<span class="cmt">// Only crystal.c can call this — it's invisible to other files</span></code></pre>
+<span class="cmt">// Only moonrock.c can call this — it's invisible to other files</span></code></pre>
     </li>
     <li>
         <strong>Static global variable:</strong> Same as static function — file-scope only.
-<pre><code><span class="kw">static struct</span> { ... } crystal;
-<span class="cmt">// Only crystal.c can access this struct</span></code></pre>
+<pre><code><span class="kw">static struct</span> { ... } moonrock;
+<span class="cmt">// Only moonrock.c can access this struct</span></code></pre>
     </li>
 </ul>
 
 <p>
-    Crystal makes heavy use of <code>static</code> for encapsulation. All the internal state
+    MoonRock makes heavy use of <code>static</code> for encapsulation. All the internal state
     and helper functions are static, keeping them hidden from the rest of the window manager.
-    Only the functions declared in <code>crystal.h</code> are visible externally.
+    Only the functions declared in <code>moonrock.h</code> are visible externally.
 </p>
 
 <h2>The volatile Keyword</h2>

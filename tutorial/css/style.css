@@ -74,7 +74,7 @@ pre code {
 .num { color: #b5cea8; }   /* numbers */
 .cmt { color: #6a9955; }   /* comments */
 .pp  { color: #c586c0; }   /* preprocessor directives: #include, #define */
-.type { color: #4ec9b0; }  /* type names: AuraWM, Client, etc. */
+.type { color: #4ec9b0; }  /* type names: CCWM, Client, etc. */
 
 /* --- Callout boxes --- */
 .note {

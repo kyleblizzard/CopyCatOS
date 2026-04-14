@@ -84,37 +84,37 @@
     write <code>return;</code> by itself to exit early).
 </p>
 
-<h2>Crystal's Functions: The Real Deal</h2>
+<h2>MoonRock's Functions: The Real Deal</h2>
 
 <p>
-    Now let's look at a real function signature from Crystal Compositor. Here's the initialization
+    Now let's look at a real function signature from MoonRock Compositor. Here's the initialization
     function:
 </p>
 
-<pre><code><span class="kw">bool</span> <span class="fn">crystal_init</span>(<span class="type">AuraWM</span> *wm);</code></pre>
+<pre><code><span class="kw">bool</span> <span class="fn">moonrock_init</span>(<span class="type">CCWM</span> *wm);</code></pre>
 
 <p>
     This is a <em>function declaration</em> (also called a "prototype"). It tells the compiler:
-    "there exists a function called <code>crystal_init</code> that takes one parameter and returns
+    "there exists a function called <code>moonrock_init</code> that takes one parameter and returns
     a bool." Let's decode each piece:
 </p>
 
 <ul>
     <li><code>bool</code> — the return type. This function returns <code>true</code> or <code>false</code>. True means "initialization succeeded." False means "something went wrong, we can't composite."</li>
-    <li><code>crystal_init</code> — the name. Clear and descriptive: it initializes the Crystal compositor.</li>
-    <li><code>AuraWM *wm</code> — the parameter. It takes a <em>pointer</em> to an <code>AuraWM</code> struct. Don't worry about pointers or structs yet — we'll cover both soon. For now, just think of it as "it needs access to the window manager's state to do its job."</li>
+    <li><code>moonrock_init</code> — the name. Clear and descriptive: it initializes the MoonRock compositor.</li>
+    <li><code>CCWM *wm</code> — the parameter. It takes a <em>pointer</em> to an <code>CCWM</code> struct. Don't worry about pointers or structs yet — we'll cover both soon. For now, just think of it as "it needs access to the window manager's state to do its job."</li>
 </ul>
 
 <p>
     And here's how it's called in <code>main()</code>:
 </p>
 
-<pre><code><span class="kw">if</span> (!<span class="fn">crystal_init</span>(&amp;wm)) {
-    <span class="fn">fprintf</span>(stderr, <span class="str">"[aura-wm] Crystal unavailable — no shadows\n"</span>);
+<pre><code><span class="kw">if</span> (!<span class="fn">moonrock_init</span>(&amp;wm)) {
+    <span class="fn">fprintf</span>(stderr, <span class="str">"[cc-wm] MoonRock unavailable — no shadows\n"</span>);
 }</code></pre>
 
 <p>
-    That <code>!</code> is the "not" operator. So this reads as: "if crystal_init did NOT
+    That <code>!</code> is the "not" operator. So this reads as: "if moonrock_init did NOT
     succeed, print an error message." The program doesn't crash — it just runs without
     shadows. That's graceful degradation, and it's good design. Your program should handle
     failure, not ignore it.
@@ -124,7 +124,7 @@
     Now look at the shutdown function:
 </p>
 
-<pre><code><span class="kw">void</span> <span class="fn">crystal_shutdown</span>(<span class="type">AuraWM</span> *wm);</code></pre>
+<pre><code><span class="kw">void</span> <span class="fn">moonrock_shutdown</span>(<span class="type">CCWM</span> *wm);</code></pre>
 
 <p>
     <code>void</code> return type — it doesn't return a value. It just cleans up: destroys textures,
@@ -135,16 +135,16 @@
 <h2>Why Functions Matter</h2>
 
 <p>
-    Look at Crystal's main.c again. The entire program is basically:
+    Look at MoonRock's main.c again. The entire program is basically:
 </p>
 
 <pre><code><span class="fn">wm_init</span>(&amp;wm);        <span class="cmt">// Set up the window manager</span>
-<span class="fn">crystal_init</span>(&amp;wm);   <span class="cmt">// Set up the compositor</span>
+<span class="fn">moonrock_init</span>(&amp;wm);   <span class="cmt">// Set up the compositor</span>
 <span class="fn">struts_init</span>(&amp;wm);    <span class="cmt">// Set up screen edge reservation</span>
 <span class="fn">decor_init</span>(&amp;wm);     <span class="cmt">// Load window decoration assets</span>
 <span class="fn">input_setup_grabs</span>(&amp;wm);  <span class="cmt">// Set up keyboard shortcuts</span>
 <span class="fn">events_run</span>(&amp;wm);     <span class="cmt">// Run forever, processing events</span>
-<span class="fn">crystal_shutdown</span>(&amp;wm);   <span class="cmt">// Tear down compositor</span>
+<span class="fn">moonrock_shutdown</span>(&amp;wm);   <span class="cmt">// Tear down compositor</span>
 <span class="fn">wm_shutdown</span>(&amp;wm);    <span class="cmt">// Tear down window manager</span></code></pre>
 
 <p>
@@ -155,9 +155,9 @@
 </p>
 
 <p>
-    <code>crystal_init</code> alone is over 200 lines — it checks for OpenGL extensions, creates
+    <code>moonrock_init</code> alone is over 200 lines — it checks for OpenGL extensions, creates
     rendering contexts, sets up damage tracking, and computes a Gaussian blur kernel. But from
-    <code>main</code>'s perspective? It's one line. One function call. "Initialize Crystal." Done.
+    <code>main</code>'s perspective? It's one line. One function call. "Initialize MoonRock." Done.
 </p>
 
 <h2>Writing Your Own Functions</h2>
@@ -201,9 +201,9 @@
 </p>
 
 <div class="tip">
-    <strong>Naming matters.</strong> Notice how Crystal names its functions:
-    <code>crystal_init</code>, <code>crystal_shutdown</code>, <code>crystal_composite</code>,
-    <code>crystal_window_mapped</code>. They all start with <code>crystal_</code> so you know
+    <strong>Naming matters.</strong> Notice how MoonRock names its functions:
+    <code>moonrock_init</code>, <code>moonrock_shutdown</code>, <code>moonrock_composite</code>,
+    <code>moonrock_window_mapped</code>. They all start with <code>moonrock_</code> so you know
     which module they belong to, followed by a verb that describes the action. This naming
     convention is how C programmers organize code without classes or namespaces. Keep your
     function names clear and consistent.

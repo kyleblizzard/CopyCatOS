@@ -36,10 +36,10 @@ scores[<span class="num">4</span>] = <span class="num">72</span>;         <span 
 
 <pre><code><span class="kw">int</span> scores[<span class="num">5</span>] = { <span class="num">90</span>, <span class="num">85</span>, <span class="num">78</span>, <span class="num">92</span>, <span class="num">72</span> };</code></pre>
 
-<h2>Crystal's Window Array</h2>
+<h2>MoonRock's Window Array</h2>
 
 <p>
-    Crystal tracks every window on your screen in a fixed-size array:
+    MoonRock tracks every window on your screen in a fixed-size array:
 </p>
 
 <pre><code><span class="kw">struct</span> <span class="type">WindowTexture</span> windows[MAX_CLIENTS];   <span class="cmt">// MAX_CLIENTS = 256</span>
@@ -47,7 +47,7 @@ scores[<span class="num">4</span>] = <span class="num">72</span>;         <span 
 
 <p>
     This is a classic pattern in C: allocate a fixed-size array and keep a separate count of how
-    many slots are actually filled. When a new window appears, Crystal puts it in
+    many slots are actually filled. When a new window appears, MoonRock puts it in
     <code>windows[window_count]</code> and increments the count. When a window closes, it removes
     it from the array and decrements the count.
 </p>
@@ -127,10 +127,10 @@ numbers[<span class="num">99</span>] = <span class="num">17</span>;
     gives you whatever garbage was there before. <code>calloc</code> gives you clean zeros.
 </p>
 
-<h2>Crystal's Shadow Buffer: calloc in the Wild</h2>
+<h2>MoonRock's Shadow Buffer: calloc in the Wild</h2>
 
 <p>
-    Here's the real code where Crystal allocates memory for shadow computation. This is from
+    Here's the real code where MoonRock allocates memory for shadow computation. This is from
     the Gaussian blur routine that generates the soft shadows behind every window:
 </p>
 
@@ -220,7 +220,7 @@ numbers[<span class="num">99</span>] = <span class="num">17</span>;
 <p>
     The fix? Always check sizes. Use <code>strncpy</code> instead of <code>strcpy</code>.
     Use <code>snprintf</code> instead of <code>sprintf</code>. Never trust user input to be
-    the right length. Crystal's code uses <code>snprintf</code> everywhere it builds strings:
+    the right length. MoonRock's code uses <code>snprintf</code> everywhere it builds strings:
 </p>
 
 <pre><code><span class="cmt">// Safe — snprintf will never write more than sizeof(path) bytes</span>
@@ -268,7 +268,7 @@ numbers[<span class="num">99</span>] = <span class="num">17</span>;
             <strong>Challenge:</strong> Write a function that takes two arrays and their lengths,
             allocates a new array big enough to hold both, copies both into it (use a loop), and
             returns the new array. The caller is responsible for freeing it. This is a simple
-            version of what Crystal does when it reorders its window array.
+            version of what MoonRock does when it reorders its window array.
         </li>
     </ol>
 </div>

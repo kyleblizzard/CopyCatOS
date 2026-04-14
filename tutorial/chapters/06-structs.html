@@ -73,10 +73,10 @@ cursor.y = <span class="num">200</span>;
     define the shape of your data, and then you work with it as a single, coherent unit.
 </p>
 
-<h2>Crystal's WindowTexture: A Real Struct</h2>
+<h2>MoonRock's WindowTexture: A Real Struct</h2>
 
 <p>
-    Here's an actual struct from Crystal Compositor. This is how Crystal tracks each window
+    Here's an actual struct from MoonRock Compositor. This is how MoonRock tracks each window
     that's being composited on screen:
 </p>
 
@@ -111,7 +111,7 @@ cursor.y = <span class="num">200</span>;
 
 <p>
     One line. An array of 256 window textures. Each one is a complete package of everything
-    Crystal needs to know about that window. To access the width of window number 5:
+    MoonRock needs to know about that window. To access the width of window number 5:
 </p>
 
 <pre><code><span class="kw">int</span> width = windows[<span class="num">5</span>].w;</code></pre>
@@ -120,10 +120,10 @@ cursor.y = <span class="num">200</span>;
     Simple. Readable. Correct.
 </p>
 
-<h2>Crystal's Client Struct: Modeling a Managed Window</h2>
+<h2>MoonRock's Client Struct: Modeling a Managed Window</h2>
 
 <p>
-    The window manager has its own struct for tracking windows, separate from Crystal's:
+    The window manager has its own struct for tracking windows, separate from MoonRock's:
 </p>
 
 <pre><code><span class="kw">struct</span> <span class="type">Client</span> {
@@ -160,7 +160,7 @@ cursor.y = <span class="num">200</span>;
     Here's where it gets really satisfying. The window manager's entire state is one big struct:
 </p>
 
-<pre><code><span class="kw">struct</span> <span class="type">AuraWM</span> {
+<pre><code><span class="kw">struct</span> <span class="type">CCWM</span> {
     <span class="type">Display</span> *dpy;           <span class="cmt">// Connection to the X server</span>
     <span class="kw">int</span>      screen;         <span class="cmt">// Which screen we're on</span>
     <span class="type">Window</span>   root;           <span class="cmt">// The root (desktop) window</span>
@@ -177,7 +177,7 @@ cursor.y = <span class="num">200</span>;
 
 <p>
     See that? <code>clients[256]</code> — an array of 256 <code>Client</code> structs. A struct
-    inside a struct. The <code>AuraWM</code> struct contains everything: the display connection,
+    inside a struct. The <code>CCWM</code> struct contains everything: the display connection,
     the list of windows, the current focus state, drag state... the entire window manager's
     brain, in one variable.
 </p>
@@ -186,11 +186,11 @@ cursor.y = <span class="num">200</span>;
     In <code>main()</code>, this entire world is created with one line:
 </p>
 
-<pre><code><span class="kw">static</span> <span class="type">AuraWM</span> wm;</code></pre>
+<pre><code><span class="kw">static</span> <span class="type">CCWM</span> wm;</code></pre>
 
 <p>
     One variable. It holds everything. And then every function that needs access to the window
-    manager's state receives a pointer to this struct: <code>crystal_init(&amp;wm)</code>,
+    manager's state receives a pointer to this struct: <code>moonrock_init(&amp;wm)</code>,
     <code>events_run(&amp;wm)</code>, <code>wm_shutdown(&amp;wm)</code>. That's how state flows
     through a C program — you create it in one place and pass references to it everywhere else.
 </p>
@@ -247,8 +247,8 @@ cursor.y = <span class="num">200</span>;
     <code>typedef struct { int x, y; } Point;</code>
     <br><br>
     Now you can just write <code>Point p;</code> instead of <code>struct Point p;</code>.
-    Crystal's code uses <code>typedef</code> for <code>AuraWM</code> and <code>Client</code>,
-    which is why you see <code>AuraWM *wm</code> instead of <code>struct AuraWM *wm</code>
+    MoonRock's code uses <code>typedef</code> for <code>CCWM</code> and <code>Client</code>,
+    which is why you see <code>CCWM *wm</code> instead of <code>struct CCWM *wm</code>
     in function signatures.
 </div>
 
@@ -264,12 +264,12 @@ cursor.y = <span class="num">200</span>;
     In the next set of chapters, we'll tackle the topics that separate C from friendlier
     languages: pointers, memory management, arrays, and strings. That's where C gets its
     reputation — and where it gets its power. You'll understand what that <code>*</code> means
-    in <code>AuraWM *wm</code>, why we pass <code>&amp;wm</code> to functions, and how Crystal
+    in <code>CCWM *wm</code>, why we pass <code>&amp;wm</code> to functions, and how MoonRock
     manages to track 256 windows worth of GPU textures without breaking a sweat.
 </p>
 
 <p>
-    But for now, take a breath. You know more C than you think. Go back and look at Crystal's
+    But for now, take a breath. You know more C than you think. Go back and look at MoonRock's
     <code>main()</code> from Chapter 2. I bet it makes a lot more sense now than it did then.
 </p>
 
@@ -291,7 +291,7 @@ cursor.y = <span class="num">200</span>;
             <strong>Challenge:</strong> Define a <code>struct Color</code> with <code>r</code>,
             <code>g</code>, <code>b</code> (all floats, 0.0 to 1.0). Write a function that
             takes two Colors and returns a new Color that's the average (mix) of them. This is
-            actually similar to how alpha blending works in Crystal!
+            actually similar to how alpha blending works in MoonRock!
         </li>
     </ol>
 </div>

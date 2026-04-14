@@ -141,30 +141,30 @@
     Congratulations. You just told a computer what to do and it listened. That might not seem like
     much, but every program ever written — every game, every operating system, every compositor that
     draws windows on your screen — started right here. Someone typed some text into a file, compiled
-    it, and ran it. The difference between this and Crystal Compositor is just scale and knowledge.
+    it, and ran it. The difference between this and MoonRock Compositor is just scale and knowledge.
     The process is exactly the same.
 </p>
 
 <h2>What a Real <code>main()</code> Looks Like</h2>
 
 <p>
-    Our hello world has a two-line <code>main</code>. Crystal Compositor's <code>main</code> is a
-    bit more involved. Here's the actual entry point of the AuraOS window manager:
+    Our hello world has a two-line <code>main</code>. MoonRock Compositor's <code>main</code> is a
+    bit more involved. Here's the actual entry point of the CopiCatOS window manager:
 </p>
 
 <pre><code><span class="pp">#include</span> <span class="str">"wm.h"</span>
 <span class="pp">#include</span> <span class="str">"events.h"</span>
-<span class="pp">#include</span> <span class="str">"crystal.h"</span>
+<span class="pp">#include</span> <span class="str">"moonrock.h"</span>
 <span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>
 <span class="pp">#include</span> <span class="str">&lt;signal.h&gt;</span>
 <span class="pp">#include</span> <span class="str">&lt;stdlib.h&gt;</span>
 
-<span class="kw">static</span> <span class="type">AuraWM</span> wm;
+<span class="kw">static</span> <span class="type">CCWM</span> wm;
 
 <span class="kw">static void</span> <span class="fn">handle_signal</span>(<span class="kw">int</span> sig)
 {
     (<span class="kw">void</span>)sig;
-    <span class="fn">fprintf</span>(stderr, <span class="str">"[aura-wm] Received signal %d, shutting down\n"</span>, sig);
+    <span class="fn">fprintf</span>(stderr, <span class="str">"[cc-wm] Received signal %d, shutting down\n"</span>, sig);
     wm.running = <span class="kw">false</span>;
 }
 
@@ -174,7 +174,7 @@
     (<span class="kw">void</span>)argv;
 
     <span class="fn">fprintf</span>(stderr, <span class="str">"╔══════════════════════════════════════╗\n"</span>);
-    <span class="fn">fprintf</span>(stderr, <span class="str">"║         AuraOS Window Manager        ║\n"</span>);
+    <span class="fn">fprintf</span>(stderr, <span class="str">"║         CopiCatOS Window Manager        ║\n"</span>);
     <span class="fn">fprintf</span>(stderr, <span class="str">"║   Pixel-Perfect Snow Leopard in C    ║\n"</span>);
     <span class="fn">fprintf</span>(stderr, <span class="str">"╚══════════════════════════════════════╝\n"</span>);
 
@@ -187,16 +187,16 @@
         <span class="kw">return</span> <span class="num">1</span>;
     }
 
-    <span class="cmt">// Initialize Crystal compositor for shadows and effects</span>
-    <span class="kw">if</span> (!<span class="fn">crystal_init</span>(&amp;wm)) {
-        <span class="fn">fprintf</span>(stderr, <span class="str">"[aura-wm] Crystal unavailable — no shadows\n"</span>);
+    <span class="cmt">// Initialize MoonRock compositor for shadows and effects</span>
+    <span class="kw">if</span> (!<span class="fn">moonrock_init</span>(&amp;wm)) {
+        <span class="fn">fprintf</span>(stderr, <span class="str">"[cc-wm] MoonRock unavailable — no shadows\n"</span>);
     }
 
     <span class="cmt">// Run the event loop (blocks until wm.running = false)</span>
     <span class="fn">events_run</span>(&amp;wm);
 
     <span class="cmt">// Clean shutdown</span>
-    <span class="fn">crystal_shutdown</span>(&amp;wm);
+    <span class="fn">moonrock_shutdown</span>(&amp;wm);
     <span class="fn">wm_shutdown</span>(&amp;wm);
 
     <span class="kw">return</span> <span class="num">0</span>;
@@ -222,8 +222,8 @@
 </ul>
 
 <div class="tip">
-    <strong>The reverse-order shutdown</strong> is worth remembering. Crystal depends on the window
-    manager being initialized, so Crystal must be shut down <em>before</em> the window manager.
+    <strong>The reverse-order shutdown</strong> is worth remembering. MoonRock depends on the window
+    manager being initialized, so MoonRock must be shut down <em>before</em> the window manager.
     Last in, first out — like a stack of plates. You'll see this pattern for the rest of your
     programming career.
 </div>
@@ -232,7 +232,7 @@
     <h3>Try It Yourself</h3>
     <p>
         Modify your <code>hello.c</code> to print your name. Then try printing two lines.
-        Then try printing a box like Crystal's banner using regular characters:
+        Then try printing a box like MoonRock's banner using regular characters:
     </p>
 <pre><code>+------+
 | Kyle |

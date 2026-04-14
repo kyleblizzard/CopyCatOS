@@ -37,22 +37,22 @@
 
 <pre><code><span class="fn">fprintf</span>(stderr, <span class="str">"[debug] got here, x = %d\n"</span>, x);
 <span class="fn">fprintf</span>(stderr, <span class="str">"[debug] pointer = %p\n"</span>, ptr);
-<span class="fn">fprintf</span>(stderr, <span class="str">"[debug] about to call crystal_init()\n"</span>);</code></pre>
+<span class="fn">fprintf</span>(stderr, <span class="str">"[debug] about to call moonrock_init()\n"</span>);</code></pre>
 
 <p>
     It's crude. It's effective. When your program crashes, sprinkle <code>fprintf</code> calls
-    around the suspicious area and narrow down exactly where it dies. Crystal's code is full
+    around the suspicious area and narrow down exactly where it dies. MoonRock's code is full
     of these — every initialization step prints a status message:
 </p>
 
-<pre><code><span class="fn">fprintf</span>(stderr, <span class="str">"[crystal] Initializing Crystal Compositor...\n"</span>);
+<pre><code><span class="fn">fprintf</span>(stderr, <span class="str">"[moonrock] Initializing MoonRock Compositor...\n"</span>);
 <span class="cmt">// ... lots of initialization code ...</span>
-<span class="fn">fprintf</span>(stderr, <span class="str">"[crystal] GLX context created successfully\n"</span>);
+<span class="fn">fprintf</span>(stderr, <span class="str">"[moonrock] GLX context created successfully\n"</span>);
 <span class="cmt">// ... more setup ...</span>
-<span class="fn">fprintf</span>(stderr, <span class="str">"[crystal] VSync enabled\n"</span>);</code></pre>
+<span class="fn">fprintf</span>(stderr, <span class="str">"[moonrock] VSync enabled\n"</span>);</code></pre>
 
 <p>
-    When Crystal fails to start, you look at the last message that printed. If you see
+    When MoonRock fails to start, you look at the last message that printed. If you see
     "Initializing" but not "GLX context created," you know the problem is between those two
     points. Binary search for bugs. Narrow it down.
 </p>
@@ -89,7 +89,7 @@ gcc -Wall -Wextra -Wpedantic -Wshadow myprogram.c -o myprogram</code></pre>
 </ul>
 
 <p>
-    Crystal's build system enables warning level 2 in Meson, which maps to <code>-Wall -Wextra</code>.
+    MoonRock's build system enables warning level 2 in Meson, which maps to <code>-Wall -Wextra</code>.
     Treat every warning as a potential bug. Fix them all. A clean compile with zero warnings is
     your baseline.
 </p>
@@ -120,7 +120,7 @@ gcc -Wall -Wextra -Wpedantic -Wshadow myprogram.c -o myprogram</code></pre>
 
 <pre><code>(gdb) <span class="fn">run</span>              <span class="cmt"># start the program</span>
 (gdb) <span class="fn">break</span> main       <span class="cmt"># set a breakpoint at the start of main</span>
-(gdb) <span class="fn">break</span> crystal.c:<span class="num">150</span>  <span class="cmt"># break at line 150 of crystal.c</span>
+(gdb) <span class="fn">break</span> moonrock.c:<span class="num">150</span>  <span class="cmt"># break at line 150 of moonrock.c</span>
 (gdb) <span class="fn">next</span>             <span class="cmt"># execute one line (step over function calls)</span>
 (gdb) <span class="fn">step</span>             <span class="cmt"># execute one line (step INTO function calls)</span>
 (gdb) <span class="fn">print</span> x          <span class="cmt"># show the value of variable x</span>

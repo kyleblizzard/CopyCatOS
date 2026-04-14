@@ -89,17 +89,17 @@ a <= b    <span class="cmt">// less than or equal</span></code></pre>
     but it's perfectly legal C. Watch for it.
 </div>
 
-<h2>Crystal's Error Checking: if in the Wild</h2>
+<h2>MoonRock's Error Checking: if in the Wild</h2>
 
 <p>
-    Here's a pattern you'll see constantly in Crystal's code — checking if something failed
+    Here's a pattern you'll see constantly in MoonRock's code — checking if something failed
     and handling the error:
 </p>
 
-<pre><code><span class="cmt">// From crystal_init() — checking if GLX is available</span>
+<pre><code><span class="cmt">// From moonrock_init() — checking if GLX is available</span>
 <span class="kw">int</span> glx_error_base, glx_event_base;
 <span class="kw">if</span> (!<span class="fn">glXQueryExtension</span>(wm->dpy, &amp;glx_error_base, &amp;glx_event_base)) {
-    <span class="fn">fprintf</span>(stderr, <span class="str">"[crystal] ERROR: GLX extension not available.\n"</span>);
+    <span class="fn">fprintf</span>(stderr, <span class="str">"[moonrock] ERROR: GLX extension not available.\n"</span>);
     <span class="kw">return false</span>;
 }</code></pre>
 
@@ -118,14 +118,14 @@ a <= b    <span class="cmt">// less than or equal</span></code></pre>
     <span class="kw">return</span> <span class="num">1</span>;   <span class="cmt">// couldn't initialize — exit with error code</span>
 }
 
-<span class="kw">if</span> (!<span class="fn">crystal_init</span>(&amp;wm)) {
-    <span class="fn">fprintf</span>(stderr, <span class="str">"[aura-wm] Crystal unavailable — no shadows\n"</span>);
+<span class="kw">if</span> (!<span class="fn">moonrock_init</span>(&amp;wm)) {
+    <span class="fn">fprintf</span>(stderr, <span class="str">"[cc-wm] MoonRock unavailable — no shadows\n"</span>);
     <span class="cmt">// Note: we DON'T return here! The WM continues without compositing.</span>
 }</code></pre>
 
 <p>
     Notice the difference: if the window manager can't initialize, the program exits (returns 1).
-    But if Crystal can't initialize, the program keeps running — you just don't get fancy shadows.
+    But if MoonRock can't initialize, the program keeps running — you just don't get fancy shadows.
     The <code>if</code> statement lets you make these kinds of nuanced decisions about how to
     handle different situations.
 </p>
@@ -152,7 +152,7 @@ a <= b    <span class="cmt">// less than or equal</span></code></pre>
     language was literally named after it. (Get it? C, plus plus. C++. I'll see myself out.)
 </p>
 
-<h2>Crystal's Event Loop: The Heartbeat</h2>
+<h2>MoonRock's Event Loop: The Heartbeat</h2>
 
 <p>
     Here's the most important <code>while</code> loop in the entire window manager. This is
@@ -163,16 +163,16 @@ a <= b    <span class="cmt">// less than or equal</span></code></pre>
     <span class="type">XEvent</span> ev;
     <span class="fn">XNextEvent</span>(wm->dpy, &amp;ev);
 
-    <span class="cmt">// Let Crystal handle compositor events first</span>
-    <span class="kw">if</span> (<span class="fn">crystal_handle_event</span>(wm, &amp;ev)) {
-        <span class="cmt">// Crystal consumed the event — skip normal dispatch</span>
+    <span class="cmt">// Let MoonRock handle compositor events first</span>
+    <span class="kw">if</span> (<span class="fn">moonrock_handle_event</span>(wm, &amp;ev)) {
+        <span class="cmt">// MoonRock consumed the event — skip normal dispatch</span>
     } <span class="kw">else if</span> (ev.type < LASTEvent &amp;&amp; handlers[ev.type]) {
         handlers[ev.type](wm, &amp;ev);
     }
 
     <span class="cmt">// Draw all windows with shadows</span>
-    <span class="kw">if</span> (<span class="fn">crystal_is_active</span>()) {
-        <span class="fn">crystal_composite</span>(wm);
+    <span class="kw">if</span> (<span class="fn">moonrock_is_active</span>()) {
+        <span class="fn">moonrock_composite</span>(wm);
     }
 }</code></pre>
 
@@ -183,7 +183,7 @@ a <= b    <span class="cmt">// less than or equal</span></code></pre>
 
 <ol>
     <li>Waits for the next event from the X server (a mouse click, a key press, a window resize...).</li>
-    <li>Lets Crystal handle it if it's a compositor event (like damage).</li>
+    <li>Lets MoonRock handle it if it's a compositor event (like damage).</li>
     <li>Otherwise, dispatches it to the appropriate handler function.</li>
     <li>Redraws all the windows on screen.</li>
 </ol>
@@ -249,7 +249,7 @@ a <= b    <span class="cmt">// less than or equal</span></code></pre>
 }</code></pre>
 
 <p>
-    You saw <code>&amp;&amp;</code> in Crystal's event loop: <code>ev.type &lt; LASTEvent &amp;&amp;
+    You saw <code>&amp;&amp;</code> in MoonRock's event loop: <code>ev.type &lt; LASTEvent &amp;&amp;
     handlers[ev.type]</code>. Both conditions must be true — the event type must be valid AND
     there must be a handler registered for it. If either is false, we skip it.
 </p>
