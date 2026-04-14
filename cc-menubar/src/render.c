@@ -41,66 +41,49 @@ void render_init(MenuBar *mb)
 {
     (void)mb;
 
-    // The menubar_bg.png texture has a seam artifact that creates a visible
-    // dark band at y=4-5 when tiled. The Cairo gradient produces a more
-    // accurate match to real Snow Leopard, so we skip the texture entirely.
-    // If a corrected texture is ever produced, this can be re-enabled.
-    bg_texture = NULL;
+    // Load the real Snow Leopard menubar background texture.
+    // menubar_bg.png is 400x22 RGBA — the actual asset from Mac OS X 10.6.
+    // It contains the exact gradient (245→170) with a 1px dark border at
+    // the bottom. We tile it horizontally to fill the screen width.
+    const char *home = getenv("HOME");
+    if (home) {
+        char path[512];
+        snprintf(path, sizeof(path),
+                 "%s/.local/share/aqua-widgets/menubar/menubar_bg.png", home);
+
+        bg_texture = cairo_image_surface_create_from_png(path);
+        if (cairo_surface_status(bg_texture) != CAIRO_STATUS_SUCCESS) {
+            fprintf(stderr, "[menubar] WARNING: Could not load %s\n", path);
+            cairo_surface_destroy(bg_texture);
+            bg_texture = NULL;
+        } else {
+            fprintf(stderr, "[menubar] Loaded menubar_bg.png (%dx%d)\n",
+                    cairo_image_surface_get_width(bg_texture),
+                    cairo_image_surface_get_height(bg_texture));
+        }
+    }
 }
 
 // ── Background ──────────────────────────────────────────────────────
 
 void render_background(MenuBar *mb, cairo_t *cr)
 {
-    // ── Translucent gradient (rows y=0 through y=20) ────────────────
-    //
-    // Measured from a real Snow Leopard 10.6.8 machine on 2026-04-14.
-    // The menubar is 22px tall. Rows 0-20 are a smooth translucent
-    // gradient; row 21 is a 1px opaque dark border.
-    //
-    // SL pixel values (x=100, away from wallpaper tint):
-    //   y=0:  ~231    y=5:  ~191    y=10: ~176
-    //   y=15: ~164    y=20: ~148
-    //
-    // The bar uses alpha ~0.88, so the wallpaper (Aurora) bleeds through
-    // at ~12%, giving the characteristic warm purple tint over dark areas
-    // and a slightly cool tint over bright areas. The gradient itself is
-    // neutral gray — the wallpaper provides all the color.
-    //
-    // To produce those displayed values, the gradient RGB at alpha 0.88:
-    //   displayed = gradient * 0.88 + wallpaper * 0.12
-    // Solving for gradient = (displayed - wallpaper * 0.12) / 0.88
-    // With a mid-tone wallpaper average of ~80:
-    //   y=0:  gradient = (231 - 9.6) / 0.88 = 252  → 0.988
-    //   y=10: gradient = (176 - 9.6) / 0.88 = 189  → 0.741
-    //   y=20: gradient = (148 - 9.6) / 0.88 = 157  → 0.616
-
-    cairo_pattern_t *grad = cairo_pattern_create_linear(0, 0, 0, MENUBAR_HEIGHT - 1);
-
-    // SL menubar gradient measured at a neutral area (x=100):
-    //   y=0: 231  y=1: 204  y=5: 191  y=10: 176  y=15: 164  y=20: 148
-    // At a wallpaper-tinted area (x=800):
-    //   y=0: 245  y=10: 202  y=20: 171
-    //
-    // The gradient source values at alpha 0.88, adjusted for compositing
-    // against a typical wallpaper brightness of ~60-80:
-    cairo_pattern_add_color_stop_rgba(grad, 0.00,  1.00, 1.00, 1.00, 0.88);
-    cairo_pattern_add_color_stop_rgba(grad, 0.05,  0.96, 0.96, 0.96, 0.88);
-    cairo_pattern_add_color_stop_rgba(grad, 0.50,  0.84, 0.84, 0.84, 0.88);
-    cairo_pattern_add_color_stop_rgba(grad, 1.00,  0.68, 0.68, 0.68, 0.88);
-
-    cairo_set_source(cr, grad);
-    cairo_rectangle(cr, 0, 0, mb->screen_w, MENUBAR_HEIGHT - 1);
-    cairo_fill(cr);
-    cairo_pattern_destroy(grad);
-
-    // ── 1px bottom border at y=21 ──────────────────────────────────
-    //
-    // Measured: RGB(30, 10, 30) — nearly black with a slight warm tint.
-    // Fully opaque so no wallpaper bleeds through the border line.
-    cairo_set_source_rgba(cr, 30/255.0, 10/255.0, 30/255.0, 1.0);
-    cairo_rectangle(cr, 0, MENUBAR_HEIGHT - 1, mb->screen_w, 1);
-    cairo_fill(cr);
+    if (bg_texture) {
+        // Tile the real Snow Leopard menubar texture across the full width.
+        // The texture is 400x22 and contains the complete gradient + border.
+        // CAIRO_EXTEND_REPEAT tiles it seamlessly.
+        cairo_pattern_t *pattern = cairo_pattern_create_for_surface(bg_texture);
+        cairo_pattern_set_extend(pattern, CAIRO_EXTEND_REPEAT);
+        cairo_set_source(cr, pattern);
+        cairo_rectangle(cr, 0, 0, mb->screen_w, MENUBAR_HEIGHT);
+        cairo_fill(cr);
+        cairo_pattern_destroy(pattern);
+    } else {
+        // Fallback only if the real asset is missing
+        cairo_set_source_rgb(cr, 0.85, 0.85, 0.85);
+        cairo_rectangle(cr, 0, 0, mb->screen_w, MENUBAR_HEIGHT);
+        cairo_fill(cr);
+    }
 }
 
 // ── Text Rendering ──────────────────────────────────────────────────
