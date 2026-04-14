@@ -1,4 +1,4 @@
-# AuraOS Lessons Learned
+# CopiCatOS Lessons Learned
 
 Patterns and rules to prevent repeated mistakes.
 

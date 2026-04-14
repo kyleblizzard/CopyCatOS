@@ -1,10 +1,10 @@
 ---
-name: AuraOS is a closed ecosystem, not a themed Linux
-description: AuraOS ships only Qt6 AppImages styled by breeze-aqua — no unstyled apps allowed. This is the macOS philosophy applied to Linux.
+name: CopiCatOS is a closed ecosystem, not a themed Linux
+description: CopiCatOS ships only Qt6 AppImages styled by breeze-aqua — no unstyled apps allowed. This is the macOS philosophy applied to Linux.
 type: project
 ---
 
-AuraOS is not "Linux with a Snow Leopard theme." It is a closed, curated OS where every app is a Qt6 AppImage bundled with breeze-aqua styling. Apps that can't look pixel-perfect Snow Leopard don't ship.
+CopiCatOS is not "Linux with a Snow Leopard theme." It is a closed, curated OS where every app is a Qt6 AppImage bundled with breeze-aqua styling. Apps that can't look pixel-perfect Snow Leopard don't ship.
 
 **Why:** Kyle's explicit requirement is pixel-perfect Snow Leopard "without exception." No GTK apps, no Electron apps with mismatched scrollbars, no visual compromises. If an app can't be made to look right, it gets replaced with one that can.
 

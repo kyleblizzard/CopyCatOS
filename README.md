@@ -1,4 +1,4 @@
-# AuraOS
+# CopiCatOS
 
 A custom Linux desktop environment that recreates Mac OS X Snow Leopard.
 
@@ -6,11 +6,11 @@ Not a theme. Not a skin. A complete desktop environment built from scratch in C 
 
 ## What's Here
 
-- **aura-wm** — X11 reparenting window manager with Crystal Compositor (OpenGL). Handles window framing, decoration painting, shadows, compositing, keyboard shortcuts, strut reservation.
-- **aura-dock** — The dock. Glass shelf, parabolic magnification, two-phase bounce animation, icon reflections, running indicators, drag-and-drop with poof removal, folder stacks with grid popup, config persistence, enhanced context menus with submenus.
-- **aura-menubar** — 22px translucent global menu bar. Apple logo, bold app name, per-app menu sets, system tray (clock, battery, volume), Spotlight search icon. Wallpaper bleeds through the gradient.
-- **aura-desktop** — Wallpaper surface with JPEG loading, desktop icon grid with inotify file watching, drag-and-drop snap-to-grid, Cairo-rendered context menus.
-- **aura-spotlight** — Ctrl+Space search overlay. Scans .desktop files, real-time substring search, icon caching, keyboard navigation.
+- **cc-wm** — X11 reparenting window manager with MoonRock Compositor (OpenGL). Handles window framing, decoration painting, shadows, compositing, keyboard shortcuts, strut reservation.
+- **cc-dock** — The dock. Glass shelf, parabolic magnification, two-phase bounce animation, icon reflections, running indicators, drag-and-drop with poof removal, folder stacks with grid popup, config persistence, enhanced context menus with submenus.
+- **cc-menubar** — 22px translucent global menu bar. Apple logo, bold app name, per-app menu sets, system tray (clock, battery, volume), Spotlight search icon. Wallpaper bleeds through the gradient.
+- **cc-desktop** — Wallpaper surface with JPEG loading, desktop icon grid with inotify file watching, drag-and-drop snap-to-grid, Cairo-rendered context menus.
+- **cc-spotlight** — Ctrl+Space search overlay. Scans .desktop files, real-time substring search, icon caching, keyboard navigation.
 - **breeze-aqua** — Qt6 QStyle plugin that renders Aqua scrollbars, buttons, checkboxes, and other widgets inside Qt applications using real Snow Leopard PNG assets.
 
 ## Architecture
@@ -40,10 +40,10 @@ bash scripts/install-assets.sh
 
 ## Running
 
-Select "AuraOS" at the display manager login screen, or:
+Select "CopiCatOS" at the display manager login screen, or:
 
 ```bash
-DISPLAY=:1 startx /usr/local/bin/aura-session.sh -- :1
+DISPLAY=:1 startx /usr/local/bin/cc-session.sh -- :1
 ```
 
 ## Why

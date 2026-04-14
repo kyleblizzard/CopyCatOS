@@ -1,4 +1,4 @@
-# AuraOS Build Plan
+# CopiCatOS Build Plan
 
 ## Step 0: Cleanup + Asset Prep
 - [x] Backup project to zipBackups
@@ -12,12 +12,12 @@
 - [x] Delete empty placeholders (AuraBar, AuraBarMacOS, AuraFarm, AuraFarmer)
 - [x] Delete snowleopard-guard.sh, __pycache__
 - [x] Clean up memory files
-- [x] Create scaffold dirs (aura-dock, aura-menubar, aura-desktop, aura-spotlight, scripts, tasks)
+- [x] Create scaffold dirs (cc-dock, cc-menubar, cc-desktop, cc-spotlight, scripts, tasks)
 - [x] Write scripts/install-assets.sh
 - [x] Write scripts/build-all.sh
-- [x] Update aura-session.sh
+- [x] Update cc-session.sh
 
-## Step 1: aura-wm Compositing (Shadows)
+## Step 1: cc-wm Compositing (Shadows)
 - [x] Create compositor.c / compositor.h (legacy — replaced by Crystal)
 - [x] Find/create 32-bit ARGB visual
 - [x] Redirect windows to off-screen pixmaps via XComposite
@@ -30,14 +30,14 @@
 - [x] XFixes input shape so clicks pass through shadows
 - [x] Skip shadows for DOCK and DESKTOP window types
 - [x] Wire compositor into main.c, events.c, decor.c, frame.c
-- [x] Crystal Compositor (crystal.c/crystal.h) — OpenGL replacement for compositor.c + picom
+- [x] MoonRock Compositor (crystal.c/crystal.h) — OpenGL replacement for compositor.c + picom
 - [x] Wire Crystal into WM: main.c, events.c, decor.c, frame.c, ewmh.c
 - [x] Remove compositor.c from meson.build (kept as compositor_legacy backup)
-- [x] Comment out picom from aura-session.sh
+- [x] Comment out picom from cc-session.sh
 - [x] Inline ARGB visual fallback in crystal.c (removed compositor.c dependency)
 - [ ] Gate: windows have visible drop shadows, stronger below, no artifacts on move
 
-## Step 2: aura-wm Strut Handling
+## Step 2: cc-wm Strut Handling
 - [x] Create struts.c / struts.h
 - [x] Parse _NET_WM_STRUT_PARTIAL (12 longs) on dock windows
 - [x] Parse _NET_WM_STRUT (4 longs) as fallback
@@ -49,7 +49,7 @@
 - [x] Wire struts into main.c, events.c, frame.c
 - [ ] Gate: xprop -root _NET_WORKAREA shows correct values with struts
 
-## Step 3: aura-wm Resize Handles
+## Step 3: cc-wm Resize Handles
 - [x] Create resize.c / resize.h
 - [x] 5px edge grab zones, 10x10px corner zones
 - [x] Detect resize direction from click position
@@ -60,7 +60,7 @@
 - [x] Wire resize into events.c (button press, motion, release)
 - [ ] Gate: resize from all edges/corners, correct cursors, min size enforced
 
-## Step 4: aura-desktop (Wallpaper + Desktop Icons)
+## Step 4: cc-desktop (Wallpaper + Desktop Icons)
 - [x] Create meson.build
 - [x] desktop.c: full-screen _NET_WM_WINDOW_TYPE_DESKTOP window
 - [x] wallpaper.c: load and scale Aurora.jpg, set as background pixmap
@@ -75,7 +75,7 @@
 - [x] Cairo-rendered popup menus (override_redirect)
 - [ ] Gate: wallpaper fills screen, icons appear, double-click opens, context menu works
 
-## Step 5: aura-menubar (Global Menu Bar)
+## Step 5: cc-menubar (Global Menu Bar)
 - [x] Create meson.build
 - [x] menubar.c: full-width x 22px dock-type window at y=0
 - [x] Set _NET_WM_STRUT_PARTIAL for top 22px
@@ -92,7 +92,7 @@
 - [x] Menu item rendering: Lucida Grande 13pt, selection gradient, separators
 - [ ] Gate: bar at top, Apple logo, clock, battery, app name updates on window switch
 
-## Step 6: aura-dock (Dock)
+## Step 6: cc-dock (Dock)
 - [x] Create meson.build
 - [x] dock.c: centered bottom window, ARGB visual, dock-type
 - [x] Set _NET_WM_STRUT_PARTIAL for bottom 42px
@@ -111,9 +111,9 @@
 - [x] Icon resolution: AquaKDE-icons theme, hicolor, pixmaps
 - [ ] Gate: shelf renders, icons magnify, click launches with bounce, indicators show
 
-## Step 7: aura-spotlight (Search Overlay)
+## Step 7: cc-spotlight (Search Overlay)
 - [x] Create meson.build
-- [ ] Modify aura-wm input.c: grab Ctrl+Space, send _AURA_SPOTLIGHT_TOGGLE ClientMessage
+- [ ] Modify cc-wm input.c: grab Ctrl+Space, send _CC_SPOTLIGHT_TOGGLE ClientMessage
 - [x] spotlight.c: 680px wide overlay, 22% from top, ARGB, override_redirect
 - [x] Grabs Ctrl+Space on root directly (with NumLock/CapsLock variants)
 - [x] Grab keyboard focus when visible
@@ -130,15 +130,15 @@
 - [ ] Gate: Ctrl+Space shows overlay, typing filters apps, Enter launches, Escape hides
 
 ## Step 8: Session Integration
-- [x] Update aura-session.sh: start all components in correct order
-- [x] aura-wm first, sleep 0.5s
-- [x] aura-desktop, sleep 0.2s
-- [x] aura-menubar, aura-dock, aura-spotlight (parallel)
+- [x] Update cc-session.sh: start all components in correct order
+- [x] cc-wm first, sleep 0.5s
+- [x] cc-desktop, sleep 0.2s
+- [x] cc-menubar, cc-dock, cc-spotlight (parallel)
 - [x] Clean shutdown on WM exit
 - [x] Create aura.desktop for /usr/share/xsessions/
 - [x] Set QT_STYLE_OVERRIDE=AquaStyle in session env
 - [ ] Set icon theme to AquaKDE-icons
-- [ ] Gate: log in via DM, select AuraOS, all components start
+- [ ] Gate: log in via DM, select CopiCatOS, all components start
 
 ## Step 9: AppImage Packaging
 - [x] Write scripts/build-appimage.sh template

@@ -5,7 +5,7 @@
 # via any medium, is strictly prohibited.
 
 # install-assets.sh
-# Deploys AuraOS Snow Leopard assets from the source repository into the
+# Deploys CopiCatOS Snow Leopard assets from the source repository into the
 # runtime directory (~/.local/share/aqua-widgets/) where the window manager,
 # dock, menu bar, and other shell components expect to find them at launch.
 #
@@ -75,7 +75,7 @@ MAC="$ASSET_SRC/snowleopardaura/MacAssets"
 # ---------------------------------------------------------------------------
 if [[ ! -d "$MAC" ]]; then
     err "Source asset directory not found: $MAC"
-    err "Make sure you are running this from within the AuraOS repository."
+    err "Make sure you are running this from within the CopiCatOS repository."
     exit 1
 fi
 

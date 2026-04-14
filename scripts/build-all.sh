@@ -1,6 +1,6 @@
 #!/bin/bash
 # Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-# Build all AuraOS components in order.
+# Build all CopiCatOS components in order.
 # Run from the project root: bash scripts/build-all.sh
 
 set -euo pipefail
@@ -40,17 +40,17 @@ build_component() {
 }
 
 echo "════════════════════════════════════════"
-echo "  AuraOS — Building All Components"
+echo "  CopiCatOS — Building All Components"
 echo "════════════════════════════════════════"
 echo ""
 
 # Build order: WM first, then shell components
 COMPONENTS=(
-    "aura-wm"
-    "aura-desktop"
-    "aura-menubar"
-    "aura-dock"
-    "aura-spotlight"
+    "cc-wm"
+    "cc-desktop"
+    "cc-menubar"
+    "cc-dock"
+    "cc-spotlight"
 )
 
 FAILED=0

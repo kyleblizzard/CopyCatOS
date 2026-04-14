@@ -1,4 +1,4 @@
-# AuraOS — Pixel-Perfect Snow Leopard Desktop Environment
+# CopiCatOS — Pixel-Perfect Snow Leopard Desktop Environment
 
 ## What This Is
 
@@ -11,16 +11,16 @@ Not a theme. Not an approximation. A closed platform where every pixel matches t
 
 - **Base OS:** Nobara Steam-Handheld (Fedora-based) on Lenovo Legion Go
 - **Display server:** XLibre (actively maintained X11 fork)
-- **Window manager:** `aura-wm` — custom C + Xlib + Cairo + Pango reparenting compositing WM
+- **Window manager:** `cc-wm` — custom C + Xlib + Cairo + Pango reparenting compositing WM
 - **Shell components:** All standalone C + Cairo + Pango + Xlib programs
-  - `aura-dock` — glass shelf dock with magnification, bounce, reflections
-  - `aura-menubar` — 22px translucent global menu bar
-  - `aura-desktop` — wallpaper surface + desktop icon grid
-  - `aura-spotlight` — Ctrl+Space search overlay
+  - `cc-dock` — glass shelf dock with magnification, bounce, reflections
+  - `cc-menubar` — 22px translucent global menu bar
+  - `cc-desktop` — wallpaper surface + desktop icon grid
+  - `cc-spotlight` — Ctrl+Space search overlay
 - **Qt widget styling:** `breeze-aqua` / AquaStyle — C++ Qt6 QStyle plugin (~8,900 lines)
 - **App distribution:** AppImage-only (each bundles AquaStyle + fonts + assets)
 - **Icon theme:** `icons/AquaKDE-icons/` — 2,157 real Snow Leopard icons, freedesktop formatted
-- **Session:** `aura-wm/session/aura-session.sh` starts: aura-wm -> aura-desktop -> aura-menubar -> aura-dock -> aura-spotlight
+- **Session:** `cc-wm/session/cc-session.sh` starts: cc-wm -> cc-desktop -> cc-menubar -> cc-dock -> cc-spotlight
 
 ---
 
@@ -28,13 +28,13 @@ Not a theme. Not an approximation. A closed platform where every pixel matches t
 
 ```bash
 # Window manager
-cd aura-wm && meson setup build && meson compile -C build
+cd cc-wm && meson setup build && meson compile -C build
 
 # Shell components (same pattern for each)
-cd aura-dock && meson setup build && meson compile -C build
-cd aura-menubar && meson setup build && meson compile -C build
-cd aura-desktop && meson setup build && meson compile -C build
-cd aura-spotlight && meson setup build && meson compile -C build
+cd cc-dock && meson setup build && meson compile -C build
+cd cc-menubar && meson setup build && meson compile -C build
+cd cc-desktop && meson setup build && meson compile -C build
+cd cc-spotlight && meson setup build && meson compile -C build
 
 # Qt6 style plugin (breeze-aqua)
 cd breeze-aqua && mkdir -p build && cd build && cmake .. && make
@@ -119,16 +119,16 @@ Text on selection: #FFFFFF
 ## File Layout
 
 ```
-AuraOS/
+CopiCatOS/
 ├── CLAUDE.md                    # This file
-├── aura-wm/                     # Window manager (C, ~1,400 lines, EXISTING)
+├── cc-wm/                     # Window manager (C, ~1,400 lines, EXISTING)
 │   ├── meson.build
 │   ├── src/                     # 9 source files + new compositor/struts/resize
-│   └── session/                 # aura-session.sh, aura.desktop
-├── aura-dock/src/               # Dock (C, TO BUILD)
-├── aura-menubar/src/            # Menu bar (C, TO BUILD)
-├── aura-desktop/src/            # Desktop + icons (C, TO BUILD)
-├── aura-spotlight/src/          # Search overlay (C, TO BUILD)
+│   └── session/                 # cc-session.sh, aura.desktop
+├── cc-dock/src/               # Dock (C, TO BUILD)
+├── cc-menubar/src/            # Menu bar (C, TO BUILD)
+├── cc-desktop/src/            # Desktop + icons (C, TO BUILD)
+├── cc-spotlight/src/          # Search overlay (C, TO BUILD)
 ├── breeze-aqua/                 # Qt6 QStyle plugin (C++, 8,900 lines, EXISTING)
 ├── snowleopardaura/             # Asset library (511MB, DO NOT MODIFY)
 ├── icons/AquaKDE-icons/         # Production icon theme (2,157 PNGs, EXISTING)
@@ -146,13 +146,13 @@ AuraOS/
 See `tasks/todo.md` for the full checkable plan. Summary:
 
 0. **Cleanup + asset prep** — delete old code, install assets
-1. **aura-wm compositing** — XComposite shadows (depth stack)
-2. **aura-wm struts** — reserve space for dock/menubar
-3. **aura-wm resize** — edge/corner resize handles
-4. **aura-desktop** — wallpaper + desktop icon grid
-5. **aura-menubar** — 22px global bar with Apple logo, clock, app menus
-6. **aura-dock** — glass shelf, magnification, bounce, reflections, indicators
-7. **aura-spotlight** — Ctrl+Space search overlay
+1. **cc-wm compositing** — XComposite shadows (depth stack)
+2. **cc-wm struts** — reserve space for dock/menubar
+3. **cc-wm resize** — edge/corner resize handles
+4. **cc-desktop** — wallpaper + desktop icon grid
+5. **cc-menubar** — 22px global bar with Apple logo, clock, app menus
+6. **cc-dock** — glass shelf, magnification, bounce, reflections, indicators
+7. **cc-spotlight** — Ctrl+Space search overlay
 8. **Session integration** — all components start together
 9. **AppImage packaging** — bundle AquaStyle in every app
 10. **Polish** — genie minimize, smart zoom, hover states, translucency
