@@ -24,12 +24,19 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include <X11/Xutil.h>
+#include <X11/keysym.h>
 
 #include "menubar.h"
 #include "render.h"
 #include "apple.h"
 #include "appmenu.h"
 #include "systray.h"
+
+// ── Forward declarations ────────────────────────────────────────────
+static void dismiss_open_menu(MenuBar *mb);
+static int  hit_test_menu(MenuBar *mb, int mx);
+static void grab_pointer(MenuBar *mb);
+static void ungrab_pointer(MenuBar *mb);
 
 // ── Initialization ──────────────────────────────────────────────────
 
@@ -58,8 +65,6 @@ bool menubar_init(MenuBar *mb)
     mb->screen_h = DisplayHeight(mb->dpy, mb->screen);
 
     // ── Intern atoms ────────────────────────────────────────────
-    // Atoms are X11's way of naming properties. We look them up once
-    // here and reuse the numeric IDs throughout the program.
     mb->atom_net_active_window       = XInternAtom(mb->dpy, "_NET_ACTIVE_WINDOW", False);
     mb->atom_net_wm_window_type      = XInternAtom(mb->dpy, "_NET_WM_WINDOW_TYPE", False);
     mb->atom_net_wm_window_type_dock = XInternAtom(mb->dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
@@ -69,10 +74,6 @@ bool menubar_init(MenuBar *mb)
     mb->atom_utf8_string             = XInternAtom(mb->dpy, "UTF8_STRING", False);
 
     // ── Find 32-bit ARGB visual for translucency ─────────────────
-    // A 32-bit visual includes an alpha channel, which lets the menubar
-    // be slightly transparent so the wallpaper bleeds through — matching
-    // the Snow Leopard translucent menubar effect. Without this, the bar
-    // is forced to be fully opaque.
     Visual *visual = NULL;
     Colormap colormap = 0;
     int depth = CopyFromParent;
@@ -85,7 +86,6 @@ bool menubar_init(MenuBar *mb)
         VisualScreenMask | VisualDepthMask | VisualClassMask,
         &tpl, &n_visuals);
     for (int i = 0; i < n_visuals; i++) {
-        // Look for a visual with the standard ARGB channel layout
         if (vis_list[i].red_mask == 0x00FF0000 &&
             vis_list[i].green_mask == 0x0000FF00 &&
             vis_list[i].blue_mask == 0x000000FF) {
@@ -97,8 +97,6 @@ bool menubar_init(MenuBar *mb)
     }
     if (vis_list) XFree(vis_list);
 
-    // If no ARGB visual was found, fall back to the default visual.
-    // The bar will be opaque but otherwise functional.
     if (!visual) {
         visual = DefaultVisual(mb->dpy, mb->screen);
         depth = DefaultDepth(mb->dpy, mb->screen);
@@ -106,38 +104,30 @@ bool menubar_init(MenuBar *mb)
     }
 
     // ── Create the menu bar window ──────────────────────────────
-    // It spans the full screen width and is MENUBAR_HEIGHT pixels tall,
-    // positioned at the very top of the screen. We use the ARGB visual
-    // and its matching colormap so Cairo can paint with alpha.
     XSetWindowAttributes attrs;
-    attrs.override_redirect = False;  // Let the WM manage us (as a dock)
+    attrs.override_redirect = False;
     attrs.event_mask = ExposureMask | ButtonPressMask | PointerMotionMask
-                     | LeaveWindowMask | StructureNotifyMask;
-    attrs.background_pixel = 0;       // Transparent black (alpha=0)
+                     | LeaveWindowMask | StructureNotifyMask | KeyPressMask;
+    attrs.background_pixel = 0;
     attrs.colormap = colormap;
-    attrs.border_pixel = 0;           // Required when using non-default visual
+    attrs.border_pixel = 0;
 
     mb->win = XCreateWindow(
         mb->dpy, mb->root,
-        0, 0,                              // Position: top-left corner
-        (unsigned int)mb->screen_w,        // Full screen width
-        MENUBAR_HEIGHT,                    // 22 pixels tall
-        0,                                 // No border
-        depth,                             // 32-bit for ARGB translucency
-        InputOutput,                       // Normal window (not InputOnly)
-        visual,                            // ARGB visual for alpha support
+        0, 0,
+        (unsigned int)mb->screen_w,
+        MENUBAR_HEIGHT,
+        0,
+        depth,
+        InputOutput,
+        visual,
         CWOverrideRedirect | CWEventMask | CWBackPixel | CWColormap | CWBorderPixel,
         &attrs
     );
 
-    // Tell X not to use a background pixmap — we paint every pixel ourselves.
-    // Without this, the window manager may fill with a solid color before our
-    // paint runs, causing flicker.
     XSetWindowBackgroundPixmap(mb->dpy, mb->win, None);
 
     // ── Set window type to DOCK ─────────────────────────────────
-    // This tells the window manager "I'm a panel/dock, not a regular
-    // app window." The WM will keep us on top and skip us in Alt+Tab.
     Atom dock_type = mb->atom_net_wm_window_type_dock;
     XChangeProperty(mb->dpy, mb->win,
                     mb->atom_net_wm_window_type, XA_ATOM,
@@ -145,29 +135,16 @@ bool menubar_init(MenuBar *mb)
                     (unsigned char *)&dock_type, 1);
 
     // ── Reserve screen space with struts ────────────────────────
-    // Struts tell the WM to keep a strip of the screen clear for us.
-    // Other windows will maximize below the menu bar, not behind it.
-
-    // _NET_WM_STRUT_PARTIAL has 12 values:
-    //   left, right, top, bottom,
-    //   left_start_y, left_end_y,
-    //   right_start_y, right_end_y,
-    //   top_start_x, top_end_x,
-    //   bottom_start_x, bottom_end_x
     long strut_partial[12] = {
-        0, 0, MENUBAR_HEIGHT, 0,    // Reserve 22px at the top
-        0, 0,                        // left start/end (unused)
-        0, 0,                        // right start/end (unused)
-        0, mb->screen_w,            // top strut spans full width
-        0, 0                         // bottom start/end (unused)
+        0, 0, MENUBAR_HEIGHT, 0,
+        0, 0, 0, 0,
+        0, mb->screen_w, 0, 0
     };
     XChangeProperty(mb->dpy, mb->win,
                     mb->atom_net_wm_strut_partial, XA_CARDINAL,
                     32, PropModeReplace,
                     (unsigned char *)strut_partial, 12);
 
-    // _NET_WM_STRUT is the simpler 4-value version. Some older WMs
-    // only support this one, so we set both for compatibility.
     long strut[4] = { 0, 0, MENUBAR_HEIGHT, 0 };
     XChangeProperty(mb->dpy, mb->win,
                     mb->atom_net_wm_strut, XA_CARDINAL,
@@ -175,9 +152,6 @@ bool menubar_init(MenuBar *mb)
                     (unsigned char *)strut, 4);
 
     // ── Watch root window for active window changes ─────────────
-    // When the user clicks a different window, the WM updates
-    // _NET_ACTIVE_WINDOW on the root. We watch for that so we can
-    // update which app name and menus are shown.
     XSelectInput(mb->dpy, mb->root, PropertyChangeMask);
 
     // ── Map (show) the window ───────────────────────────────────
@@ -185,19 +159,13 @@ bool menubar_init(MenuBar *mb)
     XFlush(mb->dpy);
 
     // ── Compute layout regions ──────────────────────────────────
-    // Measured from real Snow Leopard: Apple logo starts at x=14, is 22px wide.
-    // The clickable region extends from x=0 to about x=50 (covers the logo
-    // plus some padding on each side).
     mb->apple_x = 0;
-    mb->apple_w = 50;  // Clickable region: covers logo (14..36) plus padding
+    mb->apple_w = 50;
 
-    // Measured from real Snow Leopard: app name text starts at x=58.
-    // This gives a ~22px gap after the logo ends at x=36.
     mb->appname_x = 58;
-    mb->appname_w = 0;  // Will be computed dynamically based on text width
+    mb->appname_w = 0;
 
-    // Menu items start after the app name (computed dynamically in paint).
-    mb->menus_x = 0;  // Set during paint
+    mb->menus_x = 0;
 
     // ── Initialize subsystems ───────────────────────────────────
     render_init(mb);
@@ -206,8 +174,6 @@ bool menubar_init(MenuBar *mb)
     systray_init(mb);
 
     // ── Set initial state ───────────────────────────────────────
-    // Start with "Finder" as the default app, since that's what macOS
-    // shows when no other app is focused.
     strncpy(mb->active_app, "Finder", sizeof(mb->active_app) - 1);
     strncpy(mb->active_class, "dolphin", sizeof(mb->active_class) - 1);
 
@@ -219,21 +185,97 @@ bool menubar_init(MenuBar *mb)
     return true;
 }
 
+// ── Pointer grab helpers ────────────────────────────────────────────
+// We grab the pointer when a dropdown is open so we can detect clicks
+// outside the menu bar to dismiss the dropdown. The grab is on the
+// root window so we get events in screen (root) coordinates.
+
+static void grab_pointer(MenuBar *mb)
+{
+    XGrabPointer(mb->dpy, mb->root, True,
+                 ButtonPressMask | PointerMotionMask | ButtonReleaseMask,
+                 GrabModeAsync, GrabModeAsync,
+                 None, None, CurrentTime);
+}
+
+static void ungrab_pointer(MenuBar *mb)
+{
+    XUngrabPointer(mb->dpy, CurrentTime);
+    XFlush(mb->dpy);
+}
+
+// ── Helper: dismiss whichever menu is currently open ────────────────
+
+static void dismiss_open_menu(MenuBar *mb)
+{
+    if (mb->open_menu == 0) {
+        apple_dismiss(mb);
+    } else if (mb->open_menu > 0) {
+        appmenu_dismiss(mb);
+    }
+    mb->open_menu = -1;
+    ungrab_pointer(mb);
+}
+
+// ── Helper: figure out which menu title was clicked ─────────────────
+// Returns: -1 = nothing, 0 = Apple logo, 1+ = menu title index
+
+static int hit_test_menu(MenuBar *mb, int mx)
+{
+    // Check Apple logo region
+    if (mx >= mb->apple_x && mx < mb->apple_x + mb->apple_w) {
+        return 0;
+    }
+
+    // Check each menu title region
+    const char **menus;
+    int menu_count;
+    appmenu_get_menus(mb->active_class, &menus, &menu_count);
+
+    int item_x = mb->menus_x;
+    for (int i = 0; i < menu_count; i++) {
+        double w = render_measure_text(menus[i], false);
+        int item_w = (int)w + 20;
+        if (mx >= item_x && mx < item_x + item_w) {
+            return i + 1;
+        }
+        item_x += item_w;
+    }
+
+    return -1;
+}
+
+// ── Helper: open a specific menu by index ───────────────────────────
+// index 0 = Apple, 1+ = app menus.
+
+static void open_menu_at(MenuBar *mb, int index)
+{
+    mb->open_menu = index;
+
+    if (index == 0) {
+        apple_show_menu(mb);
+    } else {
+        // Compute the x position for this menu's dropdown
+        const char **menus;
+        int count;
+        appmenu_get_menus(mb->active_class, &menus, &count);
+
+        int dx = mb->menus_x;
+        for (int j = 0; j < index - 1 && j < count; j++) {
+            dx += (int)render_measure_text(menus[j], false) + 20;
+        }
+        appmenu_show_dropdown(mb, index - 1, dx);
+    }
+
+    menubar_paint(mb);
+}
+
 // ── Event Loop ──────────────────────────────────────────────────────
 
 void menubar_run(MenuBar *mb)
 {
-    // We need the X11 file descriptor for select(). This lets us wait
-    // for X events with a timeout, so we can also update the clock
-    // without blocking forever.
     int x11_fd = ConnectionNumber(mb->dpy);
-
-    // Track the last time we checked the clock, so we only repaint
-    // when the minute changes.
     time_t last_clock_check = 0;
-
-    // Track when we last polled volume/battery, so we don't do it
-    // every frame (that would be wasteful).
     time_t last_systray_update = 0;
 
     while (mb->running) {
@@ -242,49 +284,53 @@ void menubar_run(MenuBar *mb)
             XEvent ev;
             XNextEvent(mb->dpy, &ev);
 
+            // ── Route events to the dropdown if it's open ───────
+            if (mb->open_menu > 0) {
+                bool should_dismiss = false;
+                if (appmenu_handle_dropdown_event(mb, &ev, &should_dismiss)) {
+                    if (should_dismiss) {
+                        dismiss_open_menu(mb);
+                        menubar_paint(mb);
+                    }
+                    continue;
+                }
+            }
+
             switch (ev.type) {
             case Expose:
-                // The window (or part of it) needs to be redrawn.
-                // We only repaint on the last Expose in a burst
-                // (count == 0 means no more Expose events queued).
                 if (ev.xexpose.count == 0) {
                     menubar_paint(mb);
                 }
                 break;
 
             case MotionNotify: {
-                // Mouse moved over the menu bar — figure out which
-                // region the pointer is in and update the hover state.
-                int mx = ev.xmotion.x;
-                int old_hover = mb->hover_index;
-                int new_hover = -1;
-
-                // Check if mouse is over the Apple logo region
-                if (mx >= mb->apple_x && mx < mb->apple_x + mb->apple_w) {
-                    new_hover = 0;
+                // When a menu is open, the pointer is grabbed on root,
+                // so we get root coordinates. Convert to menubar-relative.
+                int mx, my;
+                if (mb->open_menu >= 0) {
+                    // Grabbed on root — coordinates are screen/root coords
+                    mx = ev.xmotion.x_root;
+                    my = ev.xmotion.y_root;
+                } else {
+                    // Not grabbed — coordinates are relative to mb->win
+                    mx = ev.xmotion.x;
+                    my = ev.xmotion.y;
                 }
-                // Check if mouse is over one of the menu titles.
-                // We need to get the current menu list and check each region.
-                else {
-                    const char **menus;
-                    int menu_count;
-                    appmenu_get_menus(mb->active_class, &menus, &menu_count);
 
-                    int item_x = mb->menus_x;
-                    for (int i = 0; i < menu_count; i++) {
-                        double w = render_measure_text(menus[i], false);
-                        int item_w = (int)w + 20; // 10px padding each side
-                        if (mx >= item_x && mx < item_x + item_w) {
-                            // Menu items are indexed starting at 1
-                            // (0 is the Apple logo)
-                            new_hover = i + 1;
-                            break;
-                        }
-                        item_x += item_w;
+                // Only process hover changes when mouse is in the bar
+                if (my < 0 || my >= MENUBAR_HEIGHT) {
+                    // Mouse is below the bar. If we had a hover, clear it
+                    // but don't close the dropdown (user might be in it).
+                    if (mb->hover_index != -1) {
+                        mb->hover_index = -1;
+                        menubar_paint(mb);
                     }
+                    break;
                 }
 
-                // Only repaint if the hover state actually changed
+                int old_hover = mb->hover_index;
+                int new_hover = hit_test_menu(mb, mx);
+
                 if (new_hover != old_hover) {
                     mb->hover_index = new_hover;
 
@@ -292,29 +338,15 @@ void menubar_run(MenuBar *mb)
                     // title, switch to that menu (menu bar scrubbing).
                     if (mb->open_menu >= 0 && new_hover >= 0 &&
                         new_hover != mb->open_menu) {
-                        // Dismiss the old dropdown
+                        // Dismiss the old dropdown (keep the grab!)
                         if (mb->open_menu == 0) {
                             apple_dismiss(mb);
                         } else {
                             appmenu_dismiss(mb);
                         }
 
-                        // Open the new one
-                        if (new_hover == 0) {
-                            mb->open_menu = 0;
-                            apple_show_menu(mb);
-                        } else {
-                            mb->open_menu = new_hover;
-                            // Compute x position for this menu's dropdown
-                            const char **menus2;
-                            int count2;
-                            appmenu_get_menus(mb->active_class, &menus2, &count2);
-                            int dx = mb->menus_x;
-                            for (int j = 0; j < new_hover - 1 && j < count2; j++) {
-                                dx += (int)render_measure_text(menus2[j], false) + 20;
-                            }
-                            appmenu_show_dropdown(mb, new_hover - 1, dx);
-                        }
+                        // Open the new one (without re-grabbing)
+                        open_menu_at(mb, new_hover);
                     }
 
                     menubar_paint(mb);
@@ -323,68 +355,110 @@ void menubar_run(MenuBar *mb)
             }
 
             case ButtonPress: {
-                // Mouse button was clicked on the menu bar.
-                int mx = ev.xbutton.x;
-
-                // If a menu is already open, dismiss it first
+                // When pointer is grabbed on root, ButtonPress coords
+                // are in root/screen coordinates.
+                int mx, my;
                 if (mb->open_menu >= 0) {
-                    if (mb->open_menu == 0) {
-                        apple_dismiss(mb);
+                    mx = ev.xbutton.x_root;
+                    my = ev.xbutton.y_root;
+                } else {
+                    mx = ev.xbutton.x;
+                    my = ev.xbutton.y;
+                }
+
+
+                if (mb->open_menu >= 0) {
+                    // A menu is currently open.
+
+                    // Check if click is within the menu bar
+                    if (my >= 0 && my < MENUBAR_HEIGHT) {
+                        int clicked = hit_test_menu(mb, mx);
+
+                        if (clicked == mb->open_menu) {
+                            // Clicked the same menu title — toggle it closed
+                            dismiss_open_menu(mb);
+                            menubar_paint(mb);
+                        } else if (clicked >= 0) {
+                            // Clicked a different menu title — switch to it.
+                            // Dismiss old dropdown but keep the pointer grab.
+                            if (mb->open_menu == 0) {
+                                apple_dismiss(mb);
+                            } else {
+                                appmenu_dismiss(mb);
+                            }
+                            open_menu_at(mb, clicked);
+                        } else {
+                            // Clicked empty space in the menu bar — dismiss
+                            dismiss_open_menu(mb);
+                            menubar_paint(mb);
+                        }
                     } else {
-                        appmenu_dismiss(mb);
-                    }
-                    mb->open_menu = -1;
-                    menubar_paint(mb);
-                    break;
-                }
+                        // Clicked outside the menu bar entirely.
+                        // Check if click is in the dropdown window.
+                        // If not, dismiss everything.
+                        Window dropdown = appmenu_get_dropdown_win();
+                        if (dropdown != None) {
+                            // Get dropdown geometry to check if click is inside
+                            XWindowAttributes dwa;
+                            XGetWindowAttributes(mb->dpy, dropdown, &dwa);
+                            int dx = dwa.x, dy = dwa.y;
+                            int dw = dwa.width, dh = dwa.height;
 
-                // Check if click is on the Apple logo
-                if (mx >= mb->apple_x && mx < mb->apple_x + mb->apple_w) {
-                    mb->open_menu = 0;
-                    apple_show_menu(mb);
-                    menubar_paint(mb);
-                    break;
-                }
-
-                // Check if click is on a menu title
-                const char **menus;
-                int menu_count;
-                appmenu_get_menus(mb->active_class, &menus, &menu_count);
-
-                int item_x = mb->menus_x;
-                for (int i = 0; i < menu_count; i++) {
-                    double w = render_measure_text(menus[i], false);
-                    int item_w = (int)w + 20;
-                    if (mx >= item_x && mx < item_x + item_w) {
-                        mb->open_menu = i + 1;
-                        appmenu_show_dropdown(mb, i, item_x);
+                            if (mx >= dx && mx < dx + dw &&
+                                my >= dy && my < dy + dh) {
+                                // Click is inside the dropdown — let it handle it.
+                                // Re-dispatch as a synthetic event to the dropdown.
+                                XEvent synth = ev;
+                                synth.xbutton.window = dropdown;
+                                synth.xbutton.x = mx - dx;
+                                synth.xbutton.y = my - dy;
+                                XSendEvent(mb->dpy, dropdown, True, ButtonPressMask, &synth);
+                                XFlush(mb->dpy);
+                                break;
+                            }
+                        }
+                        // Click is truly outside — dismiss
+                        dismiss_open_menu(mb);
                         menubar_paint(mb);
-                        break;
                     }
-                    item_x += item_w;
+                    break;
+                }
+
+                // No menu is open — check if a menu title was clicked
+                int clicked = hit_test_menu(mb, mx);
+                if (clicked >= 0) {
+                    grab_pointer(mb);
+                    open_menu_at(mb, clicked);
                 }
                 break;
             }
 
             case LeaveNotify:
-                // Mouse left the menu bar window — clear the hover state,
-                // but don't close any open dropdown (user might be moving
-                // the mouse down into the dropdown).
-                if (mb->hover_index != -1) {
+                // Mouse left the menu bar window — clear hover
+                if (mb->open_menu < 0 && mb->hover_index != -1) {
                     mb->hover_index = -1;
                     menubar_paint(mb);
                 }
                 break;
 
             case PropertyNotify:
-                // A property changed on the root window. We only care about
-                // _NET_ACTIVE_WINDOW — it means the user switched to a
-                // different application window.
                 if (ev.xproperty.atom == mb->atom_net_active_window) {
+                    if (mb->open_menu >= 0) {
+                        dismiss_open_menu(mb);
+                    }
                     appmenu_update_active(mb);
                     menubar_paint(mb);
                 }
                 break;
+
+            case KeyPress: {
+                KeySym sym = XLookupKeysym(&ev.xkey, 0);
+                if (sym == XK_Escape && mb->open_menu >= 0) {
+                    dismiss_open_menu(mb);
+                    menubar_paint(mb);
+                }
+                break;
+            }
 
             default:
                 break;
@@ -394,28 +468,24 @@ void menubar_run(MenuBar *mb)
         // ── Periodic updates (clock, systray) ───────────────────
         time_t now = time(NULL);
 
-        // Update clock display every second (check if time changed)
         if (now != last_clock_check) {
             last_clock_check = now;
             menubar_paint(mb);
         }
 
-        // Update battery and volume readings every 10 seconds
         if (now - last_systray_update >= 10) {
             last_systray_update = now;
             systray_update(mb);
         }
 
         // ── Wait for next event or timeout ──────────────────────
-        // Use select() with a 500ms timeout so we wake up periodically
-        // to check the clock, even if no X events arrive.
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(x11_fd, &fds);
 
         struct timeval tv;
         tv.tv_sec  = 0;
-        tv.tv_usec = 500000;  // 500 milliseconds
+        tv.tv_usec = 500000;
 
         select(x11_fd + 1, &fds, NULL, NULL, &tv);
     }
@@ -425,10 +495,6 @@ void menubar_run(MenuBar *mb)
 
 void menubar_paint(MenuBar *mb)
 {
-    // Create a Cairo surface that draws directly onto our X window.
-    // We use XGetWindowAttributes to get the actual visual assigned to
-    // this window (which is our 32-bit ARGB visual), rather than the
-    // default screen visual. This is critical for translucency to work.
     XWindowAttributes wa;
     XGetWindowAttributes(mb->dpy, mb->win, &wa);
     cairo_surface_t *surface = cairo_xlib_surface_create(
@@ -438,10 +504,6 @@ void menubar_paint(MenuBar *mb)
     );
     cairo_t *cr = cairo_create(surface);
 
-    // Clear to fully transparent before painting. With an ARGB visual,
-    // any pixels we don't paint would show stale data. CAIRO_OPERATOR_SOURCE
-    // replaces the destination rather than blending, so this wipes the
-    // entire surface to transparent black.
     cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
     cairo_set_source_rgba(cr, 0, 0, 0, 0);
     cairo_paint(cr);
@@ -454,36 +516,29 @@ void menubar_paint(MenuBar *mb)
     apple_paint(mb, cr);
 
     // ── Bold app name ───────────────────────────────────────────
-    // The active application's name is drawn in bold, matching macOS.
     double appname_w = render_text(cr, mb->active_app,
                                    mb->appname_x, 3,
-                                   true,          // Bold
-                                   0.1, 0.1, 0.1); // Nearly black
+                                   true, 0.1, 0.1, 0.1);
 
     // ── Menu titles ─────────────────────────────────────────────
-    // Get the list of menu titles for the active application
     const char **menus;
     int menu_count;
     appmenu_get_menus(mb->active_class, &menus, &menu_count);
 
-    // Menu items start after the bold app name with a gap
     mb->menus_x = mb->appname_x + (int)appname_w + 16;
 
     int item_x = mb->menus_x;
     for (int i = 0; i < menu_count; i++) {
         double w = render_measure_text(menus[i], false);
-        int item_w = (int)w + 20;  // 10px padding on each side
+        int item_w = (int)w + 20;
 
-        // Draw hover highlight if this item is hovered or its menu is open
         if (mb->hover_index == i + 1 || mb->open_menu == i + 1) {
             render_hover_highlight(cr, item_x, 1, item_w, MENUBAR_HEIGHT - 2);
         }
 
-        // Draw the menu title text, centered within its padded region
         render_text(cr, menus[i],
-                    item_x + 10, 3,  // 10px left padding, 3px from top
-                    false,            // Regular weight (not bold)
-                    0.1, 0.1, 0.1);  // Nearly black
+                    item_x + 10, 3,
+                    false, 0.1, 0.1, 0.1);
 
         item_x += item_w;
     }
@@ -499,8 +554,6 @@ void menubar_paint(MenuBar *mb)
     // ── Clean up Cairo resources ────────────────────────────────
     cairo_destroy(cr);
     cairo_surface_destroy(surface);
-
-    // Flush all pending X drawing commands to the server
     XFlush(mb->dpy);
 }
 
@@ -508,13 +561,11 @@ void menubar_paint(MenuBar *mb)
 
 void menubar_shutdown(MenuBar *mb)
 {
-    // Shut down subsystems in reverse order of initialization
     systray_cleanup();
     appmenu_cleanup();
     apple_cleanup();
     render_cleanup();
 
-    // Destroy our window and close the X display connection
     if (mb->win) {
         XDestroyWindow(mb->dpy, mb->win);
     }
