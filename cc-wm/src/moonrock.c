@@ -760,15 +760,25 @@ static void refresh_window_texture(CCWM *wm, struct WindowTexture *wt)
     // where the X server is rendering this window's contents.
     wt->pixmap = XCompositeNameWindowPixmap(wm->dpy, wt->xwin);
     if (!wt->pixmap) {
-        fprintf(stderr, "[moonrock] WARNING: Cannot get pixmap for window 0x%lx\n",
-                wt->xwin);
+        // Pixmap creation can fail if the window was just created and the
+        // compositor redirect hasn't fully propagated. Fall back to the CPU
+        // path which reads directly from the window drawable.
+        refresh_window_texture_fallback(wm, wt);
         return;
     }
 
     // Choose the right FBConfig based on whether the window has alpha.
     // ARGB windows need the RGBA config; regular windows use RGB.
+    // If the matching config wasn't found during init (null), go straight
+    // to the CPU fallback rather than passing null to glXCreatePixmap.
     GLXFBConfig fb = wt->has_alpha ? mr.pixmap_fb_config
                                    : mr.pixmap_fb_config_rgb;
+
+    if (!fb) {
+        // No matching FBConfig — use the CPU fallback
+        refresh_window_texture_fallback(wm, wt);
+        return;
+    }
 
     // Create a GLX pixmap — this wraps the X pixmap so GLX can use it.
     // The attributes tell GLX how to interpret the pixmap data:
@@ -862,18 +872,27 @@ static void refresh_window_texture_fallback(CCWM *wm, struct WindowTexture *wt)
         wt->pixmap = 0;
     }
 
+    // Try to get the composite pixmap first. If that fails (window just
+    // created, redirect not yet active, or window is being destroyed),
+    // fall back to reading directly from the window drawable.
+    Drawable read_from = 0;
     wt->pixmap = XCompositeNameWindowPixmap(wm->dpy, wt->xwin);
-    if (!wt->pixmap) return;
+    if (wt->pixmap) {
+        read_from = wt->pixmap;
+    } else {
+        // Direct window read as last resort — same approach used for
+        // override-redirect windows. This is reliable but means we're
+        // reading from the window's front buffer, which may show
+        // tearing during updates.
+        read_from = wt->xwin;
+    }
 
-    // XGetImage reads pixel data from a drawable (pixmap) into CPU memory.
-    // ZPixmap format returns the image as a packed pixel array (as opposed to
-    // XYPixmap which separates color planes).
-    // AllPlanes means "read all color channels."
-    XImage *img = XGetImage(wm->dpy, wt->pixmap, 0, 0,
+    // XGetImage reads pixel data from a drawable (pixmap or window) into
+    // CPU memory. ZPixmap format returns a packed pixel array.
+    XImage *img = XGetImage(wm->dpy, read_from, 0, 0,
                             wt->w, wt->h, AllPlanes, ZPixmap);
     if (!img) {
-        fprintf(stderr, "[moonrock] WARNING: XGetImage failed for 0x%lx\n",
-                wt->xwin);
+        // Window might have been destroyed between our check and read
         return;
     }
 
@@ -1683,10 +1702,15 @@ void mr_composite(CCWM *wm)
             // ── Refresh dirty textures ──
             // If the window's contents have changed since the last frame,
             // update the OpenGL texture with the new pixel data.
-            // Override-redirect windows (menus, tooltips) are always refreshed
-            // because they don't use XDamage tracking — their contents are
-            // read directly from the window each frame.
-            if (wt->dirty || wt->override_redirect) {
+            //
+            // Override-redirect windows (menus, tooltips) and dock/panel
+            // windows (pass 2) are always refreshed because:
+            //   - Override-redirect windows don't use XDamage tracking
+            //   - Dock/panel windows may lose their XDamage tracker when
+            //     killed and restarted (the new window gets a fresh ID but
+            //     damage events may not be delivered reliably). These are
+            //     small enough that per-frame refresh is negligible.
+            if (wt->dirty || wt->override_redirect || window_pass == 2) {
                 refresh_window_texture(wm, wt);
                 wt->dirty = false;
             }
