@@ -20,7 +20,7 @@
 //
 // ============================================================================
 
-#define _GNU_SOURCE  // Needed for some POSIX extensions (e.g., setsid)
+// POSIX extensions require _GNU_SOURCE (provided by meson via -D_GNU_SOURCE).
 
 #include "moonrock_display.h"
 #include "wm_compat.h"

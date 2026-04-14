@@ -27,7 +27,7 @@
 // _GNU_SOURCE is required for some POSIX extensions we use:
 //   - clock_gettime() and CLOCK_REALTIME for high-resolution timestamps
 //   - Various string functions
-#define _GNU_SOURCE
+//   (_GNU_SOURCE is provided by the build system via -D_GNU_SOURCE)
 
 #include "moonrock_robust.h"
 #include "wm_compat.h"

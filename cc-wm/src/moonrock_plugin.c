@@ -31,9 +31,7 @@
 //
 // ============================================================================
 
-// _GNU_SOURCE unlocks some POSIX extensions we might need (like strdup on
-// strict C99/C11 compilers). Include it before any system headers.
-#define _GNU_SOURCE
+// POSIX extensions like strdup require _GNU_SOURCE (provided by meson via -D_GNU_SOURCE).
 
 #include "moonrock_plugin.h"
 #include "moonrock_shaders.h"  // Shader programs, FBO management, quad drawing

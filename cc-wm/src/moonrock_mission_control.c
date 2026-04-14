@@ -14,9 +14,8 @@
 //
 // ============================================================================
 
-// _GNU_SOURCE enables POSIX extensions we need, including clock_gettime()
-// with CLOCK_MONOTONIC for high-resolution timing.
-#define _GNU_SOURCE
+// POSIX extensions (clock_gettime, CLOCK_MONOTONIC) require _GNU_SOURCE
+// (provided by meson via -D_GNU_SOURCE).
 
 #include "moonrock_mission_control.h"
 #include "moonrock_anim.h"

@@ -17,7 +17,7 @@
 //   Minimize center: (237, 152, 82)
 //   Zoom center:     (108, 177, 87)
 
-#define _GNU_SOURCE  // For M_PI
+// M_PI requires _GNU_SOURCE (provided by meson via -D_GNU_SOURCE).
 #include "decor.h"
 #include "assets.h"
 #include "moonrock.h"

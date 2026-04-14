@@ -29,7 +29,6 @@
 //
 // ============================================================================
 
-#define _GNU_SOURCE
 #include "moonrock_shaders.h"
 
 #include <GL/gl.h>

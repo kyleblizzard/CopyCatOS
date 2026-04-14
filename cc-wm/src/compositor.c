@@ -5,7 +5,7 @@
 //
 // CopiCatOS Window Manager — XComposite compositor for Snow Leopard shadows
 
-#define _GNU_SOURCE  // Ensure M_PI is available from <math.h>
+// M_PI requires _GNU_SOURCE (provided by meson via -D_GNU_SOURCE).
 //
 // This file implements the compositing layer that gives CopiCatOS its realistic
 // drop shadows. The approach is:

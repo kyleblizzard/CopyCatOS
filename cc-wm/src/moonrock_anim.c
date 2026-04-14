@@ -24,9 +24,7 @@
 //
 // ============================================================================
 
-// _GNU_SOURCE is needed so <math.h> defines M_PI (the constant for pi).
-// Without this, M_PI is not available on strict C99/C11 compilers.
-#define _GNU_SOURCE
+// M_PI from <math.h> requires _GNU_SOURCE, which meson provides via -D_GNU_SOURCE.
 
 #include "moonrock_anim.h"
 #include "moonrock_shaders.h"

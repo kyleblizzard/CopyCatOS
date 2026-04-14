@@ -30,7 +30,7 @@
 //   6. VSync keeps us locked to the monitor's refresh rate (typically 60 Hz),
 //      preventing screen tearing.
 
-#define _GNU_SOURCE  // Needed for M_PI from <math.h>
+// M_PI requires _GNU_SOURCE (provided by meson via -D_GNU_SOURCE).
 #include "moonrock.h"
 #include "moonrock_shaders.h"
 #include "moonrock_display.h"
