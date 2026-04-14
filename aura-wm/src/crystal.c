@@ -197,52 +197,6 @@ static bool load_glx_extensions(Display *dpy, int screen);
 static void sync_tracked_windows(AuraWM *wm);
 
 // ────────────────────────────────────────────────────────────────────────
-// SECTION: Monotonic clock helper
-// ────────────────────────────────────────────────────────────────────────
-//
-// Returns the current time in seconds (with sub-millisecond precision) from
-// a monotonic clock. "Monotonic" means it always moves forward — it is not
-// affected by the user changing the system clock or NTP adjustments. This
-// makes it perfect for measuring elapsed time in animations.
-
-static double get_time(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (double)ts.tv_sec + (double)ts.tv_nsec / 1e9;
-}
-
-// ────────────────────────────────────────────────────────────────────────
-// SECTION: Genie minimize/restore animation state
-// ────────────────────────────────────────────────────────────────────────
-//
-// The genie effect is the signature Snow Leopard minimize animation. When
-// the user clicks the minimize button, the window visually distorts and
-// "flows" into the dock icon like a genie going back into its lamp.
-//
-// How it works:
-//   1. We capture the window's current texture and original geometry.
-//   2. Over ~500ms, we deform the textured quad from a rectangle into a
-//      narrow trapezoid that narrows toward the dock icon position.
-//   3. The bottom edge contracts faster than the top (using a sine-based
-//      differential), creating the characteristic "flowing" shape.
-//   4. At the end of the animation, the window is fully hidden.
-//
-// Only one genie animation can play at a time. If a second minimize is
-// triggered while one is already running, the first is immediately finished.
-
-static struct {
-    bool active;                 // Is a genie animation currently playing?
-    Client *target_client;       // The client being minimized
-    GLuint texture;              // Captured window texture (copied from WindowTexture)
-    int win_x, win_y;           // Original window position (frame coordinates)
-    int win_w, win_h;           // Original window size (frame dimensions)
-    int dock_x, dock_y;         // Target position — where the dock icon lives
-    double start_time;           // Monotonic timestamp when animation began
-    double duration;             // Animation length in seconds (0.5s)
-} genie = {0};
-
-// ────────────────────────────────────────────────────────────────────────
 // SECTION: FBConfig selection
 // ────────────────────────────────────────────────────────────────────────
 //

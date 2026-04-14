@@ -214,11 +214,23 @@ static void on_button_press(AuraWM *wm, XEvent *e)
         }
         bx += BUTTON_DIAMETER + BUTTON_SPACING;
 
-        // Minimize button
+        // Minimize button — trigger the genie animation if Crystal is active.
+        // The genie effect visually warps the window into the dock icon over
+        // ~500ms, creating the signature Snow Leopard "flowing into the lamp"
+        // look. If Crystal is not running, fall back to an instant unmap.
         if (fx >= bx && fx <= bx + BUTTON_DIAMETER &&
             fy >= by && fy <= by + BUTTON_DIAMETER) {
-            XUnmapWindow(wm->dpy, c->frame);
-            c->mapped = false;
+            if (crystal_is_active()) {
+                // Target the center-bottom of the screen where the dock lives.
+                // When the dock reports its actual icon positions, we can pass
+                // the exact coordinates here instead of this approximation.
+                int dock_x = wm->root_w / 2;
+                int dock_y = wm->root_h - 48;
+                crystal_animate_minimize(wm, c, dock_x, dock_y);
+            } else {
+                XUnmapWindow(wm->dpy, c->frame);
+                c->mapped = false;
+            }
             ewmh_update_client_list(wm);
             return;
         }
