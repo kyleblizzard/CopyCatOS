@@ -512,6 +512,9 @@ bool sidebar_handle_click(FinderState *fs, int x, int y)
     int tb_h = fs->toolbar_h;
     int cur_y = tb_h + 8;  // Must match the Y tracking in sidebar_paint
 
+    fprintf(stderr, "[sidebar] Click received at (%d, %d), toolbar_h=%d, starting cur_y=%d\n",
+            x, y, tb_h, cur_y);
+
     for (int i = 0; i < entry_count; i++) {
         SidebarEntry *e = &entries[i];
 
@@ -519,7 +522,12 @@ bool sidebar_handle_click(FinderState *fs, int x, int y)
             // Headers take up space but aren't clickable
             if (i > 0) cur_y += 8;
             cur_y += SB_HEADER_H;
+            fprintf(stderr, "[sidebar]   [%d] HEADER '%s' → cur_y now %d\n",
+                    i, e->label, cur_y);
         } else {
+            fprintf(stderr, "[sidebar]   [%d] ITEM '%s' range [%d, %d) — click y=%d %s\n",
+                    i, e->label, cur_y, cur_y + SB_ITEM_H, y,
+                    (y >= cur_y && y < cur_y + SB_ITEM_H) ? "HIT" : "miss");
             // Check if the click landed on this item
             if (y >= cur_y && y < cur_y + SB_ITEM_H) {
                 // Select this item and navigate to its path
@@ -533,6 +541,7 @@ bool sidebar_handle_click(FinderState *fs, int x, int y)
         }
     }
 
+    fprintf(stderr, "[sidebar] Click missed all items (y=%d, last cur_y=%d)\n", y, cur_y);
     return false;  // Click missed all items
 }
 

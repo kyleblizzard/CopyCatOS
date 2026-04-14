@@ -568,6 +568,9 @@ void finder_run(FinderState *fs)
             int x = ev.xbutton.x;
             int y = ev.xbutton.y;
 
+            fprintf(stderr, "[finder] ButtonPress at (%d, %d) button=%d window=0x%lx subwindow=0x%lx\n",
+                    x, y, ev.xbutton.button, ev.xbutton.window, ev.xbutton.subwindow);
+
             // Only handle left-click (Button1) for now
             if (ev.xbutton.button != Button1) break;
 

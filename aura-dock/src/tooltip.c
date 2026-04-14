@@ -346,6 +346,9 @@ void tooltip_show(DockState *state, int icon_idx)
     tooltip_paint(state, label);
     XFlush(state->dpy);
 
+    fprintf(stderr, "[tooltip] Showed tooltip for '%s' at (%d, %d) size %dx%d win=0x%lx\n",
+            label, tooltip_x, tooltip_y, tooltip_w, tooltip_h, tip.win);
+
     // Update tracking state
     tip.target_idx = icon_idx;
     tip.visible = true;
@@ -412,6 +415,8 @@ void tooltip_update_hover(DockState *state, int hover_icon_idx)
         tip.target_idx = hover_icon_idx;
         tip.hover_start_time = tooltip_get_time();
         tip.timer_active = true;
+        fprintf(stderr, "[tooltip] Timer started for icon %d '%s'\n",
+                hover_icon_idx, state->items[hover_icon_idx].name);
         return;
     }
 
@@ -420,6 +425,8 @@ void tooltip_update_hover(DockState *state, int hover_icon_idx)
     if (tip.timer_active) {
         double elapsed = tooltip_get_time() - tip.hover_start_time;
         if (elapsed >= TOOLTIP_HOVER_DELAY) {
+            fprintf(stderr, "[tooltip] Timer fired for icon %d, calling tooltip_show\n",
+                    hover_icon_idx);
             // Time's up — show the tooltip!
             tooltip_show(state, hover_icon_idx);
         }

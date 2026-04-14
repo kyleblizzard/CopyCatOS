@@ -13,7 +13,7 @@
 //   type|name|exec_path|icon_name|process_name|separator_after
 //
 // Example:
-//   app|Finder|dolphin|org.kde.dolphin|dolphin|0
+//   app|Finder|aura-finder|org.kde.dolphin|aura-finder|0
 //   app|Brave|brave-browser|com.brave.Browser|brave|0
 //   folder|Downloads|~/Downloads|folder|downloads|0
 //
@@ -584,7 +584,7 @@ typedef struct {
 
 static const DefaultItemDef default_items[] = {
     // name               exec command       icon name (theme)             process name      sep?
-    {"Finder",              "dolphin",        "org.kde.dolphin",            "dolphin",        false},
+    {"Finder",              "aura-finder",    "org.kde.dolphin",            "aura-finder",    false},
     {"Brave",               "brave-browser",  "com.brave.Browser",          "brave",          false},
     {"Kate",                "kate",           "org.kde.kate",               "kate",           false},
     {"Terminal",            "konsole",        "utilities-terminal",         "konsole",        false},
@@ -594,7 +594,7 @@ static const DefaultItemDef default_items[] = {
     {"Inkscape",            "inkscape",       "org.inkscape.Inkscape",      "inkscape",       false},
     {"Kdenlive",            "kdenlive",       "kdenlive",                   "kdenlive",       false},
     {"System Preferences",  "systemsettings", "preferences-system",         "systemsettings", false},
-    {"Trash",               "dolphin trash:/", "trashempty",                 "trash",          false},
+    {"Trash",               "aura-finder trash:/", "trashempty",              "trash",          false},
 };
 
 #define DEFAULT_ITEM_COUNT (sizeof(default_items) / sizeof(default_items[0]))

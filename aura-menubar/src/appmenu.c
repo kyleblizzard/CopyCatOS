@@ -88,15 +88,28 @@ static const int   browser_menu_count = 7;
 // File menu items for Finder
 static const char *file_items[] = {
     "New Finder Window", "New Folder", "Open", "Close Window",
-    "Get Info", "---", "Move to Trash"
+    "---", "Get Info", "---", "Move to Trash"
 };
-static const int file_item_count = 7;
+static const int file_item_count = 8;
+
+// Keyboard shortcut labels for File menu items.
+// NULL means no shortcut. These are drawn right-aligned in the dropdown.
+static const char *file_shortcuts[] = {
+    "\xe2\x8c\x98N", "\xe2\x87\xa7\xe2\x8c\x98N", "\xe2\x8c\x98O", "\xe2\x8c\x98W",
+    NULL, "\xe2\x8c\x98I", NULL, "\xe2\x8c\x98\xe2\x8c\xab"
+};
 
 // Edit menu items (shared by most apps)
 static const char *edit_items[] = {
     "Undo", "Redo", "---", "Cut", "Copy", "Paste", "Select All"
 };
 static const int edit_item_count = 7;
+
+// Keyboard shortcut labels for Edit menu items
+static const char *edit_shortcuts[] = {
+    "\xe2\x8c\x98Z", "\xe2\x87\xa7\xe2\x8c\x98Z", NULL,
+    "\xe2\x8c\x98X", "\xe2\x8c\x98C", "\xe2\x8c\x98V", "\xe2\x8c\x98A"
+};
 
 // View menu items for Finder
 static const char *view_items[] = {
@@ -147,10 +160,20 @@ static const int bookmarks_item_count = 4;
 // The currently open dropdown popup window. None if no menu is open.
 static Window dropdown_win = None;
 
-// Event mask for the dropdown — we need to know about mouse clicks
-// so we can dismiss the menu.
+// State for the currently open dropdown — needed for hover tracking
+// and repaint on mouse motion within the popup.
+static const char **dropdown_items     = NULL;   // Points into static item arrays
+static const char **dropdown_shortcuts = NULL;   // Keyboard shortcut labels (may be NULL)
+static int          dropdown_item_count = 0;
+static int          dropdown_hover      = -1;    // Which item the mouse is over (-1 = none)
+static int          dropdown_w          = 0;     // Popup width in pixels
+static int          dropdown_h          = 0;     // Popup height in pixels
+
+// Event mask for the dropdown — we need mouse clicks, motion for hover
+// highlighting, expose for repaints, and key presses for Escape.
 static const long dropdown_events = ExposureMask | ButtonPressMask
-                                  | PointerMotionMask | LeaveWindowMask;
+                                  | PointerMotionMask | LeaveWindowMask
+                                  | KeyPressMask;
 
 // ── Initialization ──────────────────────────────────────────────────
 
@@ -293,15 +316,21 @@ void appmenu_get_menus(const char *app_class, const char ***menus, int *count)
 
 // ── Dropdown rendering helpers ──────────────────────────────────────
 
-// Get the list of items for a specific menu index within the current app.
-// Returns the item array and count through out-parameters.
+// Get the list of items and keyboard shortcuts for a specific menu index
+// within the current app. Returns the item array, shortcut array, and
+// count through out-parameters. The shortcuts pointer may be NULL if the
+// menu has no shortcuts defined.
 static void get_dropdown_items(const char *app_class, int menu_index,
-                               const char ***items, int *count)
+                               const char ***items, const char ***shortcuts,
+                               int *count)
 {
     // First, figure out which menu titles this app uses
     const char **menus;
     int menu_count;
     appmenu_get_menus(app_class, &menus, &menu_count);
+
+    // Default: no shortcuts
+    *shortcuts = NULL;
 
     if (menu_index < 0 || menu_index >= menu_count) {
         *items = NULL;
@@ -309,13 +338,15 @@ static void get_dropdown_items(const char *app_class, int menu_index,
         return;
     }
 
-    // Match the menu title to its items
+    // Match the menu title to its items and optional shortcuts
     const char *title = menus[menu_index];
 
     if (strcmp(title, "File") == 0) {
         *items = file_items; *count = file_item_count;
+        *shortcuts = file_shortcuts;
     } else if (strcmp(title, "Edit") == 0) {
         *items = edit_items; *count = edit_item_count;
+        *shortcuts = edit_shortcuts;
     } else if (strcmp(title, "View") == 0) {
         *items = view_items; *count = view_item_count;
     } else if (strcmp(title, "Go") == 0) {
@@ -422,8 +453,9 @@ void appmenu_show_dropdown(MenuBar *mb, int menu_index, int x)
 
     // Get the items for this menu
     const char **items;
+    const char **shortcuts = NULL;
     int item_count;
-    get_dropdown_items(mb->active_class, menu_index, &items, &item_count);
+    get_dropdown_items(mb->active_class, menu_index, &items, &shortcuts, &item_count);
 
     if (!items || item_count == 0) return;
 

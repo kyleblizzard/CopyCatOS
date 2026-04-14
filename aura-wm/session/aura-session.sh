@@ -103,6 +103,9 @@ aura-menubar &
 aura-dock &
 aura-spotlight &
 
+# ─── Default Finder window ───
+aura-finder ~ &
+
 # ─── Wait for the WM to exit ───
 # When the WM process ends (user logged out or crashed), clean up everything
 wait $WM_PID

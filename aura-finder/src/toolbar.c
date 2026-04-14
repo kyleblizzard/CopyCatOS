@@ -22,6 +22,7 @@
 #define _GNU_SOURCE  // For M_PI
 
 #include "toolbar.h"
+#include "content.h"
 
 #include <cairo/cairo.h>
 #include <pango/pangocairo.h>
@@ -341,8 +342,9 @@ bool toolbar_handle_click(FinderState *fs, int x, int y)
 
         if (x >= bx && x < bx + BTN_W &&
             y >= by && y < by + BTN_H) {
-            // Switch to this view mode
+            // Switch to this view mode in both toolbar and content
             current_mode = (ViewMode)i;
+            content_set_view_mode((ViewMode)i);
             fprintf(stderr, "[toolbar] View mode changed to %d\n", i);
             return true;
         }

@@ -512,6 +512,9 @@ bool content_handle_click(FinderState *fs, int x, int y)
     int cols = cw / CONTENT_CELL_W;
     if (cols < 1) cols = 1;
 
+    fprintf(stderr, "[content] Click at (%d, %d), origin=(%d,%d), cols=%d, file_count=%d\n",
+            x, y, ox, oy, cols, file_count);
+
     // Deselect all files first
     for (int i = 0; i < file_count; i++) {
         files[i].selected = false;
@@ -528,11 +531,13 @@ bool content_handle_click(FinderState *fs, int x, int y)
         if (x >= cx && x < cx + CONTENT_CELL_W &&
             y >= cy && y < cy + CONTENT_CELL_H) {
             files[i].selected = true;
-            fprintf(stderr, "[content] Selected: %s\n", files[i].name);
+            fprintf(stderr, "[content] Selected: %s at cell (%d,%d) pixel (%d,%d)\n",
+                    files[i].name, col, row, cx, cy);
             return true;
         }
     }
 
+    fprintf(stderr, "[content] Click on empty space\n");
     return false;  // Click on empty space
 }
 
@@ -592,4 +597,11 @@ void content_shutdown(void)
         }
     }
     file_count = 0;
+}
+
+// Set the current view mode (icon grid vs list)
+void content_set_view_mode(ViewMode mode)
+{
+    current_view_mode = mode;
+    fprintf(stderr, "[content] View mode changed to %d\n", (int)mode);
 }

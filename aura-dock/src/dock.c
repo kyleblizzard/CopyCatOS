@@ -496,6 +496,12 @@ void dock_run(DockState *state)
                 magnify_update(state);
                 {
                     int hit = dock_hit_test(state, state->mouse_x, state->mouse_y);
+                    static int last_hit_log = -2;
+                    if (hit != last_hit_log) {
+                        fprintf(stderr, "[dock] hit_test(mx=%d, my=%d) = %d, win_h=%d\n",
+                                state->mouse_x, state->mouse_y, hit, state->win_h);
+                        last_hit_log = hit;
+                    }
                     tooltip_update_hover(state, hit);
                 }
 
