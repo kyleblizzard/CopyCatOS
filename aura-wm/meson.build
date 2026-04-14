@@ -41,6 +41,7 @@ aura_wm_sources = [
   'src/crystal.c',
   'src/struts.c',
   'src/resize.c',
+  'src/crystal_color.c',
 ]
 
 xcursor_dep = dependency('xcursor', required: false)
