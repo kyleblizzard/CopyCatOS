@@ -31,9 +31,13 @@ bool shelf_load_assets(DockState *state)
 
     char path[1024];
 
-    // Load the main shelf image (the glass gradient)
+    // Load the pre-composited opaque shelf image.
+    // scurve-xl-opaque.png is the real Snow Leopard scurve-xl.png composited
+    // over gray(50) to produce fully opaque pixels at the correct brightness.
+    // This avoids the alpha-transparency problem where MoonRock's compositing
+    // makes the shelf see-through on dark wallpapers.
     snprintf(path, sizeof(path),
-             "%s/.local/share/aqua-widgets/dock/scurve-xl.png", home);
+             "%s/.local/share/aqua-widgets/dock/scurve-xl-opaque.png", home);
 
     state->shelf_img = cairo_image_surface_create_from_png(path);
     if (cairo_surface_status(state->shelf_img) != CAIRO_STATUS_SUCCESS) {
@@ -89,23 +93,9 @@ void shelf_draw(DockState *state, int shelf_width)
     cairo_close_path(cr);
     cairo_clip(cr);
 
-    // ── Opaque backing behind the glass ────────────────────────────
-    // The scurve texture has alpha 56-75%. On real Snow Leopard, the dock
-    // renders into its own opaque compositing layer before being placed on
-    // screen. MoonRock composites the ARGB window directly over wallpaper,
-    // so without an opaque backing the glass is too transparent.
-    //
-    // The backing color should approximate what the wallpaper looks like
-    // behind the shelf area. On real SL with Aurora wallpaper, the area
-    // behind the dock is dark (~brightness 30-40). The scurve's built-in
-    // alpha then composites over this to produce the final glass look.
-    cairo_set_source_rgb(cr, 0.45, 0.45, 0.45);
-    cairo_rectangle(cr, shelf_x, shelf_y, shelf_width, SHELF_HEIGHT);
-    cairo_fill(cr);
-
-    // ── Render the real scurve-xl.png shelf texture ─────────────────
-    // This is the actual Snow Leopard dock shelf asset (1280x86 RGBA).
-    // It composites over the opaque backing to produce the glass look.
+    // ── Render the shelf texture ──────────────────────────────────
+    // scurve-xl-opaque.png is the real Snow Leopard shelf asset pre-composited
+    // to fully opaque pixels. No backing fill needed — just render it directly.
     if (state->shelf_img) {
         int img_w = cairo_image_surface_get_width(state->shelf_img);
         int img_h = cairo_image_surface_get_height(state->shelf_img);

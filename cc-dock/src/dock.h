@@ -29,7 +29,7 @@
 #define BASE_ICON_SIZE      64      // Default icon size in pixels (no magnification) — real SL uses ~64px
 #define MAX_ICON_SIZE       96      // Largest an icon gets when mouse is directly over it
 #define MAGNIFICATION_RANGE 3       // How many icon slots away magnification reaches
-#define ICON_SPACING        10      // Pixels of gap between adjacent icons — real SL has more breathing room
+#define ICON_SPACING        6       // Pixels of gap between adjacent icons — HIG specifies ~6px
 #define SEPARATOR_WIDTH     12      // Width of the separator between dock sections
 #define SHELF_HEIGHT        48      // Height of the glass shelf at the bottom — taller for larger icons
 #define DOCK_HEIGHT         160     // Total dock window height (icons + shelf + reflections + room for reflections below icons)
