@@ -782,44 +782,40 @@ bool display_launch_gamescope(const char *game_command)
     //   -r <rate>     — Refresh rate limit (match the display's max Hz).
     //   --adaptive-sync — Enable FreeSync/VRR within gamescope.
     //   -- <command>  — Everything after "--" is the game to launch.
-    //
-    // The resulting command looks like:
-    //   gamescope -W 1920 -H 1080 -r 144 --adaptive-sync -- steam -gamepadui
-    char cmd[2048];
-    snprintf(cmd, sizeof(cmd),
-             "gamescope -W %d -H %d -r %d --adaptive-sync -- %s",
-             primary->width, primary->height, primary->refresh_hz,
-             game_command);
+    // SECURITY: Build argv array instead of passing through a shell.
+    // Using "sh -c" with user-supplied strings is a command injection
+    // vulnerability. Instead, we use execvp() with a proper argv array
+    // where game_command is passed as a single argument, not interpreted
+    // by a shell.
+    char w_str[16], h_str[16], r_str[16];
+    snprintf(w_str, sizeof(w_str), "%d", primary->width);
+    snprintf(h_str, sizeof(h_str), "%d", primary->height);
+    snprintf(r_str, sizeof(r_str), "%d", primary->refresh_hz);
 
-    fprintf(stderr, "[display] Launching gamescope: %s\n", cmd);
+    fprintf(stderr, "[display] Launching gamescope: -W %s -H %s -r %s --adaptive-sync -- %s\n",
+            w_str, h_str, r_str, game_command);
 
     // Fork a child process to run gamescope.
-    //
-    // fork() creates an exact copy of the current process. The child gets
-    // PID 0 (from fork's perspective), the parent gets the child's actual
-    // PID. The child then calls execlp() to replace itself with gamescope.
     pid_t pid = fork();
 
     if (pid < 0) {
-        // fork() failed — system is out of resources.
         perror("[display] fork failed");
         return false;
     }
 
     if (pid == 0) {
         // ── Child process ──
-        //
-        // setsid() creates a new session and detaches from the WM's terminal.
-        // This prevents gamescope from receiving signals (like SIGHUP) when
-        // the WM's terminal closes, and gives it its own process group.
         setsid();
 
-        // Replace this process with "sh -c <cmd>". We use sh because the
-        // command string may contain shell features like pipes or env vars.
-        // execlp() does NOT return on success — the process becomes sh.
-        execlp("sh", "sh", "-c", cmd, NULL);
+        // SECURITY: Use execvp with an argv array — NO shell interpretation.
+        // game_command is passed as a single argument after "--", so even if
+        // it contains shell metacharacters (;, |, $, etc.), they are treated
+        // as literal characters, not shell commands.
+        execlp("gamescope", "gamescope",
+               "-W", w_str, "-H", h_str, "-r", r_str,
+               "--adaptive-sync", "--", game_command, NULL);
 
-        // If we get here, execlp() failed (e.g., sh not found — very unlikely).
+        // If we get here, execlp() failed
         perror("[display] execlp failed");
         _exit(1);
     }

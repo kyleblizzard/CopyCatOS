@@ -424,9 +424,13 @@ static UniformCache *get_cache(GLuint program)
 
     // Not found — create a new entry (if we have room)
     if (uniform_cache_count >= MAX_CACHED_PROGRAMS) {
-        fprintf(stderr, "[crystal] Uniform cache full! Increase MAX_CACHED_PROGRAMS\n");
-        // Return the first entry as a fallback (not ideal, but won't crash)
-        return &uniform_cache[0];
+        // SECURITY FIX: Don't silently reuse the first entry — that corrupts
+        // its uniform locations. Instead, evict the oldest entry (LRU-style)
+        // by shifting the array and reusing the last slot.
+        fprintf(stderr, "[crystal] Uniform cache full — evicting oldest entry\n");
+        memmove(&uniform_cache[0], &uniform_cache[1],
+                (MAX_CACHED_PROGRAMS - 1) * sizeof(uniform_cache[0]));
+        uniform_cache_count = MAX_CACHED_PROGRAMS - 1;
     }
 
     // Look up all uniform locations for this program.

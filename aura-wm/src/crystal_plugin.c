@@ -38,9 +38,11 @@
 #include "crystal_plugin.h"
 
 #include <stdio.h>      // fprintf, fopen, fclose, fgets, etc.
-#include <stdlib.h>     // atof, atoi, malloc, free
+#include <stdlib.h>     // atof, atoi, malloc, free, realpath
 #include <string.h>     // strcmp, strncpy, memset, strstr, strtok, etc.
 #include <dlfcn.h>      // dlopen, dlsym, dlclose, dlerror — dynamic library loading
+#include <limits.h>     // PATH_MAX — maximum filesystem path length
+#include <sys/stat.h>   // stat, S_IWOTH, S_ISREG — file permission and type checks
 
 
 // ============================================================================
@@ -203,6 +205,81 @@ static bool parse_rgb(const char *value, float out[3])
 
 
 // ============================================================================
+//  Path validation (security)
+// ============================================================================
+//
+// Before opening ANY file (plugin .so, theme .theme, config), we validate that
+// the resolved path falls within one of the allowed directories. This prevents
+// path traversal attacks (e.g., "../../etc/shadow") and symlink attacks where
+// a symlink in the plugin directory points somewhere dangerous.
+//
+// Allowed directories:
+//   ~/.config/aura-wm/          — user configuration files
+//   ~/.local/share/aura-wm/plugins/  — user-installed plugins
+//   /usr/share/aura-wm/         — system-installed plugins and themes
+//   /usr/local/share/aura-wm/   — locally-compiled plugins and themes
+//
+// We also reject world-writable files (chmod o+w) because any user on the
+// system could have tampered with them. For .so files, we additionally verify
+// it's a regular file (not a symlink to something unexpected after realpath).
+
+static bool validate_path(const char *path, bool allow_so)
+{
+    // realpath() resolves all symlinks and ".." components, giving us the
+    // true filesystem location. If the file doesn't exist, it returns NULL.
+    char resolved[PATH_MAX];
+    if (!realpath(path, resolved)) {
+        fprintf(stderr, "[plugin] SECURITY: cannot resolve path '%s'\n", path);
+        return false;
+    }
+
+    // Build the user-specific allowed directory paths from $HOME
+    const char *home = getenv("HOME");
+    char user_config[PATH_MAX], user_plugins[PATH_MAX];
+    snprintf(user_config, sizeof(user_config), "%s/.config/aura-wm/",
+             home ? home : "/tmp");
+    snprintf(user_plugins, sizeof(user_plugins), "%s/.local/share/aura-wm/plugins/",
+             home ? home : "/tmp");
+
+    // Check whether the resolved path starts with any of the allowed prefixes.
+    // strncmp with the prefix length acts as a "starts with" check.
+    bool allowed = (strncmp(resolved, user_config, strlen(user_config)) == 0 ||
+                    strncmp(resolved, user_plugins, strlen(user_plugins)) == 0 ||
+                    strncmp(resolved, "/usr/share/aura-wm/", 19) == 0 ||
+                    strncmp(resolved, "/usr/local/share/aura-wm/", 25) == 0);
+
+    if (!allowed) {
+        fprintf(stderr, "[plugin] SECURITY: path '%s' resolves to '%s' "
+                "which is outside allowed directories\n", path, resolved);
+        return false;
+    }
+
+    // stat() retrieves file metadata — we check the permission bits to make
+    // sure the file is not world-writable (the 'other' write bit)
+    struct stat st;
+    if (stat(resolved, &st) != 0) {
+        fprintf(stderr, "[plugin] SECURITY: cannot stat '%s'\n", resolved);
+        return false;
+    }
+    if (st.st_mode & S_IWOTH) {
+        fprintf(stderr, "[plugin] SECURITY: rejecting world-writable file '%s'\n",
+                resolved);
+        return false;
+    }
+
+    // For shared library (.so) files, verify it's a regular file. After
+    // realpath() resolved symlinks, this catches anything weird like a FIFO
+    // or device node that somehow ended up in the plugin directory.
+    if (allow_so && !S_ISREG(st.st_mode)) {
+        fprintf(stderr, "[plugin] SECURITY: '%s' is not a regular file\n", resolved);
+        return false;
+    }
+
+    return true;
+}
+
+
+// ============================================================================
 //  Plugin system lifecycle
 // ============================================================================
 
@@ -268,6 +345,13 @@ void plugin_shutdown(void)
 
 bool plugin_load_theme(const char *path)
 {
+    // SECURITY: validate the path before opening — prevents path traversal
+    // and loading themes from untrusted locations
+    if (!validate_path(path, false)) {
+        fprintf(stderr, "[plugin] Refused to load theme from untrusted path: %s\n", path);
+        return false;
+    }
+
     FILE *f = fopen(path, "r");
     if (!f) {
         fprintf(stderr, "[plugin] Cannot open theme file: %s\n", path);
@@ -276,7 +360,8 @@ bool plugin_load_theme(const char *path)
 
     // Track which INI section we're currently inside.
     // This changes whenever we encounter a [SectionName] line.
-    char section[64] = "";
+    // Using 128 bytes to safely hold long section names without overflow.
+    char section[128] = "";
     char line[512];
 
     while (fgets(line, sizeof(line), f)) {
@@ -312,12 +397,16 @@ bool plugin_load_theme(const char *path)
 
         if (strcmp(section, "Theme") == 0) {
             // [Theme] section — metadata about the theme
-            if (strcmp(key, "name") == 0)
+            if (strcmp(key, "name") == 0) {
                 strncpy(current_theme.name, value,
                         sizeof(current_theme.name) - 1);
-            else if (strcmp(key, "author") == 0)
+                current_theme.name[sizeof(current_theme.name) - 1] = '\0';
+            }
+            else if (strcmp(key, "author") == 0) {
                 strncpy(current_theme.author, value,
                         sizeof(current_theme.author) - 1);
+                current_theme.author[sizeof(current_theme.author) - 1] = '\0';
+            }
         }
         else if (strcmp(section, "TitleBar") == 0) {
             // [TitleBar] section — gradient colors for window title bars
@@ -361,9 +450,11 @@ bool plugin_load_theme(const char *path)
         }
         else if (strcmp(section, "Font") == 0) {
             // [Font] section — typography settings
-            if (strcmp(key, "name") == 0)
+            if (strcmp(key, "name") == 0) {
                 strncpy(current_theme.font_name, value,
                         sizeof(current_theme.font_name) - 1);
+                current_theme.font_name[sizeof(current_theme.font_name) - 1] = '\0';
+            }
             else if (strcmp(key, "size") == 0)
                 current_theme.font_size = atoi(value);
         }
@@ -394,6 +485,15 @@ bool plugin_load(const char *path)
         return false;
     }
 
+    // SECURITY: validate the path before loading — prevents loading .so files
+    // from untrusted locations, world-writable files, or non-regular files.
+    // The 'true' argument enables the extra .so checks (regular file check).
+    if (!validate_path(path, true)) {
+        fprintf(stderr, "[plugin] Refused to load plugin from untrusted path: %s\n",
+                path);
+        return false;
+    }
+
     // dlopen() loads the shared library into our process's address space.
     // RTLD_LAZY means symbols are resolved on first use, not all at once.
     // This is faster at load time and fine since we immediately look up the
@@ -414,8 +514,32 @@ bool plugin_load(const char *path)
         return false;
     }
 
-    // Call the plugin's init function. If it returns false, the plugin is
-    // telling us it cannot run (maybe a required resource is missing).
+    // SECURITY: validate that the plugin exports required fields. A plugin
+    // without a name or version is either corrupted or not a real Crystal plugin.
+    if (!plugin->name || !plugin->version) {
+        fprintf(stderr, "[plugin] SECURITY: plugin at '%s' missing required "
+                "name/version fields\n", path);
+        dlclose(handle);
+        return false;
+    }
+
+    // SECURITY: prevent loading the same plugin twice. Duplicate plugins could
+    // cause double-free issues on shutdown or conflicting behavior. We check
+    // by name since the same .so could be loaded from different paths.
+    for (int i = 0; i < plugin_count; i++) {
+        if (loaded_plugins[i].plugin &&
+            loaded_plugins[i].plugin->name &&
+            strcmp(loaded_plugins[i].plugin->name, plugin->name) == 0) {
+            fprintf(stderr, "[plugin] Plugin '%s' is already loaded — "
+                    "refusing duplicate\n", plugin->name);
+            dlclose(handle);
+            return false;
+        }
+    }
+
+    // Call the plugin's init function if it has one. If init() returns false,
+    // the plugin is telling us it cannot run (maybe a required resource is
+    // missing). A NULL init pointer means no initialization is needed.
     if (plugin->init && !plugin->init()) {
         fprintf(stderr, "[plugin] %s init() failed\n", path);
         dlclose(handle);
@@ -487,12 +611,19 @@ void plugin_set_hot_corner(ScreenCorner corner, CornerAction action,
     hot_corners[corner].corner = corner;
     hot_corners[corner].action = action;
 
-    // Store the custom command if one was provided and the action needs it
-    if (custom_cmd && action == CORNER_ACTION_CUSTOM)
+    // Store the custom command if one was provided and the action needs it.
+    // Validate length to avoid silent truncation of important commands.
+    if (custom_cmd && action == CORNER_ACTION_CUSTOM) {
+        if (strlen(custom_cmd) >= sizeof(hot_corners[corner].custom_command)) {
+            fprintf(stderr, "[plugin] WARN: hot corner command too long, truncated\n");
+        }
         strncpy(hot_corners[corner].custom_command, custom_cmd,
                 sizeof(hot_corners[corner].custom_command) - 1);
-    else
+        hot_corners[corner].custom_command[sizeof(hot_corners[corner].custom_command) - 1] = '\0';
+    }
+    else {
         hot_corners[corner].custom_command[0] = '\0';
+    }
 }
 
 CornerAction plugin_check_hot_corner(int mouse_x, int mouse_y,
@@ -642,13 +773,22 @@ static void parse_window_rule_flags(const char *flags_str, WindowRule *rule)
 
 bool plugin_load_config(const char *path)
 {
+    // SECURITY: validate the path before opening — prevents loading config
+    // from untrusted locations or world-writable files
+    if (!validate_path(path, false)) {
+        fprintf(stderr, "[plugin] Refused to load config from untrusted path: %s\n",
+                path);
+        return false;
+    }
+
     FILE *f = fopen(path, "r");
     if (!f) {
         fprintf(stderr, "[plugin] Cannot open config file: %s\n", path);
         return false;
     }
 
-    char section[64] = "";
+    // Using 128 bytes to safely hold long section names without overflow
+    char section[128] = "";
     char line[512];
 
     while (fgets(line, sizeof(line), f)) {
@@ -701,10 +841,19 @@ bool plugin_load_config(const char *path)
             WindowRule rule;
             memset(&rule, 0, sizeof(rule));
             strncpy(rule.wm_class, key, sizeof(rule.wm_class) - 1);
+            rule.wm_class[sizeof(rule.wm_class) - 1] = '\0';
             rule.target_space = -1;  // Default: any workspace
             rule.opacity      = 0.0f; // Default: use compositor default
 
             parse_window_rule_flags(value, &rule);
+
+            // Range validation — clamp values to sane bounds to prevent
+            // misbehavior from malformed config files
+            if (rule.target_space < -1 || rule.target_space > 99)
+                rule.target_space = -1;
+            if (rule.opacity < 0.0f || rule.opacity > 1.0f)
+                rule.opacity = 0.0f;
+
             plugin_add_window_rule(&rule);
         }
     }
@@ -721,6 +870,57 @@ bool plugin_load_config(const char *path)
 
 bool plugin_save_config(const char *path)
 {
+    // SECURITY: validate the path before writing — prevents writing config
+    // to locations outside the allowed directories. Note: for save, the file
+    // may not exist yet, so we validate the parent directory instead.
+    // However, if the file already exists, validate it directly.
+    // For new files, the caller must ensure the directory is within allowed paths.
+    // We use validate_path with allow_so=false since this is a config file.
+    //
+    // Note: realpath() requires the file to exist. For saving new config files,
+    // we check the parent directory. For existing files, we validate directly.
+    struct stat save_st;
+    if (stat(path, &save_st) == 0) {
+        // File exists — validate it
+        if (!validate_path(path, false)) {
+            fprintf(stderr, "[plugin] Refused to save config to untrusted path: %s\n",
+                    path);
+            return false;
+        }
+    } else {
+        // File doesn't exist yet — validate the parent directory by checking
+        // if the path (minus filename) falls within allowed directories
+        char parent[PATH_MAX];
+        strncpy(parent, path, sizeof(parent) - 1);
+        parent[sizeof(parent) - 1] = '\0';
+
+        // Find the last '/' to get the parent directory
+        char *last_slash = strrchr(parent, '/');
+        if (last_slash) {
+            *last_slash = '\0';
+            // Resolve the parent directory to its canonical path
+            char resolved_parent[PATH_MAX];
+            if (!realpath(parent, resolved_parent)) {
+                fprintf(stderr, "[plugin] SECURITY: cannot resolve parent dir of '%s'\n",
+                        path);
+                return false;
+            }
+            const char *home = getenv("HOME");
+            char uc[PATH_MAX], up[PATH_MAX];
+            snprintf(uc, sizeof(uc), "%s/.config/aura-wm", home ? home : "/tmp");
+            snprintf(up, sizeof(up), "%s/.local/share/aura-wm/plugins", home ? home : "/tmp");
+            bool ok = (strncmp(resolved_parent, uc, strlen(uc)) == 0 ||
+                       strncmp(resolved_parent, up, strlen(up)) == 0 ||
+                       strncmp(resolved_parent, "/usr/share/aura-wm", 18) == 0 ||
+                       strncmp(resolved_parent, "/usr/local/share/aura-wm", 24) == 0);
+            if (!ok) {
+                fprintf(stderr, "[plugin] SECURITY: save path '%s' is outside "
+                        "allowed directories\n", path);
+                return false;
+            }
+        }
+    }
+
     FILE *f = fopen(path, "w");
     if (!f) {
         fprintf(stderr, "[plugin] Cannot write config file: %s\n", path);

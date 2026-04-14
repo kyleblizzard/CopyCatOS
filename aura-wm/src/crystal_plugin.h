@@ -40,6 +40,18 @@
 //
 // ============================================================================
 
+// SECURITY NOTICE:
+// Plugins run in the compositor's address space with full privileges.
+// Only load plugins from TRUSTED sources. The validate_path() function
+// restricts loading to system and user plugin directories, and rejects
+// world-writable files. Future versions should add:
+//   - Out-of-process plugins via IPC (isolates faults and limits damage)
+//   - seccomp-bpf restrictions after plugin init (limits syscall surface)
+//   - Plugin signature verification (cryptographic proof of trusted origin)
+// The in-process model is a pragmatic choice shared by every X11 compositor,
+// but it means a malicious or buggy plugin can crash or compromise the
+// entire compositor process.
+
 #ifndef CRYSTAL_PLUGIN_H
 #define CRYSTAL_PLUGIN_H
 
