@@ -237,20 +237,27 @@ void shelf_draw_bottom_band(DockState *state, int shelf_width)
     cairo_save(cr);
     cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
 
-    // Dark bottom band: 5px tall covering y_from_bottom 1-5
+    // Dark bottom band: 8px tall covering y_from_bottom 1-8
+    // Real Snow Leopard measurements:
+    //   y_from_bottom=8: RGB(140,135,140) brightness=138
+    //   y_from_bottom=5: RGB(119,115,119) brightness=118
+    //   y_from_bottom=3: RGB(108,103,108) brightness=106
     cairo_pattern_t *bottom_band = cairo_pattern_create_linear(
-        0, state->win_h - 5, 0, state->win_h);
-    // Top of band (y_from_bottom=5): target brightness ~118
+        0, state->win_h - 8, 0, state->win_h);
+    // Top of band (y_from_bottom=8): brightness ~138
     cairo_pattern_add_color_stop_rgba(bottom_band, 0.0,
-        135/255.0, 130/255.0, 135/255.0, 0.88);
-    // Middle (y_from_bottom=3): target brightness ~106
-    cairo_pattern_add_color_stop_rgba(bottom_band, 0.5,
+        148/255.0, 143/255.0, 148/255.0, 0.88);
+    // y_from_bottom=5 → t = 3/8 = 0.375: brightness ~118
+    cairo_pattern_add_color_stop_rgba(bottom_band, 0.375,
+        135/255.0, 130/255.0, 135/255.0, 0.90);
+    // y_from_bottom=3 → t = 5/8 = 0.625: brightness ~106
+    cairo_pattern_add_color_stop_rgba(bottom_band, 0.625,
         118/255.0, 113/255.0, 118/255.0, 0.92);
-    // Very bottom (y_from_bottom=1): target brightness ~106
+    // Very bottom (y_from_bottom=1): brightness ~106
     cairo_pattern_add_color_stop_rgba(bottom_band, 1.0,
         120/255.0, 115/255.0, 120/255.0, 0.93);
     cairo_set_source(cr, bottom_band);
-    cairo_rectangle(cr, shelf_x, state->win_h - 5, shelf_width, 5);
+    cairo_rectangle(cr, shelf_x, state->win_h - 8, shelf_width, 8);
     cairo_fill(cr);
     cairo_pattern_destroy(bottom_band);
 

@@ -45,6 +45,15 @@ void appmenu_show_dropdown(MenuBar *mb, int menu_index, int x);
 // Dismiss any currently open dropdown menu. Destroys the popup window.
 void appmenu_dismiss(MenuBar *mb);
 
+// Returns the Window ID of the currently open dropdown, or None.
+// Used by the event loop to route events to the dropdown.
+Window appmenu_get_dropdown_win(void);
+
+// Handle an X event that was delivered to the dropdown window.
+// Returns true if the event was consumed, false otherwise.
+// Sets *should_dismiss to true if the dropdown should be closed.
+bool appmenu_handle_dropdown_event(MenuBar *mb, XEvent *ev, bool *should_dismiss);
+
 // Clean up resources.
 void appmenu_cleanup(void);
 
