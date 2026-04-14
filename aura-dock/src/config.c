@@ -622,9 +622,17 @@ void config_set_defaults(DockState *state)
         strncpy(item->process_name, def->process_name,
                 sizeof(item->process_name) - 1);
 
-        // All defaults are apps, not folders
-        item->is_folder = false;
-        item->folder_path[0] = '\0';
+        // Check if this item is a folder (e.g., Downloads, Trash)
+        // Trash points to the XDG Trash directory so the stacks popup can show its contents
+        if (strcmp(def->name, "Trash") == 0) {
+            item->is_folder = true;
+            const char *home = getenv("HOME");
+            snprintf(item->folder_path, sizeof(item->folder_path),
+                     "%s/.local/share/Trash/files", home ? home : "/tmp");
+        } else {
+            item->is_folder = false;
+            item->folder_path[0] = '\0';
+        }
 
         // Copy the separator flag
         item->separator_after = def->separator_after;

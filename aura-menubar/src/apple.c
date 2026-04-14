@@ -69,10 +69,18 @@ static bool is_disabled(int index)
     return (index == 0); // Only "About AuraOS" is disabled
 }
 
-// ── Internal: load and scale a PNG to a target size ─────────────────
+// ── Internal: load a PNG, scale it, and extract an alpha mask ───────
 
-// Loads a PNG file and scales it to the given width/height.
-// Returns NULL if the file can't be loaded.
+// Loads a PNG file, scales it to the given width/height, and extracts
+// just the alpha (opacity) channel as a grayscale mask surface.
+//
+// Why a mask? The Apple logo PNG is a colorful image (blue gradient),
+// but macOS Snow Leopard renders the menu bar Apple logo as a solid
+// dark silhouette. We use the logo's shape (alpha channel) as a stencil
+// and paint it in solid black/white via cairo_mask_surface() in the
+// paint function. This matches real Snow Leopard behavior.
+//
+// Returns an A8 (alpha-only) surface, or NULL if the file can't be loaded.
 static cairo_surface_t *load_and_scale_png(const char *path, int target_w, int target_h)
 {
     // Load the original PNG
@@ -86,8 +94,7 @@ static cairo_surface_t *load_and_scale_png(const char *path, int target_w, int t
     int orig_w = cairo_image_surface_get_width(original);
     int orig_h = cairo_image_surface_get_height(original);
 
-    // Create a new surface at the target size and draw the original
-    // onto it with scaling applied
+    // Step 1: Scale the original PNG to the target size (keeps color+alpha)
     cairo_surface_t *scaled = cairo_image_surface_create(
         CAIRO_FORMAT_ARGB32, target_w, target_h
     );
@@ -98,14 +105,47 @@ static cairo_surface_t *load_and_scale_png(const char *path, int target_w, int t
     double sy = (double)target_h / (double)orig_h;
     cairo_scale(cr, sx, sy);
 
-    // Paint the original image onto the scaled surface
+    // Use BEST filter for smooth downscaling (76x88 -> 22x15 is aggressive)
+    cairo_pattern_t *pattern;
     cairo_set_source_surface(cr, original, 0, 0);
+    pattern = cairo_get_source(cr);
+    cairo_pattern_set_filter(pattern, CAIRO_FILTER_BEST);
     cairo_paint(cr);
 
     cairo_destroy(cr);
     cairo_surface_destroy(original);
 
-    return scaled;
+    // Step 2: Extract the alpha channel into an A8 mask surface.
+    // A8 format stores only opacity — one byte per pixel, no color info.
+    // We walk the scaled ARGB32 pixels and copy each pixel's alpha byte
+    // into the A8 surface. This gives us the logo's silhouette shape.
+    cairo_surface_flush(scaled);
+    unsigned char *argb_data = cairo_image_surface_get_data(scaled);
+    int argb_stride = cairo_image_surface_get_stride(scaled);
+
+    cairo_surface_t *mask = cairo_image_surface_create(
+        CAIRO_FORMAT_A8, target_w, target_h
+    );
+    cairo_surface_flush(mask);
+    unsigned char *a8_data = cairo_image_surface_get_data(mask);
+    int a8_stride = cairo_image_surface_get_stride(mask);
+
+    for (int y = 0; y < target_h; y++) {
+        for (int x = 0; x < target_w; x++) {
+            // ARGB32 on little-endian: bytes are [B, G, R, A] per pixel
+            unsigned char alpha = argb_data[y * argb_stride + x * 4 + 3];
+            a8_data[y * a8_stride + x] = alpha;
+        }
+    }
+
+    // Tell Cairo we modified the pixel data directly
+    cairo_surface_mark_dirty(mask);
+    cairo_surface_destroy(scaled);
+
+    fprintf(stderr, "[apple] Loaded logo mask from %s (%dx%d -> %dx%d)\n",
+            path, orig_w, orig_h, target_w, target_h);
+
+    return mask;
 }
 
 // ── Public API ──────────────────────────────────────────────────────
@@ -151,9 +191,21 @@ void apple_paint(MenuBar *mb, cairo_t *cr)
     double y = (MENUBAR_HEIGHT - 15) / 2.0; // Center 15px icon in 22px bar (≈3.5, close to measured y=3)
 
     if (logo) {
-        // Draw the PNG logo
-        cairo_set_source_surface(cr, logo, x, y);
-        cairo_paint(cr);
+        // Draw the logo as a solid-color silhouette using the alpha mask.
+        // cairo_mask_surface() uses the mask's alpha values to control
+        // where the current source color is painted. Where the mask is
+        // opaque, the color shows through; where transparent, nothing
+        // is drawn. This gives us a crisp black (or white) Apple logo
+        // matching real Snow Leopard behavior.
+        if (active) {
+            // Selected state: white logo on the blue highlight
+            cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+        } else {
+            // Normal state: dark logo on the gray gradient bar
+            // Snow Leopard uses near-black (~RGB 41,41,41)
+            cairo_set_source_rgb(cr, 0.16, 0.16, 0.16);
+        }
+        cairo_mask_surface(cr, logo, x, y);
     } else {
         // Fallback: draw a simple filled circle as a placeholder.
         // This is a dark gray circle roughly matching the Apple logo position.

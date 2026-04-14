@@ -36,6 +36,7 @@ void shelf_draw(DockState *state, int shelf_width);
 // Parameters:
 //   state — the dock's global state
 //   x     — the X coordinate where the separator should be drawn
+void shelf_draw_bottom_band(DockState *state, int shelf_width);
 void shelf_draw_separator(DockState *state, double x);
 
 // Free the loaded shelf image surfaces.

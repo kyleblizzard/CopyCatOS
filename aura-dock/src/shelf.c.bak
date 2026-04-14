@@ -127,21 +127,18 @@ void shelf_draw(DockState *state, int shelf_width)
         cairo_pattern_t *shelf_base = cairo_pattern_create_linear(
             0, shelf_y, 0, state->win_h);
         // Back of shelf (top, t=0): real SL measures brightness 253 — nearly pure white
-        // This is the reflection of ambient light on the glass surface.
-        // High alpha (0.92) needed to override the scurve texture and wallpaper bleed.
-        cairo_pattern_add_color_stop_rgba(shelf_base, 0.0,  0.99, 0.99, 1.0, 0.95);
+        // This is the reflection of ambient light on the glass surface
+        cairo_pattern_add_color_stop_rgba(shelf_base, 0.0,  0.95, 0.95, 0.97, 0.80);
         // t≈0.375 (y_from_bottom=30): still very bright, reflection band
-        cairo_pattern_add_color_stop_rgba(shelf_base, 0.375, 0.98, 0.98, 1.0, 0.90);
+        cairo_pattern_add_color_stop_rgba(shelf_base, 0.375, 0.92, 0.93, 0.95, 0.70);
         // t≈0.58 (y_from_bottom=20): RGB(153,140,154) brightness=149, muted purple-grey
-        // Higher alpha to push through the scurve texture and wallpaper
-        cairo_pattern_add_color_stop_rgba(shelf_base, 0.58,  0.62, 0.57, 0.63, 0.70);
+        cairo_pattern_add_color_stop_rgba(shelf_base, 0.58,  0.55, 0.50, 0.56, 0.55);
         // t≈0.79 (y_from_bottom=10): RGB(167,159,163) brightness=163, blue-grey front
-        cairo_pattern_add_color_stop_rgba(shelf_base, 0.79,  0.65, 0.62, 0.65, 0.70);
+        cairo_pattern_add_color_stop_rgba(shelf_base, 0.79,  0.58, 0.55, 0.57, 0.55);
         // t≈0.94 (y_from_bottom=3): RGB(108,103,108) brightness=106, dark bottom edge
-        // Higher alpha to prevent wallpaper from brightening this zone
-        cairo_pattern_add_color_stop_rgba(shelf_base, 0.94,  0.30, 0.28, 0.30, 0.85);
-        // Very bottom pixel: darkest — the bottom band overlay will handle final values
-        cairo_pattern_add_color_stop_rgba(shelf_base, 1.0,   0.25, 0.23, 0.25, 0.90);
+        cairo_pattern_add_color_stop_rgba(shelf_base, 0.94,  0.35, 0.33, 0.35, 0.65);
+        // Very bottom pixel: same dark tone
+        cairo_pattern_add_color_stop_rgba(shelf_base, 1.0,   0.30, 0.28, 0.30, 0.70);
         cairo_set_source(cr, shelf_base);
         cairo_paint(cr);
         cairo_pattern_destroy(shelf_base);
@@ -152,10 +149,10 @@ void shelf_draw(DockState *state, int shelf_width)
         // since the bottom edge should be DARK (brightness 106), not glowing.
         cairo_pattern_t *highlight = cairo_pattern_create_linear(
             0, shelf_y, 0, state->win_h);
-        cairo_pattern_add_color_stop_rgba(highlight, 0.0,  1.0, 1.0, 1.0, 0.50);  // back: very bright
-        cairo_pattern_add_color_stop_rgba(highlight, 0.3,  1.0, 1.0, 1.0, 0.40);  // reflection band
-        cairo_pattern_add_color_stop_rgba(highlight, 0.5,  1.0, 1.0, 1.0, 0.08);  // fading slowly
-        cairo_pattern_add_color_stop_rgba(highlight, 0.75, 1.0, 1.0, 1.0, 0.03);  // slight presence in front
+        cairo_pattern_add_color_stop_rgba(highlight, 0.0,  1.0, 1.0, 1.0, 0.25);  // back: very bright
+        cairo_pattern_add_color_stop_rgba(highlight, 0.3,  1.0, 1.0, 1.0, 0.18);  // reflection band
+        cairo_pattern_add_color_stop_rgba(highlight, 0.5,  1.0, 1.0, 1.0, 0.05);  // fading
+        cairo_pattern_add_color_stop_rgba(highlight, 0.75, 1.0, 1.0, 1.0, 0.0);   // gone before front
         cairo_pattern_add_color_stop_rgba(highlight, 1.0,  1.0, 1.0, 1.0, 0.0);   // no bottom glow
         cairo_set_source(cr, highlight);
         cairo_paint(cr);
@@ -178,8 +175,14 @@ void shelf_draw(DockState *state, int shelf_width)
 
     cairo_restore(cr);  // Remove the trapezoid clip
 
-    // NOTE: The dark bottom band is drawn AFTER icons via shelf_draw_bottom_band()
-    // to prevent icon reflections from overwriting the dark contact line.
+    // Bottom edge: real SL measures RGB(108,103,108) brightness=106.
+    // This is a DARK contact line where the glass meets the screen edge —
+    // NOT a bright highlight. The old code had this as white/silver which was wrong.
+    cairo_set_source_rgba(cr, 108/255.0, 103/255.0, 108/255.0, 0.85);
+    cairo_set_line_width(cr, 2.0);
+    cairo_move_to(cr, shelf_x, state->win_h - 1.0);
+    cairo_line_to(cr, shelf_x + shelf_width, state->win_h - 1.0);
+    cairo_stroke(cr);
 
     // --- Frontline highlight ---
     // A 1px bright line along the top edge of the shelf. This makes it look
@@ -218,43 +221,6 @@ void shelf_draw(DockState *state, int shelf_width)
         cairo_stroke(cr);
         cairo_restore(cr);
     }
-}
-
-// shelf_draw_bottom_band — Dark contact line at the very bottom of the shelf.
-// Called AFTER icons and reflections are drawn so it overrides any bright
-// icon content that bleeds into the bottom pixels.
-// Real Snow Leopard measures:
-//   y_from_bottom=3: RGB(108,103,108) brightness=106
-//   y_from_bottom=5: RGB(119,115,119) brightness=118
-void shelf_draw_bottom_band(DockState *state, int shelf_width)
-{
-    cairo_t *cr = state->cr;
-    double shelf_x = (state->win_w - shelf_width) / 2.0;
-
-    // Use OPERATOR_SOURCE to REPLACE pixels rather than blend.
-    // This ensures the dark band wins over any bright icon reflections
-    // or scurve texture pixels underneath.
-    cairo_save(cr);
-    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
-
-    // Dark bottom band: 5px tall covering y_from_bottom 1-5
-    cairo_pattern_t *bottom_band = cairo_pattern_create_linear(
-        0, state->win_h - 5, 0, state->win_h);
-    // Top of band (y_from_bottom=5): target brightness ~118
-    cairo_pattern_add_color_stop_rgba(bottom_band, 0.0,
-        135/255.0, 130/255.0, 135/255.0, 0.88);
-    // Middle (y_from_bottom=3): target brightness ~106
-    cairo_pattern_add_color_stop_rgba(bottom_band, 0.5,
-        118/255.0, 113/255.0, 118/255.0, 0.92);
-    // Very bottom (y_from_bottom=1): target brightness ~106
-    cairo_pattern_add_color_stop_rgba(bottom_band, 1.0,
-        120/255.0, 115/255.0, 120/255.0, 0.93);
-    cairo_set_source(cr, bottom_band);
-    cairo_rectangle(cr, shelf_x, state->win_h - 5, shelf_width, 5);
-    cairo_fill(cr);
-    cairo_pattern_destroy(bottom_band);
-
-    cairo_restore(cr);
 }
 
 void shelf_draw_separator(DockState *state, double x)

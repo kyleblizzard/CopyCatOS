@@ -429,6 +429,10 @@ void dock_paint(DockState *state)
         }
     }
 
+    // Draw the dark bottom band AFTER icons so it overrides any bright
+    // icon reflections that bleed into the bottom 5 pixels of the shelf.
+    shelf_draw_bottom_band(state, shelf_width);
+
     // Restore the original cairo context on the state
     state->cr = orig_cr;
 
