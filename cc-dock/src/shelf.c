@@ -43,14 +43,22 @@ bool shelf_load_assets(DockState *state)
         // We'll draw a fallback gradient instead
     }
 
-    // Load the frontline highlight (1px bright line along the shelf top)
+    // Load the frontline highlight (top edge of shelf)
     snprintf(path, sizeof(path),
              "%s/.local/share/aqua-widgets/dock/frontline.png", home);
-
     state->frontline_img = cairo_image_surface_create_from_png(path);
     if (cairo_surface_status(state->frontline_img) != CAIRO_STATUS_SUCCESS) {
         cairo_surface_destroy(state->frontline_img);
         state->frontline_img = NULL;
+    }
+
+    // Load the separator (dashed divider between app and doc sections)
+    snprintf(path, sizeof(path),
+             "%s/.local/share/aqua-widgets/dock/separator.png", home);
+    state->separator_img = cairo_image_surface_create_from_png(path);
+    if (cairo_surface_status(state->separator_img) != CAIRO_STATUS_SUCCESS) {
+        cairo_surface_destroy(state->separator_img);
+        state->separator_img = NULL;
     }
 
     return true;
@@ -87,11 +95,11 @@ void shelf_draw(DockState *state, int shelf_width)
     // screen. MoonRock composites the ARGB window directly over wallpaper,
     // so without an opaque backing the glass is too transparent.
     //
-    // This fill provides the opaque surface the glass sits on. The scurve
-    // then composites over it with OVER, giving the correct final look.
-    // The color (neutral gray ~55%) matches the average shelf brightness
-    // from the real Snow Leopard machine.
-    cairo_set_source_rgb(cr, 0.55, 0.55, 0.55);
+    // The backing color should approximate what the wallpaper looks like
+    // behind the shelf area. On real SL with Aurora wallpaper, the area
+    // behind the dock is dark (~brightness 30-40). The scurve's built-in
+    // alpha then composites over this to produce the final glass look.
+    cairo_set_source_rgb(cr, 0.45, 0.45, 0.45);
     cairo_rectangle(cr, shelf_x, shelf_y, shelf_width, SHELF_HEIGHT);
     cairo_fill(cr);
 
@@ -148,28 +156,22 @@ void shelf_draw_separator(DockState *state, double x)
     cairo_t *cr = state->cr;
     double shelf_y = state->win_h - SHELF_HEIGHT;
 
-    cairo_save(cr);
+    // Render the real Snow Leopard separator.png asset.
+    // It's 64x128 RGBA — a dashed stippled white line pattern.
+    // We scale it to fit the shelf height and center it at x.
+    if (state->separator_img) {
+        int sep_w = cairo_image_surface_get_width(state->separator_img);
+        int sep_h = cairo_image_surface_get_height(state->separator_img);
 
-    // The separator is two thin vertical lines side by side:
-    // 1. A dark translucent line (shadow/groove)
-    // 2. A white highlight line offset 1px to the right (bright edge)
-    // Together they create the classic Snow Leopard etched groove effect.
-    // The separator spans the full shelf height for clear visibility.
-
-    // Dark groove line (left side of the etched pair)
-    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.35);
-    cairo_set_line_width(cr, 1.0);
-    cairo_move_to(cr, x + 0.5, shelf_y + 4);
-    cairo_line_to(cr, x + 0.5, state->win_h - 4);
-    cairo_stroke(cr);
-
-    // White highlight line (right side, catches the "light")
-    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 0.45);
-    cairo_move_to(cr, x + 1.5, shelf_y + 4);
-    cairo_line_to(cr, x + 1.5, state->win_h - 4);
-    cairo_stroke(cr);
-
-    cairo_restore(cr);
+        cairo_save(cr);
+        // Center the separator image at the given x position
+        double draw_x = x - (double)sep_w / 2.0;
+        cairo_translate(cr, draw_x, shelf_y);
+        cairo_scale(cr, 1.0, (double)SHELF_HEIGHT / sep_h);
+        cairo_set_source_surface(cr, state->separator_img, 0, 0);
+        cairo_paint(cr);
+        cairo_restore(cr);
+    }
 }
 
 void shelf_cleanup(DockState *state)
@@ -181,5 +183,9 @@ void shelf_cleanup(DockState *state)
     if (state->frontline_img) {
         cairo_surface_destroy(state->frontline_img);
         state->frontline_img = NULL;
+    }
+    if (state->separator_img) {
+        cairo_surface_destroy(state->separator_img);
+        state->separator_img = NULL;
     }
 }

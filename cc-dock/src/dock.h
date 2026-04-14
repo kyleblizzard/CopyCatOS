@@ -114,11 +114,13 @@ typedef struct {
     double last_process_check;    // Timestamp of last process-running check
 
     // Shelf assets (loaded once, reused every frame)
-    cairo_surface_t *shelf_img;   // The scurve-xl.png shelf background
-    cairo_surface_t *frontline_img; // The 1px highlight along the shelf top
+    // All from real Snow Leopard assets — never generated/faked
+    cairo_surface_t *shelf_img;      // scurve-xl.png — glass shelf gradient
+    cairo_surface_t *frontline_img;  // frontline.png — top edge highlight
+    cairo_surface_t *separator_img;  // separator.png — dashed divider between sections
 
     // Indicator asset
-    cairo_surface_t *indicator_img; // The running-app indicator dot
+    cairo_surface_t *indicator_img; // indicator_medium.png — running-app dot
 
     // Event loop control
     bool running_loop;            // Set to false to exit the main loop
