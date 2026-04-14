@@ -274,8 +274,8 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
         cursor -= (int)icon_size;
     }
 
-    // Gap between Spotlight icon and clock
-    cursor -= 10;
+    // Gap between Spotlight icon and clock (12px for even SL-style spacing)
+    cursor -= 12;
 
     // ── Clock ───────────────────────────────────────────────────
     // Format the current time as "Tue 3:58 PM"
@@ -291,8 +291,8 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
     // Draw the clock text
     render_text(cr, clock_buf, cursor, 3, false, 0.1, 0.1, 0.1); // #1A1A1A
 
-    // Gap between clock and Bluetooth icon
-    cursor -= 14;
+    // Gap between clock and Bluetooth icon (12px for even SL-style spacing)
+    cursor -= 12;
 
     // ── Bluetooth icon ──────────────────────────────────────────
     // The Bluetooth "rune" is a stylized letter B made of angular
@@ -338,8 +338,8 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
         cursor -= (int)icon_w;
     }
 
-    // Gap between Bluetooth and WiFi icon
-    cursor -= 10;
+    // Gap between Bluetooth and WiFi icon (12px for even SL-style spacing)
+    cursor -= 12;
 
     // ── WiFi / AirPort icon ─────────────────────────────────────
     // Draws a WiFi signal fan: three concentric quarter-circle arcs
@@ -381,16 +381,16 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
         cursor -= (int)icon_size;
     }
 
-    // Gap between WiFi and volume icon
-    cursor -= 10;
+    // Gap between WiFi and volume icon (12px for even SL-style spacing)
+    cursor -= 12;
 
     // ── Volume icon ─────────────────────────────────────────────
     cursor -= 16; // Icon is 16px wide
     // Center the 16px icon vertically in the 22px bar
     draw_speaker_icon(cr, cursor, (MENUBAR_HEIGHT - 16) / 2.0);
 
-    // Gap between volume and battery
-    cursor -= 10;
+    // Gap between volume and battery (12px for even SL-style spacing)
+    cursor -= 12;
 
     // ── Battery (only if hardware exists) ───────────────────────
     if (battery_present) {

@@ -33,7 +33,7 @@
 #define SEPARATOR_WIDTH     12      // Width of the separator between dock sections
 #define SHELF_HEIGHT        48      // Height of the glass shelf at the bottom — taller for larger icons
 #define DOCK_HEIGHT         160     // Total dock window height (icons + shelf + reflections + room for reflections below icons)
-#define SHELF_PADDING       60      // Extra pixels on each side of the shelf beyond icons (generous shelf extension)
+#define SHELF_PADDING       30      // Extra pixels on each side of the shelf beyond icons — real SL tightly wraps the icon row
 #define INDICATOR_SIZE      8       // Diameter of the "running" dot below icons
 #define BOUNCE_AMPLITUDE    26      // Max pixels an icon bounces upward
 #define BOUNCE_CYCLE_MS     720     // Duration of one full bounce cycle in milliseconds

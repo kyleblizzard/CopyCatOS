@@ -201,9 +201,10 @@ void apple_paint(MenuBar *mb, cairo_t *cr)
             // Selected state: white logo on the blue highlight
             cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
         } else {
-            // Normal state: dark logo on the gray gradient bar
-            // Snow Leopard uses near-black (~RGB 41,41,41)
-            cairo_set_source_rgb(cr, 0.16, 0.16, 0.16);
+            // Normal state: pure black logo on the gray gradient bar
+            // Use pure black for maximum contrast — real SL Apple logo
+            // is a crisp, solid dark shape
+            cairo_set_source_rgb(cr, 0.0, 0.0, 0.0);
         }
         cairo_mask_surface(cr, logo, x, y);
     } else {

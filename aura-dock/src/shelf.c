@@ -199,20 +199,20 @@ void shelf_draw(DockState *state, int shelf_width)
         cairo_restore(cr);
 
         // Also draw a white highlight line on top of the asset for extra pop.
-        // Real Snow Leopard has a very visible bright white/silver line at the
+        // Real Snow Leopard has a very clear, bright white/silver line at the
         // top edge of the shelf — this reinforces that effect.
         cairo_save(cr);
-        cairo_set_source_rgba(cr, 1, 1, 1, 0.5);
-        cairo_set_line_width(cr, 1.0);
+        cairo_set_source_rgba(cr, 1, 1, 1, 0.7);
+        cairo_set_line_width(cr, 1.5);
         cairo_move_to(cr, top_left, shelf_y + 0.5);
         cairo_line_to(cr, top_right, shelf_y + 0.5);
         cairo_stroke(cr);
         cairo_restore(cr);
     } else {
-        // Fallback: brighter white line at the top of the shelf
+        // Fallback: bright white line at the top of the shelf
         cairo_save(cr);
-        cairo_set_source_rgba(cr, 1, 1, 1, 0.75);  // Boosted from 0.65 for visibility
-        cairo_set_line_width(cr, 1.0);
+        cairo_set_source_rgba(cr, 1, 1, 1, 0.85);
+        cairo_set_line_width(cr, 1.5);
         cairo_move_to(cr, top_left, shelf_y + 0.5);
         cairo_line_to(cr, top_right, shelf_y + 0.5);
         cairo_stroke(cr);
@@ -242,20 +242,21 @@ void shelf_draw_bottom_band(DockState *state, int shelf_width)
     //   y_from_bottom=8: RGB(140,135,140) brightness=138
     //   y_from_bottom=5: RGB(119,115,119) brightness=118
     //   y_from_bottom=3: RGB(108,103,108) brightness=106
+    //   y_from_bottom=1: even darker, blends into screen edge
     cairo_pattern_t *bottom_band = cairo_pattern_create_linear(
         0, state->win_h - 8, 0, state->win_h);
     // Top of band (y_from_bottom=8): brightness ~138
     cairo_pattern_add_color_stop_rgba(bottom_band, 0.0,
-        148/255.0, 143/255.0, 148/255.0, 0.88);
+        140/255.0, 135/255.0, 140/255.0, 0.92);
     // y_from_bottom=5 → t = 3/8 = 0.375: brightness ~118
     cairo_pattern_add_color_stop_rgba(bottom_band, 0.375,
-        135/255.0, 130/255.0, 135/255.0, 0.90);
-    // y_from_bottom=3 → t = 5/8 = 0.625: brightness ~106
+        119/255.0, 115/255.0, 119/255.0, 0.95);
+    // y_from_bottom=3 → t = 5/8 = 0.625: RGB(108,103,108)
     cairo_pattern_add_color_stop_rgba(bottom_band, 0.625,
-        118/255.0, 113/255.0, 118/255.0, 0.92);
-    // Very bottom (y_from_bottom=1): brightness ~106
+        108/255.0, 103/255.0, 108/255.0, 0.97);
+    // Very bottom (y_from_bottom=1): darkest — dark contact line
     cairo_pattern_add_color_stop_rgba(bottom_band, 1.0,
-        120/255.0, 115/255.0, 120/255.0, 0.93);
+        90/255.0, 85/255.0, 90/255.0, 0.98);
     cairo_set_source(cr, bottom_band);
     cairo_rectangle(cr, shelf_x, state->win_h - 8, shelf_width, 8);
     cairo_fill(cr);

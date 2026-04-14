@@ -90,7 +90,12 @@ void render_background(MenuBar *mb, cairo_t *cr)
         );
         cairo_pattern_add_color_stop_rgba(grad, 0.0,  0.96, 0.96, 0.96, 0.88);
         cairo_pattern_add_color_stop_rgba(grad, 0.5,  0.78, 0.78, 0.78, 0.88);
-        cairo_pattern_add_color_stop_rgba(grad, 1.0,  0.62, 0.62, 0.62, 0.88);
+        // Transition to fully opaque well before the bottom edge so
+        // wallpaper color cannot bleed through and create a colored
+        // artifact at the border. Last ~5px are fully opaque.
+        cairo_pattern_add_color_stop_rgba(grad, 0.75, 0.70, 0.70, 0.70, 0.88);
+        cairo_pattern_add_color_stop_rgba(grad, 0.80, 0.66, 0.66, 0.66, 1.0);
+        cairo_pattern_add_color_stop_rgba(grad, 1.0,  0.58, 0.58, 0.58, 1.0);
 
         cairo_set_source(cr, grad);
         cairo_rectangle(cr, 0, 0, mb->screen_w, MENUBAR_HEIGHT);
@@ -98,17 +103,29 @@ void render_background(MenuBar *mb, cairo_t *cr)
         cairo_pattern_destroy(grad);
     }
 
-    // 1px bottom border — a dark line separating the menu bar from
-    // the content below. Real Snow Leopard measures RGB(38,13,37) here:
-    // nearly black with a slight warm/purple tint from wallpaper bleed.
+    // Seal the bottom 3px with fully opaque fills to prevent any
+    // wallpaper color from bleeding through the ARGB composited window.
+    // The compositing window manager blends translucent areas with the
+    // wallpaper underneath, which can create colored artifacts (green
+    // tint from Aurora wallpaper) at the bottom edge.
+
+    // Row at y=19..20: opaque gray matching the gradient's bottom tone
+    cairo_set_source_rgba(cr, 0.58, 0.58, 0.58, 1.0);
+    cairo_rectangle(cr, 0, MENUBAR_HEIGHT - 3, mb->screen_w, 1);
+    cairo_fill(cr);
+
+    // Row at y=20..21: slightly darker opaque gray
+    cairo_set_source_rgba(cr, 0.50, 0.50, 0.50, 1.0);
+    cairo_rectangle(cr, 0, MENUBAR_HEIGHT - 2, mb->screen_w, 1);
+    cairo_fill(cr);
+
+    // 1px bottom border at the very last row (y=21..22).
+    // Real Snow Leopard measures RGB(38,13,37) here: nearly black with
+    // a slight warm/purple tint. Using a rectangle fill instead of a
+    // stroked line to guarantee full pixel coverage with no anti-aliasing gaps.
     cairo_set_source_rgba(cr, 38/255.0, 13/255.0, 37/255.0, 1.0);
-    cairo_set_line_width(cr, 1.0);
-    // Draw the line at y = MENUBAR_HEIGHT - 0.5 so it renders as a
-    // crisp 1px line. Cairo draws lines centered on the path, so
-    // 0.5 offset aligns to pixel boundaries.
-    cairo_move_to(cr, 0, MENUBAR_HEIGHT - 0.5);
-    cairo_line_to(cr, mb->screen_w, MENUBAR_HEIGHT - 0.5);
-    cairo_stroke(cr);
+    cairo_rectangle(cr, 0, MENUBAR_HEIGHT - 1, mb->screen_w, 1);
+    cairo_fill(cr);
 }
 
 // ── Text Rendering ──────────────────────────────────────────────────
