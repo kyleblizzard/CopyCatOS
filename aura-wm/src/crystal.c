@@ -32,6 +32,7 @@
 
 #define _GNU_SOURCE  // Needed for M_PI from <math.h>
 #include "crystal.h"
+#include "crystal_shaders.h"
 #include "decor.h"
 #include "ewmh.h"
 
@@ -180,7 +181,39 @@ static struct {
     // ── Desktop background color ──
     // Cleared to this color each frame. Dark blue-gray by default.
     float bg_r, bg_g, bg_b;
+
+    // ── Shader pipeline state (replaces fixed-function GL) ──
+    // ShaderPrograms holds compiled GLSL program handles for each effect
+    // (basic textured quad, shadow, blur, genie, solid color). The projection
+    // matrix is a cached 4x4 orthographic matrix that maps pixel coordinates
+    // to OpenGL clip space — set once at init and updated on screen resize.
+    ShaderPrograms shaders;
+    float projection[16];
 } crystal;
+
+// ────────────────────────────────────────────────────────────────────────
+// SECTION: Blur-behind FBO resources
+// ────────────────────────────────────────────────────────────────────────
+//
+// Blur-behind gives translucent panels (menu bar, dock) their frosted
+// glass look. Instead of just showing the wallpaper through them, we
+// blur whatever is behind them first using a two-pass Gaussian blur.
+//
+// The "ping-pong" technique uses two FBOs (A and B):
+//   1. Copy the screen region behind the panel into FBO A's texture
+//   2. Horizontal blur: read FBO A → write to FBO B
+//   3. Vertical blur:   read FBO B → write to FBO A
+//   4. Draw FBO A's (now blurred) texture back to the screen
+//
+// Using half-resolution FBOs is a performance optimization — blur hides
+// the lower resolution, and we're sampling fewer pixels in each pass.
+
+static struct {
+    GLuint fbo_a, tex_a;    // First blur pass target
+    GLuint fbo_b, tex_b;    // Second blur pass target (ping-pong)
+    int width, height;       // Current FBO dimensions
+    float blur_radius;       // Blur radius in pixels (default: 20)
+} blur_behind = {0};
 
 // ────────────────────────────────────────────────────────────────────────
 // SECTION: Forward declarations (private helper functions)
@@ -195,6 +228,7 @@ static struct WindowTexture *find_window_texture(Window xwin);
 static bool choose_fb_configs(Display *dpy, int screen);
 static bool load_glx_extensions(Display *dpy, int screen);
 static void sync_tracked_windows(AuraWM *wm);
+static void blur_behind_surface(int x, int y, int w, int h);
 
 // ────────────────────────────────────────────────────────────────────────
 // SECTION: FBConfig selection
@@ -572,8 +606,8 @@ bool crystal_init(AuraWM *wm)
     // windows cover a region. This fills the screen before we draw anything.
     glClearColor(crystal.bg_r, crystal.bg_g, crystal.bg_b, 1.0f);
 
-    // Enable 2D texturing — required for drawing window contents as textures
-    // on quads. When disabled, quads are drawn as solid colors.
+    // Enable 2D texturing — still needed for glBindTexture calls when
+    // uploading window pixel data via the fallback path (XGetImage).
     glEnable(GL_TEXTURE_2D);
 
     // Enable alpha blending — this is how transparency works in OpenGL.
@@ -594,31 +628,70 @@ bool crystal_init(AuraWM *wm)
     // This correctly blends transparent windows over whatever is behind them.
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
-    // Set up an orthographic projection matrix.
-    //
-    // OpenGL normally uses a 3D coordinate system with perspective (objects
-    // farther away appear smaller). For a 2D compositor, we want a flat,
-    // non-perspective view where pixel coordinates map directly to screen
-    // positions.
-    //
-    // glOrtho(left, right, bottom, top, near, far) defines the visible volume:
-    //   left=0, right=root_w:    x-axis matches screen pixels
-    //   top=0, bottom=root_h:    y-axis goes DOWN (screen convention)
-    //   near=-1, far=1:          z-axis range (we don't use depth)
-    //
-    // GL_PROJECTION is the "lens" of our virtual camera.
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    glOrtho(0, crystal.root_w, crystal.root_h, 0, -1, 1);
-
-    // GL_MODELVIEW positions objects in the scene. We start with identity
-    // (no transformation) since our coordinates are already in screen space.
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-
     // Disable depth testing — we don't need it for 2D compositing. We
     // handle z-order ourselves by drawing back-to-front.
     glDisable(GL_DEPTH_TEST);
+
+    // ── Step 15: Initialize shader pipeline ──
+    //
+    // The shader pipeline replaces the old fixed-function OpenGL calls
+    // (glBegin/glEnd, glMatrixMode/glOrtho, glColor4f) with programmable
+    // GLSL shaders. This gives us GPU-accelerated blur, shadow rendering,
+    // and genie animations — effects that fixed-function GL cannot do.
+    //
+    // We initialize in this order:
+    //   1. Create the shared quad VBO (geometry used by all draw calls)
+    //   2. Compile all shader programs (basic, shadow, blur, solid, genie)
+    //   3. Build the orthographic projection matrix (maps pixels to clip space)
+    //
+    // The projection matrix replaces the old glMatrixMode(GL_PROJECTION) /
+    // glOrtho() calls. Instead of setting global GL state, we pass the matrix
+    // as a uniform to each shader program before drawing.
+    shaders_init_quad_vbo();
+    if (!shaders_init(&crystal.shaders, "shaders/")) {
+        // Try absolute path (for installed deployments where the binary
+        // is in /usr/local/bin but shaders are in a data directory)
+        if (!shaders_init(&crystal.shaders, "/usr/local/share/aura-wm/shaders/")) {
+            fprintf(stderr, "[crystal] WARNING: Shader initialization failed, "
+                    "using embedded fallback shaders\n");
+        }
+    }
+
+    // Build the orthographic projection matrix that maps pixel coordinates
+    // to OpenGL clip space. This replaces the old glOrtho() call.
+    // Parameters: left=0, right=root_w, bottom=root_h, top=0, near=-1, far=1
+    // Note: top=0, bottom=root_h makes Y increase downward (screen convention).
+    shaders_ortho(crystal.projection, 0, crystal.root_w,
+                  crystal.root_h, 0, -1, 1);
+
+    // ── Step 16: Create blur-behind FBOs ──
+    //
+    // Blur-behind needs two off-screen render targets (FBOs) for the
+    // ping-pong technique: horizontal blur writes to FBO B, vertical blur
+    // reads B and writes back to FBO A. The final blurred result in FBO A
+    // is then drawn to the screen.
+    //
+    // We use half the screen resolution for the blur FBOs. This is a
+    // common optimization — the Gaussian blur smooths out detail anyway,
+    // so the lower resolution is invisible in the final result, and we
+    // process 4x fewer pixels per pass.
+    {
+        int blur_w = crystal.root_w / 2;
+        int blur_h = crystal.root_h / 2;
+        blur_behind.fbo_a = shaders_create_fbo(blur_w, blur_h, &blur_behind.tex_a);
+        blur_behind.fbo_b = shaders_create_fbo(blur_w, blur_h, &blur_behind.tex_b);
+        blur_behind.width = blur_w;
+        blur_behind.height = blur_h;
+        blur_behind.blur_radius = 20.0f;  // Matches Snow Leopard's menu bar blur
+
+        if (blur_behind.fbo_a && blur_behind.fbo_b) {
+            fprintf(stderr, "[crystal] Blur-behind FBOs created (%dx%d, half-res)\n",
+                    blur_w, blur_h);
+        } else {
+            fprintf(stderr, "[crystal] WARNING: Blur-behind FBO creation failed — "
+                    "frosted glass effect will be disabled\n");
+        }
+    }
 
     // Mark Crystal as active
     crystal.active = true;
