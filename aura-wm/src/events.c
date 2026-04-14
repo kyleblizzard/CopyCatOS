@@ -120,9 +120,6 @@ static void on_unmap_notify(AuraWM *wm, XEvent *e)
     if (c) {
         unframe_window(wm, c);
     }
-
-    // A window was hidden — tell the compositor to repaint.
-    crystal_mark_dirty();
 }
 
 static void on_destroy_notify(AuraWM *wm, XEvent *e)
@@ -188,10 +185,6 @@ static void on_configure_request(AuraWM *wm, XEvent *e)
         };
         XConfigureWindow(wm->dpy, cr->window, cr->value_mask, &changes);
     }
-
-    // Window geometry changed — tell the compositor to repaint.
-    // Also triggers a restack in case sibling/stacking order changed.
-    crystal_mark_dirty();
 }
 
 static void on_button_press(AuraWM *wm, XEvent *e)
@@ -322,8 +315,6 @@ static void on_property_notify(AuraWM *wm, XEvent *e)
         ewmh_get_title(wm, c->client, c->title, sizeof(c->title));
         if (c->frame) {
             frame_redraw_decor(wm, c);
-            // Title bar was repainted — compositor needs to refresh.
-            crystal_mark_dirty();
         }
     }
 
@@ -358,10 +349,6 @@ static void on_focus_in(AuraWM *wm, XEvent *e)
     if (c && c != wm->focused) {
         wm_focus_client(wm, c);
         frame_redraw_decor(wm, c);
-
-        // Focus changed — the shadow intensity differs between active and
-        // inactive windows, so the compositor needs to repaint.
-        crystal_mark_dirty();
     }
 }
 

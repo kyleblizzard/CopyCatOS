@@ -339,16 +339,4 @@ bool crystal_is_active(void);
 // The main event loop uses this to route damage events to crystal_handle_event().
 int crystal_get_damage_event_base(void);
 
-// Mark the compositor as needing a repaint on the next event loop iteration.
-//
-// Call this whenever ANY visual state changes: window damage, resize, focus
-// change, map/unmap, stacking order change, etc. When nothing calls this
-// between composite passes, the compositor skips the entire render pass,
-// saving all GPU work (texture binding, shadow drawing, buffer swap).
-//
-// Animations override this flag — when crystal_animation_active() returns
-// true, the compositor renders every frame regardless of dirty state to
-// keep animations smooth at the display's refresh rate.
-void crystal_mark_dirty(void);
-
 #endif // AURA_CRYSTAL_H
