@@ -39,6 +39,7 @@ aura_wm_sources = [
   'src/ewmh.c',
   'src/input.c',
   'src/crystal.c',
+  'src/crystal_shaders.c',
   'src/struts.c',
   'src/resize.c',
 ]

@@ -43,6 +43,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>       // clock_gettime() for CRYSTAL_DEBUG_TIMING
 
 // OpenGL and GLX headers — these give us access to GPU rendering on X11.
 // GL/gl.h:      Core OpenGL functions (drawing, textures, blending)
@@ -192,6 +193,24 @@ static struct {
 } crystal;
 
 // ────────────────────────────────────────────────────────────────────────
+// SECTION: Damage-based rendering flags
+// ────────────────────────────────────────────────────────────────────────
+//
+// Instead of compositing every single event loop iteration (which burns
+// GPU cycles even when the desktop is completely static), we track whether
+// anything visual actually changed. The compositor only runs a full render
+// pass when:
+//   1. needs_composite is true (something changed), OR
+//   2. An animation is in progress (needs smooth frame-rate rendering).
+//
+// needs_restack controls whether sync_tracked_windows() re-queries the X
+// server's window tree. This avoids calling XQueryTree + XGetWindowAttributes
+// on every frame — those round-trip to the X server and are expensive.
+
+static bool needs_composite = true;   // Start true to ensure first paint
+static bool needs_restack   = true;   // Start true to discover initial windows
+
+// ────────────────────────────────────────────────────────────────────────
 // SECTION: Blur-behind FBO resources
 // ────────────────────────────────────────────────────────────────────────
 //
@@ -229,6 +248,23 @@ static bool choose_fb_configs(Display *dpy, int screen);
 static bool load_glx_extensions(Display *dpy, int screen);
 static void sync_tracked_windows(AuraWM *wm);
 static void blur_behind_surface(int x, int y, int w, int h);
+
+// ────────────────────────────────────────────────────────────────────────
+// SECTION: Damage-based rendering API
+// ────────────────────────────────────────────────────────────────────────
+//
+// crystal_mark_dirty() is the single entry point for telling the compositor
+// "something visual changed — you need to repaint on the next pass." All
+// event handlers that affect the screen (window map/unmap, damage, resize,
+// focus change, etc.) should call this.
+//
+// Without this, the compositor skips the render pass entirely, saving all
+// the GPU work (texture binding, shadow drawing, buffer swapping, etc.).
+
+void crystal_mark_dirty(void)
+{
+    needs_composite = true;
+}
 
 // ────────────────────────────────────────────────────────────────────────
 // SECTION: FBConfig selection
@@ -1033,6 +1069,11 @@ void crystal_window_mapped(AuraWM *wm, Client *c)
 
     crystal.window_count++;
 
+    // A new window appeared — the scene needs repainting and the window
+    // tree needs re-syncing on the next composite pass.
+    crystal_mark_dirty();
+    needs_restack = true;
+
     if (getenv("AURA_DEBUG")) {
         fprintf(stderr, "[crystal] Mapped window 0x%lx (%dx%d at %d,%d, "
                 "alpha=%d)\n", c->frame, wt->w, wt->h, wt->x, wt->y,
@@ -1059,6 +1100,10 @@ void crystal_window_unmapped(AuraWM *wm, Client *c)
             }
             crystal.window_count--;
 
+            // A window disappeared — repaint and re-sync the window tree.
+            crystal_mark_dirty();
+            needs_restack = true;
+
             if (getenv("AURA_DEBUG")) {
                 fprintf(stderr, "[crystal] Unmapped window 0x%lx\n", c->frame);
             }
@@ -1077,6 +1122,9 @@ void crystal_window_damaged(AuraWM *wm, Client *c)
 
     // Mark the texture as dirty so it gets refreshed on the next frame
     wt->dirty = true;
+
+    // Window contents changed — the compositor needs to repaint.
+    crystal_mark_dirty();
 
     // Acknowledge the damage — tell the X server "I've seen this change."
     // Without this, the server keeps re-sending the same damage notification.
@@ -1126,6 +1174,9 @@ void crystal_window_resized(AuraWM *wm, Client *c)
             wt->shadow_tex_h = 0;
         }
     }
+
+    // Window geometry changed — the scene needs repainting.
+    crystal_mark_dirty();
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -1565,36 +1616,33 @@ static void draw_window_shadow(struct WindowTexture *wt, bool focused)
     float sx = (float)(chrome_x - pad);
     float sy = (float)(chrome_y - pad + SHADOW_Y_OFFSET);
 
-    // Enable texturing and bind our cached shadow texture
-    glEnable(GL_TEXTURE_2D);
+    // ── Shader-based shadow drawing ──
+    // Activate the shadow shader program, which treats the texture as an
+    // alpha mask (RGB forced to black, alpha from the texture). This replaces
+    // the old fixed-function glBegin/glEnd quad with a VBO-based draw call.
+    //
+    // The shadow shader only needs:
+    //   - projection matrix (pixel coords -> clip space)
+    //   - texture unit (which bound texture to sample)
+    //   - alpha (overall shadow opacity — 1.0 here because opacity is already
+    //     baked into the shadow texture during generate_shadow_texture)
+    GLuint shadow_prog = crystal.shaders.shadow ? crystal.shaders.shadow
+                                                 : crystal.shaders.basic;
+    shaders_use(shadow_prog);
+    shaders_set_projection(shadow_prog, crystal.projection);
+    shaders_set_texture(shadow_prog, 0);
+    shaders_set_alpha(shadow_prog, 1.0f);
+
+    // Bind the cached shadow texture and draw a quad covering the shadow area.
+    // shaders_draw_quad handles the VBO-based rendering — it builds a model
+    // matrix that positions and scales the unit quad to our shadow rectangle.
     glBindTexture(GL_TEXTURE_2D, wt->shadow_tex);
+    shaders_draw_quad(sx, sy, (float)wt->shadow_tex_w, (float)wt->shadow_tex_h);
 
-    // Set color to white — the actual shadow color and opacity are baked
-    // into the texture's alpha channel. With pre-multiplied alpha and our
-    // blend mode (GL_ONE, GL_ONE_MINUS_SRC_ALPHA), white color means the
-    // texture pixels are used as-is.
-    glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-
-    // Draw a textured quad covering the shadow area.
-    // Texture coords (0,0)→(1,1) map the full shadow texture onto the quad.
-    glBegin(GL_QUADS);
-        glTexCoord2f(0.0f, 0.0f);
-        glVertex2f(sx, sy);
-
-        glTexCoord2f(1.0f, 0.0f);
-        glVertex2f(sx + (float)wt->shadow_tex_w, sy);
-
-        glTexCoord2f(1.0f, 1.0f);
-        glVertex2f(sx + (float)wt->shadow_tex_w, sy + (float)wt->shadow_tex_h);
-
-        glTexCoord2f(0.0f, 1.0f);
-        glVertex2f(sx, sy + (float)wt->shadow_tex_h);
-    glEnd();
-
-    // Unbind the shadow texture and disable texturing so subsequent
-    // rendering code starts from a clean state.
+    // Deactivate shaders and unbind the texture to leave GL state clean
+    // for the next draw call.
+    shaders_use_none();
     glBindTexture(GL_TEXTURE_2D, 0);
-    glDisable(GL_TEXTURE_2D);
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -1617,6 +1665,24 @@ void crystal_composite(AuraWM *wm)
 {
     if (!crystal.active || !wm) return;
 
+    // ── Damage-based rendering gate ──
+    // Skip the entire composite pass if nothing visual has changed AND no
+    // animation is in progress. This is the core performance optimization:
+    // when the desktop is static (no window damage, no resizes, no focus
+    // changes), we avoid all GPU work — no texture binding, no shadow
+    // drawing, no buffer swapping. Animations override this because they
+    // need smooth frame-rate rendering regardless of damage state.
+    if (!needs_composite && !crystal_animation_active(wm)) return;
+
+    needs_composite = false;
+
+#ifdef CRYSTAL_DEBUG_TIMING
+    // Frame timing — measure how long the composite pass takes.
+    // If it exceeds 8ms we risk dropping frames at 120Hz.
+    struct timespec ts_start;
+    clock_gettime(CLOCK_MONOTONIC, &ts_start);
+#endif
+
     // Make our GL context current. This is technically redundant if we're
     // the only GL user, but it's good practice — other code might have
     // changed the current context.
@@ -1628,15 +1694,12 @@ void crystal_composite(AuraWM *wm)
     // the clear color (set in crystal_init). This erases the previous frame.
     glClear(GL_COLOR_BUFFER_BIT);
 
-    // ── Step 2: Set up 2D projection ──
-    // Reset the projection matrix each frame (in case the screen was resized).
-    // glOrtho maps (0,0) to the top-left corner and (root_w, root_h) to the
-    // bottom-right, matching X11's coordinate convention.
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    glOrtho(0, crystal.root_w, crystal.root_h, 0, -1, 1);
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+    // ── Step 2: Projection is handled by shaders ──
+    // The orthographic projection matrix is cached in crystal.projection and
+    // passed as a uniform to each shader program before drawing. This replaces
+    // the old glMatrixMode(GL_PROJECTION) / glOrtho() / glMatrixMode(GL_MODELVIEW)
+    // / glLoadIdentity() calls. The projection is updated in crystal_init() and
+    // crystal_screen_resized() — no per-frame recalculation needed.
 
     // ── Step 3: Enable blending for transparent windows ──
     glEnable(GL_BLEND);
@@ -1644,11 +1707,13 @@ void crystal_composite(AuraWM *wm)
 
     // ── Step 3.5: Sync tracked windows with actual X11 state ──
     //
-    // Use XQueryTree to discover ALL visible windows (including unmanaged
-    // ones like docks, desktops, and menubars) and ensure they have
-    // texture tracking entries. This also removes entries for windows
-    // that have disappeared and reorders entries to match stacking order.
-    sync_tracked_windows(wm);
+    // Only re-query the X window tree when we know something changed
+    // (a window mapped, unmapped, or restacked). This avoids expensive
+    // XQueryTree + XGetWindowAttributes round-trips on every frame.
+    if (needs_restack) {
+        needs_restack = false;
+        sync_tracked_windows(wm);
+    }
 
     // ── Step 4: Draw all windows back-to-front ──
     //
@@ -1715,43 +1780,33 @@ void crystal_composite(AuraWM *wm)
                 draw_window_shadow(wt, focused);
             }
 
-            // ── Draw the window contents ──
-            // Bind the window's texture and draw a quad that covers the
-            // window's screen rectangle.
-            glEnable(GL_TEXTURE_2D);
-            glBindTexture(GL_TEXTURE_2D, wt->texture);
-
-            // Reset color to white so the texture colors aren't modified.
-            // When GL_TEXTURE_2D is enabled, the final pixel color is:
-            //   texture_color * glColor
-            // With glColor = (1,1,1,1), the texture appears as-is.
-            glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
-
-            // Draw a textured quad.
-            // glTexCoord2f sets the texture coordinate for the next vertex.
-            // Texture coordinates go from (0,0) at the top-left of the image
-            // to (1,1) at the bottom-right. By mapping these to the window's
-            // screen rectangle, we stretch the texture to fill the quad.
+            // ── Draw the window contents (shader pipeline) ──
+            // Activate the basic shader program, which samples a texture and
+            // applies a global alpha multiplier. This replaces the old
+            // fixed-function glBegin(GL_QUADS)/glEnd() block with a single
+            // VBO-based draw call through shaders_draw_quad().
             //
-            // Vertices are specified in clockwise order:
-            //   (0,0)──────(1,0)
-            //     │  texture  │
-            //   (0,1)──────(1,1)
-            glBegin(GL_QUADS);
-                glTexCoord2f(0.0f, 0.0f);
-                glVertex2f((float)wt->x, (float)wt->y);                 // Top-left
+            // The basic shader needs:
+            //   - projection: orthographic matrix mapping pixels to clip space
+            //   - texture unit 0: the window's bound texture
+            //   - alpha 1.0: fully opaque (no fade effect for now)
+            shaders_use(crystal.shaders.basic);
+            shaders_set_projection(crystal.shaders.basic, crystal.projection);
+            shaders_set_texture(crystal.shaders.basic, 0);
+            shaders_set_alpha(crystal.shaders.basic, 1.0f);
 
-                glTexCoord2f(1.0f, 0.0f);
-                glVertex2f((float)(wt->x + wt->w), (float)wt->y);      // Top-right
+            // Bind the window texture and draw a quad at the window's position.
+            // shaders_draw_quad builds a model matrix from (x, y, w, h) that
+            // transforms the unit quad (0..1) to the window's screen rectangle.
+            glBindTexture(GL_TEXTURE_2D, wt->texture);
+            shaders_draw_quad((float)wt->x, (float)wt->y,
+                              (float)wt->w, (float)wt->h);
 
-                glTexCoord2f(1.0f, 1.0f);
-                glVertex2f((float)(wt->x + wt->w), (float)(wt->y + wt->h));  // Bottom-right
-
-                glTexCoord2f(0.0f, 1.0f);
-                glVertex2f((float)wt->x, (float)(wt->y + wt->h));       // Bottom-left
-            glEnd();
-
-            glDisable(GL_TEXTURE_2D);
+            // Deactivate shaders between windows to keep GL state clean.
+            // This is not strictly necessary for back-to-back draws with the
+            // same shader, but prevents subtle bugs if future code inserts
+            // non-shader operations between windows.
+            shaders_use_none();
         }
     }
 
@@ -1765,6 +1820,19 @@ void crystal_composite(AuraWM *wm)
     // If VSync is enabled, this call blocks until the next vertical blank
     // period, limiting us to the monitor's refresh rate (typically 60 FPS).
     glXSwapBuffers(wm->dpy, crystal.gl_window);
+
+#ifdef CRYSTAL_DEBUG_TIMING
+    // Measure total composite time and warn if we risk dropping frames.
+    // At 120Hz each frame budget is ~8.3ms; at 60Hz it's ~16.6ms.
+    struct timespec ts_end;
+    clock_gettime(CLOCK_MONOTONIC, &ts_end);
+    double elapsed = (ts_end.tv_sec - ts_start.tv_sec)
+                   + (ts_end.tv_nsec - ts_start.tv_nsec) / 1e9;
+    if (elapsed > 0.008) {
+        fprintf(stderr, "[crystal] SLOW FRAME: %.1fms (%d windows)\n",
+                elapsed * 1000.0, crystal.window_count);
+    }
+#endif
 }
 
 // ────────────────────────────────────────────────────────────────────────
@@ -1802,6 +1870,9 @@ bool crystal_handle_event(AuraWM *wm, XEvent *e)
             // Always acknowledge damage, even for unknown windows
             XDamageSubtract(wm->dpy, dev->damage, None, None);
         }
+
+        // A window's contents changed — schedule a repaint.
+        crystal_mark_dirty();
 
         return true;  // Event was handled
     }
@@ -1941,6 +2012,12 @@ static void crystal_screen_resized(AuraWM *wm)
     // (0, 0) is the bottom-left corner; (root_w, root_h) is the top-right.
     glViewport(0, 0, crystal.root_w, crystal.root_h);
 
+    // Rebuild the orthographic projection matrix for the new screen dimensions.
+    // This replaces the old per-frame glMatrixMode(GL_PROJECTION)/glOrtho() calls.
+    // The matrix is cached and passed as a uniform to shaders before each draw.
+    shaders_ortho(crystal.projection, 0, crystal.root_w,
+                  crystal.root_h, 0, -1, 1);
+
     fprintf(stderr, "[crystal] Screen resized to %dx%d\n",
             crystal.root_w, crystal.root_h);
 }
@@ -1960,6 +2037,12 @@ void crystal_shutdown(AuraWM *wm)
         release_window_texture(wm, &crystal.windows[i]);
     }
     crystal.window_count = 0;
+
+    // Destroy shader programs and the shared quad VBO. This must happen
+    // while the GL context is still current (before we destroy it below),
+    // because GPU resources can only be freed through a valid context.
+    shaders_shutdown(&crystal.shaders);
+    shaders_shutdown_quad_vbo();
 
     // Undo XComposite redirection — let X go back to drawing windows directly.
     // This is critical for a clean shutdown. If we don't do this and the WM
