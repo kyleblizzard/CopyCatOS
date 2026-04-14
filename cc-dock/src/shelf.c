@@ -110,6 +110,37 @@ void shelf_draw(DockState *state, int shelf_width)
         cairo_restore(cr);
     }
 
+    // ── Dark 3D ridge ────────────────────────────────────────────
+    // Measured from real Snow Leopard at yfb 38-40 (x=840):
+    //   yfb 41: brightness 117 (normal shelf above)
+    //   yfb 40: brightness  76 (outer dark)
+    //   yfb 39: brightness  24 (deep fold)
+    //   yfb 38: brightness  14 (deepest)
+    //   yfb 37: brightness  15 (deep fold)
+    //   yfb 36: brightness  64 (outer dark)
+    //   yfb 35: brightness 109 (normal shelf below)
+    //
+    // This dark band creates the 3D "glass fold" illusion separating
+    // the back reflection zone from the front platform. It's a real
+    // structural feature visible in every SL dock screenshot.
+    //
+    // In our 48px shelf, yfb 40 = 8px from top = shelf_y + 8.
+    {
+        double ridge_y = shelf_y + 8;
+
+        // Outer dark lines (yfb 40 and 36)
+        cairo_set_source_rgba(cr, 0, 0, 0, 0.50);
+        cairo_rectangle(cr, shelf_x, ridge_y, shelf_width, 1);
+        cairo_fill(cr);
+        cairo_rectangle(cr, shelf_x, ridge_y + 4, shelf_width, 1);
+        cairo_fill(cr);
+
+        // Deep fold center (yfb 39-37) — nearly black
+        cairo_set_source_rgba(cr, 0, 0, 0, 0.75);
+        cairo_rectangle(cr, shelf_x, ridge_y + 1, shelf_width, 3);
+        cairo_fill(cr);
+    }
+
     cairo_restore(cr);  // Remove the trapezoid clip
 
     // ── Frontline highlight ─────────────────────────────────────────
@@ -131,14 +162,36 @@ void shelf_draw(DockState *state, int shelf_width)
     }
 }
 
-// shelf_draw_bottom_band — Clean up the bottom edge after icons/reflections.
-// The scurve texture already has the correct bottom gradient. This just
-// ensures icon reflections don't bleed past the shelf bottom.
+// shelf_draw_bottom_band — Bottom edge features.
+// Called AFTER icons and reflections so these override any bleeding content.
+//
+// Real Snow Leopard bottom edge (measured):
+//   yfb 3: brightness  88 (dark contact line)
+//   yfb 2: brightness 231 (bright bottom highlight)
+//   yfb 1: brightness 232 (bright bottom highlight)
+//
+// The bright highlight at yfb 1-2 is the signature "glass sitting on a lit
+// surface" effect — ambient light reflecting off the screen edge underneath
+// the shelf. This is clearly visible in every real SL screenshot.
 void shelf_draw_bottom_band(DockState *state, int shelf_width)
 {
-    (void)state;
-    (void)shelf_width;
-    // The scurve texture handles the bottom edge. No fake gradient needed.
+    cairo_t *cr = state->cr;
+    double shelf_x = (state->win_w - shelf_width) / 2.0;
+
+    cairo_save(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
+
+    // Dark contact line at yfb=3 — RGB(91,84,91)
+    cairo_set_source_rgba(cr, 91/255.0, 84/255.0, 91/255.0, 1.0);
+    cairo_rectangle(cr, shelf_x, state->win_h - 3, shelf_width, 1);
+    cairo_fill(cr);
+
+    // Bright bottom highlight at yfb 1-2 — RGB(232,231,232)
+    cairo_set_source_rgba(cr, 232/255.0, 231/255.0, 232/255.0, 1.0);
+    cairo_rectangle(cr, shelf_x, state->win_h - 2, shelf_width, 2);
+    cairo_fill(cr);
+
+    cairo_restore(cr);
 }
 
 void shelf_draw_separator(DockState *state, double x)
