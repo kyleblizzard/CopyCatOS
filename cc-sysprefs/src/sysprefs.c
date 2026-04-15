@@ -290,11 +290,14 @@ void sysprefs_run(SysPrefsState *state)
                     } else if (state->current_view == VIEW_GRID) {
                         needs_repaint = icongrid_handle_motion(state,
                                             evt.xmotion.x, evt.xmotion.y);
-                        // Clear toolbar hover
                         if (state->toolbar_hover != -1) {
                             state->toolbar_hover = -1;
                             needs_repaint = true;
                         }
+                    } else if (state->current_view == VIEW_PANE) {
+                        // Handle slider dragging in pane views
+                        needs_repaint = paneview_handle_motion(state,
+                                            evt.xmotion.x, evt.xmotion.y);
                     }
 
                     if (needs_repaint) {
@@ -312,8 +315,18 @@ void sysprefs_run(SysPrefsState *state)
                         icongrid_handle_click(state,
                                               evt.xbutton.x, evt.xbutton.y);
                     } else {
-                        paneview_handle_click(state,
-                                              evt.xbutton.x, evt.xbutton.y);
+                        if (paneview_handle_click(state,
+                                                  evt.xbutton.x, evt.xbutton.y)) {
+                            sysprefs_paint(state);
+                        }
+                    }
+                    break;
+
+                case ButtonRelease:
+                    // Commit slider values on mouse release
+                    if (state->current_view == VIEW_PANE) {
+                        paneview_handle_release(state);
+                        sysprefs_paint(state);
                     }
                     break;
 
