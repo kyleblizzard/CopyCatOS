@@ -33,7 +33,7 @@ void bounce_start(DockItem *item);
 // Parameters:
 //   item         — the dock item to update
 //   current_time — current monotonic time in seconds (from clock_gettime)
-void bounce_update(DockItem *item, double current_time);
+void bounce_update(DockState *state, DockItem *item, double current_time);
 
 // Update all bouncing items in the dock. Returns true if any item is
 // still bouncing (meaning we need to keep the animation timer running).

@@ -47,7 +47,7 @@ void bounce_start(DockItem *item)
     item->bounce_start_time = get_time_seconds();
 }
 
-void bounce_update(DockItem *item, double current_time)
+void bounce_update(DockState *state, DockItem *item, double current_time)
 {
     // If this item isn't bouncing, nothing to do
     if (!item->bouncing) return;
@@ -96,7 +96,7 @@ bool bounce_update_all(DockState *state)
     // Update every item that's currently bouncing
     for (int i = 0; i < state->item_count; i++) {
         if (state->items[i].bouncing) {
-            bounce_update(&state->items[i], now);
+            bounce_update(state, &state->items[i], now);
             if (state->items[i].bouncing) {
                 any_active = true;
             }

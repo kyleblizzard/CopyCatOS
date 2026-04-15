@@ -171,16 +171,45 @@ bool dock_init(DockState *state)
     state->colormap = XCreateColormap(state->dpy, state->root,
                                        state->visual, AllocNone);
 
+    // --- Load sizing config from shared desktop.conf ---
+    // Reads [dock] icon_size from ~/.config/copicatos/desktop.conf.
+    // If the file doesn't exist, uses DEFAULT_ICON_SIZE (64).
+    {
+        int icon_size = DEFAULT_ICON_SIZE;
+        const char *home = getenv("HOME");
+        if (home) {
+            char path[512];
+            snprintf(path, sizeof(path),
+                     "%s/.config/copicatos/desktop.conf", home);
+            FILE *fp = fopen(path, "r");
+            if (fp) {
+                char line[256];
+                bool in_dock = false;
+                while (fgets(line, sizeof(line), fp)) {
+                    // Strip whitespace
+                    char *p = line;
+                    while (*p == ' ' || *p == '\t') p++;
+                    if (*p == '[') {
+                        in_dock = (strncmp(p, "[dock]", 6) == 0);
+                    } else if (in_dock && strncmp(p, "icon_size=", 10) == 0) {
+                        icon_size = atoi(p + 10);
+                    }
+                }
+                fclose(fp);
+            }
+        }
+        dock_config_from_icon_size(&state->cfg, icon_size);
+        fprintf(stderr, "[cc-dock] Config: icon_size=%d shelf=%d dock=%d spacing=%d\n",
+                state->cfg.icon_size, state->cfg.shelf_height,
+                state->cfg.dock_height, state->cfg.icon_spacing);
+    }
+
     // --- Load dock items from config file, or use defaults on first launch ---
-    // config_load() reads ~/.config/cc-dock/dock.conf. If the file doesn't
-    // exist yet (first launch), it returns false and we fall back to the
-    // hardcoded default item list via config_set_defaults().
     if (!config_load(state)) {
         config_set_defaults(state);
     }
 
     // --- Calculate initial dock window size ---
-    // Width is based on all icons at base size plus spacing and separators
     state->win_w = dock_calculate_total_width(state) + 2 * SHELF_PADDING;
     state->win_h = DOCK_HEIGHT;
     state->win_x = (state->screen_w - state->win_w) / 2;
@@ -291,7 +320,7 @@ int dock_hit_test(DockState *state, int mx, int my)
 
         // The icon's Y position: bottom at 10px above the dock window bottom,
         // matching the rendering in dock_paint().
-        double icon_bottom = state->win_h - 12;
+        double icon_bottom = state->win_h - state->cfg.icon_bottom_offset;
         double icon_y = icon_bottom - icon_size + state->items[i].bounce_offset;
 
         if (mx >= x && mx < x + icon_size &&
@@ -361,7 +390,7 @@ void dock_paint(DockState *state)
         DockItem *item = &state->items[i];
         double icon_size = BASE_ICON_SIZE * item->scale;
 
-        double icon_bottom = state->win_h - 12;
+        double icon_bottom = state->win_h - state->cfg.icon_bottom_offset;
         double icon_y = icon_bottom - icon_size + item->bounce_offset;
         double icon_x = x;
 
@@ -387,7 +416,7 @@ void dock_paint(DockState *state)
         // icon bottom is about 12px above the dock window's bottom edge,
         // placing icons firmly on the glass with the bottom ~20% overlapping
         // the shelf area. bounce_offset is negative when bouncing up.
-        double icon_bottom = state->win_h - 12;  // 12px above dock bottom
+        double icon_bottom = state->win_h - state->cfg.icon_bottom_offset;  // 12px above dock bottom
         double icon_y = icon_bottom - icon_size + item->bounce_offset;
         double icon_x = x;
 
@@ -679,6 +708,62 @@ void dock_run(DockState *state)
         // Advance poof animation if active
         if (poof_is_active()) {
             poof_update(state);
+        }
+
+        // --- Check for config reload (SIGHUP from System Preferences) ---
+        {
+            extern volatile bool g_reload_config;
+            if (g_reload_config) {
+                g_reload_config = false;
+                fprintf(stderr, "[cc-dock] Reloading config...\n");
+
+                // Re-read icon_size from desktop.conf
+                int icon_size = DEFAULT_ICON_SIZE;
+                const char *home = getenv("HOME");
+                if (home) {
+                    char path[512];
+                    snprintf(path, sizeof(path),
+                             "%s/.config/copicatos/desktop.conf", home);
+                    FILE *fp = fopen(path, "r");
+                    if (fp) {
+                        char line[256];
+                        bool in_dock = false;
+                        while (fgets(line, sizeof(line), fp)) {
+                            char *p = line;
+                            while (*p == ' ' || *p == '\t') p++;
+                            if (*p == '[') in_dock = (strncmp(p, "[dock]", 6) == 0);
+                            else if (in_dock && strncmp(p, "icon_size=", 10) == 0)
+                                icon_size = atoi(p + 10);
+                        }
+                        fclose(fp);
+                    }
+                }
+
+                // Recompute all derived sizes
+                dock_config_from_icon_size(&state->cfg, icon_size);
+
+                // Resize the dock window
+                int new_w = dock_calculate_total_width(state) + 2 * SHELF_PADDING;
+                int new_h = DOCK_HEIGHT;
+                state->win_w = new_w;
+                state->win_h = new_h;
+                state->win_x = (state->screen_w - new_w) / 2;
+                state->win_y = state->screen_h - new_h;
+
+                XMoveResizeWindow(state->dpy, state->win,
+                                  state->win_x, state->win_y,
+                                  state->win_w, state->win_h);
+                cairo_xlib_surface_set_size(state->surface,
+                                            state->win_w, state->win_h);
+
+                // Update struts for the new shelf height
+                set_struts(state);
+
+                fprintf(stderr, "[cc-dock] Resized: icon=%d shelf=%d dock=%d\n",
+                        state->cfg.icon_size, state->cfg.shelf_height,
+                        state->cfg.dock_height);
+                needs_repaint = true;
+            }
         }
 
         // --- Only repaint when something actually changed ---

@@ -36,11 +36,18 @@ static DockState *g_state = NULL;
 // Signal handler for SIGINT (Ctrl+C) and SIGTERM (kill command).
 // Sets the running flag to false so the main loop exits gracefully.
 // ---------------------------------------------------------------------------
+volatile bool g_reload_config = false;
+
 static void signal_handler(int sig)
 {
-    (void)sig;  // Suppress unused parameter warning
-    if (g_state) {
-        g_state->running_loop = false;
+    if (sig == SIGHUP) {
+        // SIGHUP = reload config (sent by System Preferences when sizes change)
+        g_reload_config = true;
+    } else {
+        // SIGINT/SIGTERM = clean shutdown
+        if (g_state) {
+            g_state->running_loop = false;
+        }
     }
 }
 
@@ -107,6 +114,7 @@ int main(int argc, char *argv[])
     g_state = &state;
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
+    signal(SIGHUP, signal_handler);  // Reload config (sent by System Preferences)
 
     // Initialize the dock: open X display, create window, load icons
     if (!dock_init(&state)) {

@@ -22,27 +22,84 @@
 #include <X11/Xlib.h>
 
 // ---------------------------------------------------------------------------
-// Core constants — EXACT values from the Python prototype
-// These define every pixel measurement, timing value, and limit in the dock.
+// Default values — used when no config file exists.
+// At runtime, all sizes come from DockConfig (computed from icon_size).
 // ---------------------------------------------------------------------------
 
-#define BASE_ICON_SIZE      64      // Default icon size in pixels (no magnification) — real SL uses ~64px
-#define MAX_ICON_SIZE       96      // Largest an icon gets when mouse is directly over it
+#define DEFAULT_ICON_SIZE        64   // Configurable: 32-128
+#define DEFAULT_MAX_ICON_SIZE    96   // Auto: icon_size * 1.5
+#define DEFAULT_SHELF_HEIGHT     48   // Auto: icon_size * 0.75
+#define DEFAULT_DOCK_HEIGHT     160   // Auto: icon_size * 2.5
+#define DEFAULT_ICON_SPACING      6   // Auto: max(4, icon_size / 10)
+#define DEFAULT_SEPARATOR_WIDTH  12   // Auto: max(8, icon_size / 5)
+#define DEFAULT_SHELF_PADDING    30   // Auto: icon_size / 2
+#define DEFAULT_INDICATOR_SIZE    8   // Auto: max(6, icon_size / 8)
+#define DEFAULT_BOUNCE_AMPLITUDE 26   // Auto: icon_size * 0.4
+
+// These don't scale with icon size
 #define MAGNIFICATION_RANGE 3       // How many icon slots away magnification reaches
-#define ICON_SPACING        6       // Pixels of gap between adjacent icons — HIG specifies ~6px
-#define SEPARATOR_WIDTH     12      // Width of the separator between dock sections
-#define SHELF_HEIGHT        48      // Height of the glass shelf at the bottom — taller for larger icons
-#define DOCK_HEIGHT         160     // Total dock window height (icons + shelf + reflections + room for reflections below icons)
-#define SHELF_PADDING       30      // Extra pixels on each side of the shelf beyond icons — real SL tightly wraps the icon row
-#define INDICATOR_SIZE      8       // Diameter of the "running" dot below icons
-#define BOUNCE_AMPLITUDE    26      // Max pixels an icon bounces upward
 #define BOUNCE_CYCLE_MS     720     // Duration of one full bounce cycle in milliseconds
 #define BOUNCE_TIMEOUT_MS   10000   // Stop bouncing after this many ms (10 seconds)
 #define BOUNCE_FRAME_MS     16      // Time between animation frames (~60fps)
 #define MAX_DOCK_ITEMS      32      // Maximum number of items the dock can hold
+#define PROCESS_CHECK_INTERVAL 3.0  // Seconds between running-app checks
 
-// How often (in seconds) we check which apps are currently running
-#define PROCESS_CHECK_INTERVAL 3.0
+// ---------------------------------------------------------------------------
+// DockConfig — Runtime sizing values, computed from icon_size
+//
+// All dimensions scale proportionally from icon_size. The user sets icon_size
+// via ~/.config/copicatos/desktop.conf [dock] section. Everything else is
+// derived automatically. This supports sizes from 32px (tiny, handheld-dense)
+// to 128px (huge, handheld-friendly).
+// ---------------------------------------------------------------------------
+typedef struct {
+    int icon_size;          // Base icon display size (32-128)
+    int max_icon_size;      // Max magnified size (icon_size * 1.5)
+    int shelf_height;       // Glass shelf height (icon_size * 0.75)
+    int dock_height;        // Total window height (icon_size * 2.5)
+    int icon_spacing;       // Gap between icons (max(4, icon_size / 10))
+    int separator_width;    // Section divider width (max(8, icon_size / 5))
+    int shelf_padding;      // Horizontal padding beyond icons (icon_size / 2)
+    int indicator_size;     // Running-app dot diameter (max(6, icon_size / 8))
+    int bounce_amplitude;   // Max bounce height (icon_size * 0.4)
+    int icon_bottom_offset; // Icons rest this far above dock bottom (icon_size * 0.19)
+} DockConfig;
+
+// Compute all DockConfig values from a given icon_size.
+// Call this after reading the config file.
+static inline void dock_config_from_icon_size(DockConfig *cfg, int icon_size)
+{
+    if (icon_size < 32)  icon_size = 32;
+    if (icon_size > 128) icon_size = 128;
+
+    cfg->icon_size          = icon_size;
+    cfg->max_icon_size      = icon_size * 3 / 2;       // 1.5x
+    cfg->shelf_height       = icon_size * 3 / 4;        // 0.75x
+    cfg->dock_height        = icon_size * 5 / 2;        // 2.5x
+    cfg->icon_spacing       = icon_size / 10;
+    if (cfg->icon_spacing < 4) cfg->icon_spacing = 4;
+    cfg->separator_width    = icon_size / 5;
+    if (cfg->separator_width < 8) cfg->separator_width = 8;
+    cfg->shelf_padding      = icon_size / 2;
+    cfg->indicator_size     = icon_size / 8;
+    if (cfg->indicator_size < 6) cfg->indicator_size = 6;
+    cfg->bounce_amplitude   = icon_size * 2 / 5;        // 0.4x
+    cfg->icon_bottom_offset = icon_size * 19 / 100;     // 0.19x
+    if (cfg->icon_bottom_offset < 8) cfg->icon_bottom_offset = 8;
+}
+
+// Convenience macros so existing code can reference config through state->cfg
+// without changing every function signature. These are used in the transition
+// from hardcoded #defines to dynamic config.
+#define BASE_ICON_SIZE      (state->cfg.icon_size)
+#define MAX_ICON_SIZE       (state->cfg.max_icon_size)
+#define ICON_SPACING        (state->cfg.icon_spacing)
+#define SEPARATOR_WIDTH     (state->cfg.separator_width)
+#define SHELF_HEIGHT        (state->cfg.shelf_height)
+#define DOCK_HEIGHT         (state->cfg.dock_height)
+#define SHELF_PADDING       (state->cfg.shelf_padding)
+#define INDICATOR_SIZE      (state->cfg.indicator_size)
+#define BOUNCE_AMPLITUDE    (state->cfg.bounce_amplitude)
 
 // ---------------------------------------------------------------------------
 // DockItem — Represents a single app icon in the dock
@@ -80,6 +137,9 @@ typedef struct {
 // flags that control the event loop and animation timers.
 // ---------------------------------------------------------------------------
 typedef struct {
+    // Runtime sizing config (computed from icon_size at startup)
+    DockConfig cfg;
+
     // X11 display and window handles
     Display *dpy;                 // Connection to the X server
     Window win;                   // The dock's own window
