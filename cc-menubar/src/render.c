@@ -69,11 +69,21 @@ void render_init(MenuBar *mb)
 void render_background(MenuBar *mb, cairo_t *cr)
 {
     if (bg_texture) {
-        // Tile the real Snow Leopard menubar texture across the full width.
-        // The texture is 400x22 and contains the complete gradient + border.
-        // CAIRO_EXTEND_REPEAT tiles it seamlessly.
+        // Render the real Snow Leopard menubar_bg.png (400x22).
+        // Tile horizontally, scale vertically to match current height.
+        // Use a pattern matrix to scale the texture: the matrix transforms
+        // from user coords to pattern coords, so we scale Y by tex_h/height
+        // to stretch the 22px texture to fill the full menubar height.
+        int tex_h = cairo_image_surface_get_height(bg_texture);
+
         cairo_pattern_t *pattern = cairo_pattern_create_for_surface(bg_texture);
         cairo_pattern_set_extend(pattern, CAIRO_EXTEND_REPEAT);
+
+        // Scale the pattern vertically to fill the menubar height
+        cairo_matrix_t matrix;
+        cairo_matrix_init_scale(&matrix, 1.0, (double)tex_h / MENUBAR_HEIGHT);
+        cairo_pattern_set_matrix(pattern, &matrix);
+
         cairo_set_source(cr, pattern);
         cairo_rectangle(cr, 0, 0, mb->screen_w, MENUBAR_HEIGHT);
         cairo_fill(cr);

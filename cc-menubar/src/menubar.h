@@ -21,8 +21,16 @@
 #include <X11/Xatom.h>
 #include <stdbool.h>
 
-// The menu bar is always exactly 22 pixels tall, matching macOS Snow Leopard.
-#define MENUBAR_HEIGHT 22
+// Default height matching macOS Snow Leopard. Configurable 22-44 via
+// ~/.config/copicatos/desktop.conf [menubar] section.
+#define DEFAULT_MENUBAR_HEIGHT 22
+
+// Runtime height — set during init from config file, used everywhere.
+// External modules (render.c, systray.c) reference this via extern.
+extern int menubar_height;
+
+// Convenience macro so existing code doesn't need to change
+#define MENUBAR_HEIGHT menubar_height
 
 // Core state for the entire menu bar.
 // A single instance is created in main.c and shared with every module.

@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <signal.h>
 #include <sys/select.h>
 
 #include <cairo/cairo.h>
@@ -32,6 +33,48 @@
 #include "appmenu.h"
 #include "systray.h"
 
+// Runtime menubar height — configurable via ~/.config/copicatos/desktop.conf
+// Default 22px (Snow Leopard standard), range 22-44 for handheld devices.
+int menubar_height = DEFAULT_MENUBAR_HEIGHT;
+
+// SIGHUP reload flag — set by signal handler, checked in event loop
+static volatile bool reload_config = false;
+
+static void sighup_handler(int sig)
+{
+    (void)sig;
+    reload_config = true;
+}
+
+// Read [menubar] height from the shared config file
+static void read_menubar_config(void)
+{
+    const char *home = getenv("HOME");
+    if (!home) return;
+
+    char path[512];
+    snprintf(path, sizeof(path), "%s/.config/copicatos/desktop.conf", home);
+
+    FILE *fp = fopen(path, "r");
+    if (!fp) return;
+
+    char line[256];
+    bool in_menubar = false;
+    while (fgets(line, sizeof(line), fp)) {
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '[') {
+            in_menubar = (strncmp(p, "[menubar]", 9) == 0);
+        } else if (in_menubar && strncmp(p, "height=", 7) == 0) {
+            int h = atoi(p + 7);
+            if (h >= 22 && h <= 44) {
+                menubar_height = h;
+            }
+        }
+    }
+    fclose(fp);
+}
+
 // ── Forward declarations ────────────────────────────────────────────
 static void dismiss_open_menu(MenuBar *mb);
 static int  hit_test_menu(MenuBar *mb, int mx);
@@ -42,8 +85,14 @@ static void ungrab_pointer(MenuBar *mb);
 
 bool menubar_init(MenuBar *mb)
 {
-    // Zero out the entire struct so all pointers start as NULL
-    // and all numbers start as 0.
+    // Read menubar height from shared config before anything else
+    read_menubar_config();
+    fprintf(stderr, "[cc-menubar] Config: height=%d\n", menubar_height);
+
+    // Install SIGHUP handler for live config reload
+    signal(SIGHUP, sighup_handler);
+
+    // Zero out the entire struct
     memset(mb, 0, sizeof(MenuBar));
     mb->hover_index = -1;
     mb->open_menu   = -1;
@@ -478,6 +527,35 @@ void menubar_run(MenuBar *mb)
             systray_update(mb);
         }
 
+        // ── Check for SIGHUP config reload ──────────────────────
+        if (reload_config) {
+            reload_config = false;
+            int old_height = menubar_height;
+            read_menubar_config();
+
+            if (menubar_height != old_height) {
+                fprintf(stderr, "[cc-menubar] Resizing: %d → %d\n",
+                        old_height, menubar_height);
+
+                // Resize the menubar window
+                XResizeWindow(mb->dpy, mb->win, mb->screen_w, menubar_height);
+
+                // Update struts so the WM adjusts work area
+                long struts[12] = {0};
+                struts[2] = menubar_height;
+                struts[8] = 0;
+                struts[9] = mb->screen_w;
+                Atom sp = XInternAtom(mb->dpy, "_NET_WM_STRUT_PARTIAL", False);
+                XChangeProperty(mb->dpy, mb->win, sp, XA_CARDINAL, 32,
+                                PropModeReplace, (unsigned char *)struts, 12);
+                Atom ss = XInternAtom(mb->dpy, "_NET_WM_STRUT", False);
+                XChangeProperty(mb->dpy, mb->win, ss, XA_CARDINAL, 32,
+                                PropModeReplace, (unsigned char *)struts, 4);
+            }
+
+            menubar_paint(mb);
+        }
+
         // ── Wait for next event or timeout ──────────────────────
         fd_set fds;
         FD_ZERO(&fds);
@@ -516,8 +594,13 @@ void menubar_paint(MenuBar *mb)
     apple_paint(mb, cr);
 
     // ── Bold app name ───────────────────────────────────────────
+    // Vertically center text in the menubar. At 22px height, this gives y=3
+    // (matching Snow Leopard). At larger heights, text stays centered.
+    int text_y = (MENUBAR_HEIGHT - 16) / 2;
+    if (text_y < 2) text_y = 2;
+
     double appname_w = render_text(cr, mb->active_app,
-                                   mb->appname_x, 3,
+                                   mb->appname_x, text_y,
                                    true, 0.1, 0.1, 0.1);
 
     // ── Menu titles ─────────────────────────────────────────────
@@ -537,7 +620,7 @@ void menubar_paint(MenuBar *mb)
         }
 
         render_text(cr, menus[i],
-                    item_x + 10, 3,
+                    item_x + 10, text_y,
                     false, 0.1, 0.1, 0.1);
 
         item_x += item_w;
