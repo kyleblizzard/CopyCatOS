@@ -433,8 +433,18 @@ bool config_load(DockState *state)
         strncpy(item->process_name, process_name,
                 sizeof(item->process_name) - 1);
 
-        // Determine if this is a folder item
-        item->is_folder = (strcmp(type_str, "folder") == 0);
+        // Determine item type
+        item->is_folder  = (strcmp(type_str, "folder")  == 0);
+        item->is_spacer  = (strcmp(type_str, "spacer")  == 0);
+
+        // Spacers are purely visual — no icon, no launch, no process to watch.
+        // Skip all the path/icon loading below and just count it.
+        if (item->is_spacer) {
+            strncpy(item->name, "Spacer", sizeof(item->name) - 1);
+            item->scale = 1.0;
+            state->item_count++;
+            continue;
+        }
 
         // If it's a folder, store the folder path (exec_path holds the path)
         if (item->is_folder) {
@@ -520,12 +530,18 @@ bool config_save(DockState *state)
     fprintf(fp, "# AuraDock configuration — auto-generated\n");
     fprintf(fp, "# Format: type|name|exec_path|icon_name|process_name"
                 "|separator_after\n");
-    fprintf(fp, "# type: \"app\" or \"folder\"\n");
+    fprintf(fp, "# type: \"app\", \"folder\", or \"spacer\"\n");
     fprintf(fp, "# separator_after: 1 or 0\n\n");
 
     // Write each dock item as one pipe-delimited line
     for (int i = 0; i < state->item_count; i++) {
         DockItem *item = &state->items[i];
+
+        // Spacers write a minimal line — no paths, icon, or process name needed
+        if (item->is_spacer) {
+            fprintf(fp, "spacer|Spacer||||%d\n", item->separator_after ? 1 : 0);
+            continue;
+        }
 
         // Determine the type string based on the is_folder flag
         const char *type_str = item->is_folder ? "folder" : "app";

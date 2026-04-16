@@ -396,8 +396,8 @@ void dock_paint(DockState *state)
         double icon_y = icon_bottom - icon_size + item->bounce_offset;
         double icon_x = x;
 
-        // Only draw reflections when the icon isn't bouncing (looks odd mid-bounce)
-        if (item->icon && !item->bouncing) {
+        // Spacers are invisible — skip reflection draw
+        if (!item->is_spacer && item->icon && !item->bouncing) {
             reflect_draw(cr, item->icon, icon_x, icon_y, icon_size);
         }
 
@@ -422,8 +422,8 @@ void dock_paint(DockState *state)
         double icon_y = icon_bottom - icon_size + item->bounce_offset;
         double icon_x = x;
 
-        // --- Draw the icon ---
-        if (item->icon) {
+        // --- Draw the icon (spacers are invisible — just an empty slot) ---
+        if (!item->is_spacer && item->icon) {
             cairo_save(cr);
 
             // Scale the loaded icon (128x128) down to the current display size
@@ -441,8 +441,8 @@ void dock_paint(DockState *state)
             cairo_restore(cr);
         }
 
-        // --- Draw running indicator ---
-        if (item->running) {
+        // --- Draw running indicator (spacers never run) ---
+        if (!item->is_spacer && item->running) {
             double center_x = icon_x + icon_size / 2.0;
             indicator_draw(state, center_x);
         }
@@ -617,7 +617,7 @@ void dock_run(DockState *state)
                 } else if (ev.xbutton.button == 3) {
                     // Right click — show context menu
                     int idx = dock_hit_test(state, ev.xbutton.x, ev.xbutton.y);
-                    if (idx >= 0) {
+                    if (idx >= 0 && !state->items[idx].is_spacer) {
                         // Convert local coords to screen coords for the popup
                         int screen_x = state->win_x + ev.xbutton.x;
                         int screen_y = state->win_y + ev.xbutton.y;
@@ -637,7 +637,9 @@ void dock_run(DockState *state)
                         int idx = dnd->icon_idx;
                         dnd_cleanup(dnd);
                         dnd_init(dnd);
-                        if (idx >= 0 && idx < state->item_count) {
+                        // Spacers are draggable but have no launch action
+                        if (idx >= 0 && idx < state->item_count
+                                && !state->items[idx].is_spacer) {
                             launch_app(state, &state->items[idx]);
                             needs_repaint = true;
                         }

@@ -118,6 +118,8 @@ typedef struct {
     bool is_folder;               // True if this is a folder stack item (not an app)
     char folder_path[512];        // Filesystem path to the folder (for stacks, e.g., ~/Downloads)
 
+    bool is_spacer;               // True if this is a blank draggable spacer (no icon, no launch)
+
     cairo_surface_t *icon;        // The loaded icon image (128x128 typically)
 
     double scale;                 // Current magnification multiplier (1.0 = normal)

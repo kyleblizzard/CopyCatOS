@@ -110,37 +110,6 @@ void shelf_draw(DockState *state, int shelf_width)
         cairo_restore(cr);
     }
 
-    // ── Dark 3D ridge ────────────────────────────────────────────
-    // Measured from real Snow Leopard at yfb 38-40 (x=840):
-    //   yfb 41: brightness 117 (normal shelf above)
-    //   yfb 40: brightness  76 (outer dark)
-    //   yfb 39: brightness  24 (deep fold)
-    //   yfb 38: brightness  14 (deepest)
-    //   yfb 37: brightness  15 (deep fold)
-    //   yfb 36: brightness  64 (outer dark)
-    //   yfb 35: brightness 109 (normal shelf below)
-    //
-    // This dark band creates the 3D "glass fold" illusion separating
-    // the back reflection zone from the front platform. It's a real
-    // structural feature visible in every SL dock screenshot.
-    //
-    // In our 48px shelf, yfb 40 = 8px from top = shelf_y + 8.
-    {
-        double ridge_y = shelf_y + 8;
-
-        // Outer dark lines (yfb 40 and 36)
-        cairo_set_source_rgba(cr, 0, 0, 0, 0.50);
-        cairo_rectangle(cr, shelf_x, ridge_y, shelf_width, 1);
-        cairo_fill(cr);
-        cairo_rectangle(cr, shelf_x, ridge_y + 4, shelf_width, 1);
-        cairo_fill(cr);
-
-        // Deep fold center (yfb 39-37) — nearly black
-        cairo_set_source_rgba(cr, 0, 0, 0, 0.75);
-        cairo_rectangle(cr, shelf_x, ridge_y + 1, shelf_width, 3);
-        cairo_fill(cr);
-    }
-
     cairo_restore(cr);  // Remove the trapezoid clip
 
     // ── Frontline highlight ─────────────────────────────────────────
