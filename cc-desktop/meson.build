@@ -35,6 +35,7 @@ sources = [
   'src/desktop.c',
   'src/wallpaper.c',
   'src/icons.c',
+  'src/layout.c',
   'src/contextmenu.c',
 ]
 

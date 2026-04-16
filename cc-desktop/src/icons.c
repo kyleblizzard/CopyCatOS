@@ -23,6 +23,7 @@
 #define _GNU_SOURCE  // For M_PI in math.h under strict C11
 
 #include "icons.h"
+#include "layout.h"
 
 #include <X11/Xlib.h>
 #include <cairo/cairo.h>
@@ -70,6 +71,11 @@ static int drag_offset_y = 0;          // (so the icon doesn't jump to cursor)
 
 // Cached X display pointer (needed for some operations)
 static Display *cached_dpy = NULL;
+
+// Cached screen dimensions — saved at icons_init() time so inotify
+// rescan can call layout_apply() without needing the caller to pass them.
+static int cached_screen_w = 0;
+static int cached_screen_h = 0;
 
 // ── Icon resolution ─────────────────────────────────────────────────
 
@@ -379,13 +385,19 @@ static void layout_icons(int screen_w, int screen_h)
 
 void icons_init(Display *dpy, int screen_w, int screen_h)
 {
-    cached_dpy = dpy;
+    cached_dpy    = dpy;
+    cached_screen_w = screen_w;
+    cached_screen_h = screen_h;
 
     // Scan ~/Desktop for files and folders
     scan_desktop();
 
-    // Arrange icons in the grid
-    layout_icons(screen_w, screen_h);
+    // Load the saved layout from disk, then apply it.
+    // layout_load() fills the in-memory table; layout_apply() uses that
+    // table to set each icon's grid_col/grid_row/x/y. Icons not found
+    // in the table (new files) are auto-placed in the next free cell.
+    layout_load();
+    layout_apply(icons, icon_count, screen_w, screen_h);
 
     // Set up inotify to watch ~/Desktop for changes.
     // inotify is Linux-specific — on other systems, inotify_fd stays -1
@@ -658,12 +670,13 @@ bool icons_check_inotify(void)
                     }
                 }
 
-                // Rescan and relayout
+                // Rescan ~/Desktop for the current file list, then
+                // restore saved positions. New files not in the saved
+                // layout get auto-placed in the next free cell.
+                // We use the cached screen dimensions saved at init time.
                 scan_desktop();
-                // We need the screen dimensions but don't have them here,
-                // so we recalculate from the cached positions.
-                // Actually, we'll just use the last known dimensions.
-                // The caller should call icons_relayout() if needed.
+                layout_apply(icons, icon_count,
+                             cached_screen_w, cached_screen_h);
                 return true;
             }
         }
@@ -758,13 +771,24 @@ void icons_drag_end(int screen_w, int screen_h)
     drag_icon->y = ICON_TOP_MARGIN + (drag_icon->grid_row * ICON_CELL_H);
 
     drag_icon = NULL;
+
+    // Persist the new layout to disk so this position survives restart.
+    // We save all icons (not just the moved one) because a single file
+    // write is simpler and the file is tiny.
+    layout_save_all(icons, icon_count);
 }
 
 // ── Public API: Relayout ────────────────────────────────────────────
 
 void icons_relayout(int screen_w, int screen_h)
 {
-    // Reset all icons to canonical positions (sorted order, top-right)
+    // "Clean Up": reset all icons to canonical sorted positions (top-right).
+    // This is the same as a fresh auto-layout with no saved positions.
     layout_icons(screen_w, screen_h);
     fprintf(stderr, "[icons] Relayout: %d icons arranged\n", icon_count);
+
+    // Save the new sorted positions so they persist across restarts.
+    // After Clean Up, the user's explicit positions are gone — the sorted
+    // grid becomes the new baseline.
+    layout_save_all(icons, icon_count);
 }
