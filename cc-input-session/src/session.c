@@ -35,6 +35,7 @@
 #include <sys/un.h>
 #include <sys/select.h>
 
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

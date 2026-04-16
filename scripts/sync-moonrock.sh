@@ -56,4 +56,54 @@ done
 
 echo ""
 echo "Done: $count files copied."
-echo "Remember to update copyright headers and commit in the MoonRock repo."
+echo ""
+
+# MoonRock is BSD-3-Clause (open source). The source files in cc-wm use the
+# CopyCatOS All Rights Reserved header — strip that and replace it with the
+# correct BSD-3-Clause header so MoonRock stays openly licensed.
+echo "Fixing copyright headers (CopyCatOS All Rights Reserved → MoonRock BSD-3-Clause)..."
+
+python3 - "$DST_DIR" <<'PYEOF'
+import sys, os
+
+src_dir = sys.argv[1]
+
+OLD = (
+    "// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.\n"
+    "// This code is publicly visible for portfolio purposes only.\n"
+    "// Unauthorized copying, forking, or distribution of this file,\n"
+    "// via any medium, is strictly prohibited."
+)
+
+NEW = (
+    "// Copyright (c) 2026 Kyle Blizzard\n"
+    "// SPDX-License-Identifier: BSD-3-Clause\n"
+    "//\n"
+    "// MoonRock was created by Kyle Blizzard. Feel free to use it and improve it!\n"
+    "// www.blizzard.show/moonrock/"
+)
+
+for fname in sorted(os.listdir(src_dir)):
+    if not fname.endswith(('.c', '.h')):
+        continue
+    path = os.path.join(src_dir, fname)
+    content = open(path).read()
+    if OLD not in content:
+        continue
+    content = content.replace(OLD, NEW)
+    # Remove CopyCatOS-specific branding that doesn't belong in standalone MoonRock
+    content = content.replace(
+        "MoonRock Compositor — CopyCatOS's custom OpenGL X11 compositor",
+        "MoonRock Compositor — custom OpenGL X11 compositor"
+    )
+    content = content.replace(
+        "CopyCatOS aesthetic of recreating the Snow Leopard look",
+        "MoonRock aesthetic of recreating the Snow Leopard look"
+    )
+    open(path, 'w').write(content)
+    print(f"  Fixed: {fname}")
+
+PYEOF
+
+echo ""
+echo "Headers fixed. Commit in the MoonRock repo when ready."
