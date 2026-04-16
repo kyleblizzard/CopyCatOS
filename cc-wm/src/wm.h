@@ -8,6 +8,7 @@
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
 #include <stdbool.h>
+#include <time.h>
 
 // Snow Leopard title bar dimensions (real values from reference)
 #define TITLEBAR_HEIGHT   22
@@ -40,6 +41,16 @@ struct Client {
     Atom wm_type;        // _NET_WM_WINDOW_TYPE value
     char wm_class[128];     // WM_CLASS instance name (e.g., "kate", "dolphin")
     char wm_class_name[128]; // WM_CLASS class name (e.g., "Kate", "dolphin")
+    bool unsaved;            // True if title starts with * or • (unsaved changes)
+    // Ping/responsiveness tracking — _NET_WM_PING protocol.
+    // The WM periodically pings the focused window. If the app doesn't
+    // respond within PING_TIMEOUT_MS, its cursor becomes the spinning
+    // beach ball (just like real Snow Leopard after 2-4 seconds).
+    bool supports_ping;      // True if window advertises _NET_WM_PING
+    bool ping_pending;       // True if we sent a ping and haven't got pong
+    bool unresponsive;       // True if ping timed out (beach ball showing)
+    unsigned long ping_serial; // Timestamp sent with the last ping
+    struct timespec ping_sent; // When we sent the last ping
     // Saved geometry for smart zoom (toggle between this and maximized)
     int saved_x, saved_y, saved_w, saved_h;
     bool zoomed;             // True if window is currently "smart zoomed" (maximized)
@@ -82,11 +93,25 @@ struct CCWM {
     Atom atom_net_close_window;
     Atom atom_net_wm_strut;
     Atom atom_net_wm_strut_partial;
+    Atom atom_net_wm_ping;       // _NET_WM_PING for responsiveness detection
     Atom atom_utf8_string;
+
+    // Beach ball cursor — loaded from SnowLeopard theme, set on
+    // unresponsive windows to show the spinning wait animation
+    unsigned long beach_ball_cursor;
 
     // State flags
     bool running;
     bool another_wm;     // Set if SubstructureRedirect fails
+
+    // Traffic light hover state — when the mouse enters the button
+    // region of any title bar, ALL three buttons show their glyphs
+    // (x for close, - for minimize, + for zoom). This matches real
+    // Snow Leopard behavior where hovering near any button reveals
+    // all three glyphs simultaneously.
+    Client *hover_client;    // Client whose buttons are being hovered
+    bool buttons_hover;      // True if mouse is in the button region
+    int pressed_button;      // 0=none, 1=close, 2=minimize, 3=zoom
 
     // Drag state
     bool dragging;

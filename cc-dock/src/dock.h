@@ -70,7 +70,7 @@ typedef struct {
 static inline void dock_config_from_icon_size(DockConfig *cfg, int icon_size)
 {
     if (icon_size < 32)  icon_size = 32;
-    if (icon_size > 128) icon_size = 128;
+    if (icon_size > 196) icon_size = 196;
 
     cfg->icon_size          = icon_size;
     cfg->max_icon_size      = icon_size * 3 / 2;       // 1.5x

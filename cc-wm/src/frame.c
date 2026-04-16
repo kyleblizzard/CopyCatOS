@@ -109,8 +109,15 @@ void frame_window(CCWM *wm, Window client)
     c->h = wa.height;
     c->mapped = true;
 
-    // Get the window title
+    // Get the window title and detect unsaved changes
     ewmh_get_title(wm, client, c->title, sizeof(c->title));
+    c->unsaved = (c->title[0] == '*' ||
+                  (unsigned char)c->title[0] == 0xE2);
+
+    // Check if the window supports _NET_WM_PING — needed for
+    // beach ball (unresponsive app detection). Most modern toolkits
+    // (GTK, Qt, Electron) advertise this protocol.
+    c->supports_ping = ewmh_supports_ping(wm, client);
 
     // Read WM_CLASS so we know which app this window belongs to
     extern void client_read_wm_class(CCWM *wm, Client *c);

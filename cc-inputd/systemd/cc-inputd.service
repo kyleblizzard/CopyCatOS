@@ -1,0 +1,20 @@
+[Unit]
+Description=CopiCatOS Input Daemon
+Documentation=man:cc-inputd(8)
+After=systemd-udevd.service
+Conflicts=inputplumber.service hhd@.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cc-inputd
+Restart=on-failure
+RestartSec=2
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/run
+PrivateTmp=true
+NoNewPrivileges=true
+SupplementaryGroups=input
+
+[Install]
+WantedBy=multi-user.target

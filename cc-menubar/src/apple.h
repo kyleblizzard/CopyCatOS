@@ -26,6 +26,10 @@
 // are not found. Call once during startup.
 void apple_init(MenuBar *mb);
 
+// Reload Apple logo at the current scale. Call after menubar_scale changes
+// (e.g., on SIGHUP height change) so the logo renders at the right size.
+void apple_reload(MenuBar *mb);
+
 // Draw the Apple logo in its designated region of the menu bar.
 // Uses the selected variant if the Apple menu is open or hovered.
 void apple_paint(MenuBar *mb, cairo_t *cr);
@@ -36,6 +40,21 @@ void apple_show_menu(MenuBar *mb);
 
 // Dismiss the Apple menu if it's currently open.
 void apple_dismiss(MenuBar *mb);
+
+// Get the Apple popup window (for click routing in menubar.c)
+Window apple_get_popup(void);
+
+// Handle a click inside the Apple menu popup. Identifies which item
+// was clicked from the Y coordinate, executes the action, and returns
+// true if the menu should be dismissed.
+bool apple_handle_click(MenuBar *mb, int click_x, int click_y);
+
+// Handle hover inside the Apple menu popup. Updates highlight.
+void apple_handle_motion(MenuBar *mb, int motion_y);
+
+// Handle an X event directed at the Apple popup window.
+// Returns true if the event was consumed.
+bool apple_handle_event(MenuBar *mb, XEvent *ev, bool *should_dismiss);
 
 // Free loaded PNG surfaces and other resources.
 void apple_cleanup(void);

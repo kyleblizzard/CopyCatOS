@@ -3,6 +3,8 @@
 
 #include "wm.h"
 #include "ewmh.h"
+#include <X11/Xcursor/Xcursor.h>
+#include <X11/cursorfont.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -89,6 +91,42 @@ bool wm_init(CCWM *wm, const char *display_name)
 
     fprintf(stderr, "[cc-wm] Claimed window manager role\n");
 
+    // Set the root window cursor — this is the default cursor shown on the
+    // desktop, root window, and anywhere no other window sets a cursor.
+    // Without this, the cursor may be invisible (default X cursor is a tiny
+    // X shape that some themes don't render). We use Xcursor to load the
+    // theme cursor, falling back to a basic arrow if the theme isn't found.
+    {
+        Cursor root_cursor = 0;
+
+        // Try loading from the XCURSOR_THEME environment variable first
+        // (set in cc-session.sh as Breeze_Light)
+        root_cursor = XcursorLibraryLoadCursor(wm->dpy, "left_ptr");
+
+        if (!root_cursor) {
+            // Fallback: create a basic left-arrow cursor from X11 font cursor
+            root_cursor = XCreateFontCursor(wm->dpy, 2); // XC_left_ptr = 2 (68 = arrow)
+        }
+
+        if (root_cursor) {
+            XDefineCursor(wm->dpy, wm->root, root_cursor);
+            fprintf(stderr, "[cc-wm] Root cursor set\n");
+        }
+
+        // Load the spinning beach ball cursor for unresponsive windows.
+        // This is the animated "wait" cursor from the SnowLeopard theme —
+        // 10 frames of the rainbow pinwheel, displayed automatically by
+        // Xcursor when we set it on a window.
+        wm->beach_ball_cursor = XcursorLibraryLoadCursor(wm->dpy, "wait");
+        if (wm->beach_ball_cursor) {
+            fprintf(stderr, "[cc-wm] Beach ball cursor loaded\n");
+        } else {
+            // Fallback to the standard watch cursor
+            wm->beach_ball_cursor = XCreateFontCursor(wm->dpy, 150); // XC_watch
+            fprintf(stderr, "[cc-wm] Beach ball fallback to XC_watch\n");
+        }
+    }
+
     // Set EWMH properties on root
     ewmh_setup(wm);
 
@@ -140,6 +178,7 @@ void wm_intern_atoms(CCWM *wm)
     wm->atom_net_close_window    = XInternAtom(d, "_NET_CLOSE_WINDOW", False);
     wm->atom_net_wm_strut        = XInternAtom(d, "_NET_WM_STRUT", False);
     wm->atom_net_wm_strut_partial = XInternAtom(d, "_NET_WM_STRUT_PARTIAL", False);
+    wm->atom_net_wm_ping         = XInternAtom(d, "_NET_WM_PING", False);
     wm->atom_utf8_string         = XInternAtom(d, "UTF8_STRING", False);
 }
 
@@ -181,6 +220,14 @@ void wm_remove_client(CCWM *wm, Client *c)
 
     if (wm->focused == c) wm->focused = NULL;
 
+    // Clear hover/pressed state if this client was being interacted with
+    if (wm->hover_client == c) {
+        wm->hover_client = NULL;
+        wm->buttons_hover = false;
+        wm->pressed_button = 0;
+    }
+    if (wm->drag_client == c) wm->drag_client = NULL;
+
     // Shift remaining clients down
     for (int i = idx; i < wm->num_clients - 1; i++) {
         wm->clients[i] = wm->clients[i + 1];
@@ -210,6 +257,12 @@ void wm_unfocus_client(CCWM *wm, Client *c)
 {
     if (c) {
         c->focused = false;
+        // Clear hover state — inactive windows don't show hover glyphs
+        if (wm->hover_client == c) {
+            wm->hover_client = NULL;
+            wm->buttons_hover = false;
+            wm->pressed_button = 0;
+        }
         // Redraw decoration in inactive state will happen on FocusOut event
     }
 }

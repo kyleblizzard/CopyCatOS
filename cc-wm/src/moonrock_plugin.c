@@ -79,6 +79,22 @@ static int        rule_count = 0;
 // The currently active theme (initialized with defaults in plugin_init)
 static ThemeDefinition current_theme;
 
+// Cached FBOs for blur-behind (see plugin_effect_blur for details).
+// Declared here so plugin_shutdown() can free them.
+//
+// We keep multiple cache slots because blur-behind is called for different-sized
+// panels each frame (e.g., dock 1514x290 and menubar 1920x46). A single-slot
+// cache would thrash between them. 4 slots covers any reasonable panel count.
+#define BLUR_CACHE_SLOTS 4
+
+typedef struct {
+    GLuint fbo_a, tex_a;   // Horizontal blur pass FBO
+    GLuint fbo_b, tex_b;   // Vertical blur pass FBO
+    int    w, h;           // Dimensions this slot was created for (0 = empty)
+} BlurCacheSlot;
+
+static BlurCacheSlot blur_cache[BLUR_CACHE_SLOTS];
+
 
 // ============================================================================
 //  Default theme values
@@ -350,6 +366,14 @@ void plugin_shutdown(void)
         fprintf(stderr, "[plugin] Unloaded: %s\n",
                 (p && p->name) ? p->name : "(unknown)");
     }
+
+    // Free all cached blur FBOs — these are held for the compositor's lifetime
+    // to avoid per-frame allocation overhead (see plugin_effect_blur).
+    for (int i = 0; i < BLUR_CACHE_SLOTS; i++) {
+        if (blur_cache[i].fbo_a) shaders_destroy_fbo(blur_cache[i].fbo_a, blur_cache[i].tex_a);
+        if (blur_cache[i].fbo_b) shaders_destroy_fbo(blur_cache[i].fbo_b, blur_cache[i].tex_b);
+    }
+    memset(blur_cache, 0, sizeof(blur_cache));
 
     // Reset all state
     memset(loaded_plugins, 0, sizeof(loaded_plugins));
@@ -1085,7 +1109,7 @@ void plugin_effect_blur(GLuint texture, int x, int y, int w, int h,
     //
     // Pipeline:
     //   Input texture -> [horizontal blur into FBO-A] -> [vertical blur into FBO-B]
-    //   FBO-B's texture is the final blurred result.
+    //   FBO-B's texture is the final blurred result, drawn back to the screen.
 
     if (radius <= 0.0f) return;  // No blur to apply
 
@@ -1099,22 +1123,65 @@ void plugin_effect_blur(GLuint texture, int x, int y, int w, int h,
     // Get the projection matrix so we can set up the shader's coordinate system
     float *projection = mr_get_projection();
 
-    // Create two FBOs for the ping-pong blur passes.
-    // FBO-A receives the horizontal blur, FBO-B receives the vertical blur.
-    GLuint fbo_a, tex_a, fbo_b, tex_b;
-    fbo_a = shaders_create_fbo(w, h, &tex_a);
-    fbo_b = shaders_create_fbo(w, h, &tex_b);
+    // ── Save the current viewport ──
+    // We are about to change the viewport for the FBO render passes. The
+    // caller (mr_composite) has set up a viewport matching the full screen.
+    // We must restore it after we are done so subsequent drawing is not
+    // constrained to the FBO's smaller dimensions.
+    GLint saved_viewport[4];
+    glGetIntegerv(GL_VIEWPORT, saved_viewport);
 
-    if (!fbo_a || !fbo_b) {
-        fprintf(stderr, "[plugin] effect_blur: failed to create FBOs\n");
-        if (fbo_a) shaders_destroy_fbo(fbo_a, tex_a);
-        if (fbo_b) shaders_destroy_fbo(fbo_b, tex_b);
-        return;
+    // ── Find or create a cached FBO pair for this (w, h) ──
+    // Multiple panels (dock, menubar) call blur each frame with different sizes.
+    // We search the cache for a matching slot; if none found, claim an empty one.
+    BlurCacheSlot *slot = NULL;
+    for (int i = 0; i < BLUR_CACHE_SLOTS; i++) {
+        if (blur_cache[i].w == w && blur_cache[i].h == h) {
+            slot = &blur_cache[i];
+            break;
+        }
     }
+
+    // No matching slot — find an empty one and create FBOs for this size
+    if (!slot) {
+        for (int i = 0; i < BLUR_CACHE_SLOTS; i++) {
+            if (blur_cache[i].w == 0 && blur_cache[i].h == 0) {
+                slot = &blur_cache[i];
+                break;
+            }
+        }
+        if (!slot) {
+            // All slots occupied by other sizes — evict slot 0 as a fallback.
+            // This shouldn't happen with 4 slots and only 2-3 panels.
+            slot = &blur_cache[0];
+            if (slot->fbo_a) shaders_destroy_fbo(slot->fbo_a, slot->tex_a);
+            if (slot->fbo_b) shaders_destroy_fbo(slot->fbo_b, slot->tex_b);
+            memset(slot, 0, sizeof(*slot));
+        }
+
+        slot->fbo_a = shaders_create_fbo(w, h, &slot->tex_a);
+        slot->fbo_b = shaders_create_fbo(w, h, &slot->tex_b);
+
+        if (!slot->fbo_a || !slot->fbo_b) {
+            fprintf(stderr, "[plugin] effect_blur: failed to create FBOs\n");
+            if (slot->fbo_a) shaders_destroy_fbo(slot->fbo_a, slot->tex_a);
+            if (slot->fbo_b) shaders_destroy_fbo(slot->fbo_b, slot->tex_b);
+            memset(slot, 0, sizeof(*slot));
+            return;
+        }
+
+        slot->w = w;
+        slot->h = h;
+        fprintf(stderr, "[plugin] Blur FBO cache slot created: %dx%d\n", w, h);
+    }
+
+    // Use the cached FBOs for this frame's blur passes
+    GLuint fbo_a = slot->fbo_a, tex_a = slot->tex_a;
+    GLuint fbo_b = slot->fbo_b, tex_b = slot->tex_b;
 
     // Build an orthographic projection that maps (0,0)-(w,h) to the FBO.
     // This is separate from the screen projection because the FBO has its
-    // own dimensions.
+    // own dimensions — FBOs have their own coordinate space.
     float fbo_proj[16];
     shaders_ortho(fbo_proj, 0.0f, (float)w, 0.0f, (float)h, -1.0f, 1.0f);
 
@@ -1153,11 +1220,20 @@ void plugin_effect_blur(GLuint texture, int x, int y, int w, int h,
     shaders_draw_quad(0.0f, 0.0f, (float)w, (float)h);
 
     // ---- Done: copy result back to screen ----
-    // Unbind the FBO so subsequent draws go to the screen, then draw the
-    // blurred texture (from FBO-B) at the original window position.
+    // Unbind the FBO so subsequent draws go to the default framebuffer (screen),
+    // then draw the blurred texture (from FBO-B) at the original window position.
     shaders_unbind_fbo();
 
-    // Restore the screen projection and draw the blurred result
+    // ── Restore the saved viewport ──
+    // The FBO passes set glViewport to the FBO's dimensions (w x h). Now that
+    // we are drawing back to the screen, we must restore the full-screen
+    // viewport. Without this, all subsequent draws in this frame would be
+    // clipped to the panel's small region.
+    glViewport(saved_viewport[0], saved_viewport[1],
+               saved_viewport[2], saved_viewport[3]);
+
+    // Draw the blurred result at the panel's screen position using the
+    // screen's projection matrix (restored from before the blur passes).
     shaders_use(progs->basic);
     shaders_set_projection(progs->basic, projection);
     shaders_set_texture(progs->basic, 0);
@@ -1168,11 +1244,8 @@ void plugin_effect_blur(GLuint texture, int x, int y, int w, int h,
 
     shaders_use_none();
 
-    // Clean up the temporary FBOs — they are only needed for this frame.
-    // If blur is applied every frame, creating/destroying FBOs each time is
-    // wasteful. A future optimization would be to cache them per-window.
-    shaders_destroy_fbo(fbo_a, tex_a);
-    shaders_destroy_fbo(fbo_b, tex_b);
+    // FBOs are cached — no per-frame cleanup needed. They persist until
+    // the blur target changes size or plugin_shutdown() is called.
 }
 
 void plugin_effect_desaturate(GLuint texture, float amount)

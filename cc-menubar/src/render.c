@@ -29,6 +29,21 @@
 #include "menubar.h"
 #include "render.h"
 
+// ── Font scaling helper ─────────────────────────────────────────────
+
+// Build a Pango font description string with a proportionally scaled size.
+// The base_size is the size at 22px menubar height (scale 1.0). At larger
+// heights, the font grows proportionally so text remains visually correct.
+// The returned pointer is a static buffer — only valid until the next call.
+static char *scaled_font(const char *base_name, int base_size)
+{
+    static char buf[128];
+    int scaled_size = (int)(base_size * menubar_scale + 0.5);
+    if (scaled_size < base_size) scaled_size = base_size; // never go below base
+    snprintf(buf, sizeof(buf), "%s %d", base_name, scaled_size);
+    return buf;
+}
+
 // ── Module state ────────────────────────────────────────────────────
 
 // Optional background texture. If loaded, it's tiled across the bar
@@ -89,10 +104,25 @@ void render_background(MenuBar *mb, cairo_t *cr)
         cairo_fill(cr);
         cairo_pattern_destroy(pattern);
     } else {
-        // Fallback only if the real asset is missing
-        cairo_set_source_rgb(cr, 0.85, 0.85, 0.85);
+        // Fallback gradient if the real asset is missing.
+        // Matches the Snow Leopard menubar: #F2F2F2 -> #E8E8E8 -> #D7D7D7 -> #D2D2D2
+        // with a 1px bottom border at #A8A8A8 (from CLAUDE.md color values).
+        cairo_pattern_t *grad = cairo_pattern_create_linear(0, 0, 0, MENUBAR_HEIGHT);
+        cairo_pattern_add_color_stop_rgb(grad, 0.0, 242/255.0, 242/255.0, 242/255.0);
+        cairo_pattern_add_color_stop_rgb(grad, 0.3, 232/255.0, 232/255.0, 232/255.0);
+        cairo_pattern_add_color_stop_rgb(grad, 0.8, 215/255.0, 215/255.0, 215/255.0);
+        cairo_pattern_add_color_stop_rgb(grad, 1.0, 210/255.0, 210/255.0, 210/255.0);
+        cairo_set_source(cr, grad);
         cairo_rectangle(cr, 0, 0, mb->screen_w, MENUBAR_HEIGHT);
         cairo_fill(cr);
+        cairo_pattern_destroy(grad);
+
+        // 1px bottom border
+        cairo_set_source_rgb(cr, 168/255.0, 168/255.0, 168/255.0);
+        cairo_set_line_width(cr, 1.0);
+        cairo_move_to(cr, 0, MENUBAR_HEIGHT - 0.5);
+        cairo_line_to(cr, mb->screen_w, MENUBAR_HEIGHT - 0.5);
+        cairo_stroke(cr);
     }
 }
 
@@ -108,9 +138,11 @@ static PangoLayout *create_text_layout(cairo_t *cr, const char *text, bool bold)
 
     // Build the font description. Lucida Grande is the classic macOS
     // system font. If it's not installed, Pango will fall back to
-    // a similar sans-serif font.
+    // a similar sans-serif font. Font size scales proportionally with
+    // the menubar height via scaled_font().
     PangoFontDescription *desc = pango_font_description_from_string(
-        bold ? "Lucida Grande Bold 13" : "Lucida Grande 13"
+        bold ? scaled_font("Lucida Grande Bold", 13)
+             : scaled_font("Lucida Grande", 13)
     );
     pango_layout_set_font_description(layout, desc);
     pango_font_description_free(desc);
@@ -182,8 +214,9 @@ void render_hover_highlight(cairo_t *cr, int x, int y, int w, int h)
 {
     // Draw a semi-transparent dark overlay. RGBA(0, 0, 0, 0.1) gives
     // a very subtle darkening effect that looks natural on the gradient.
+    // Corner radius scales proportionally with the menubar height.
     cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.1);
-    rounded_rect(cr, x, y, w, h, 3.0);
+    rounded_rect(cr, x, y, w, h, SF(3.0));
     cairo_fill(cr);
 }
 

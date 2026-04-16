@@ -1,0 +1,6 @@
+# CopiCatOS: Allow input group access to Legion Go controller
+SUBSYSTEM=="input", ATTRS{idVendor}=="17ef", ATTRS{idProduct}=="6182", MODE="0660", GROUP="input"
+SUBSYSTEM=="input", ATTRS{idVendor}=="17ef", ATTRS{idProduct}=="61eb", MODE="0660", GROUP="input"
+
+# Allow input group access to uinput for virtual device creation
+KERNEL=="uinput", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"

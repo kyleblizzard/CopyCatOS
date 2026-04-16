@@ -14,6 +14,9 @@ project('cc-menubar', 'c',
   default_options: ['c_std=c11', 'warning_level=2'],
 )
 
+# _GNU_SOURCE needed for sigaction/SA_RESTART, M_PI, and other POSIX extensions
+add_project_arguments('-D_GNU_SOURCE', language: 'c')
+
 # X11 for window creation and event handling
 x11_dep = dependency('x11')
 

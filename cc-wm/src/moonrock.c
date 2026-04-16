@@ -34,7 +34,12 @@
 #include "moonrock.h"
 #include "moonrock_shaders.h"
 #include "moonrock_display.h"
+#include "moonrock_color.h"
+#include "moonrock_robust.h"
 #include "moonrock_plugin.h"
+#include "moonrock_anim.h"
+#include "moonrock_mission_control.h"
+#include "moonrock_touch.h"
 #include "ewmh.h"
 
 // Forward declaration removed — compositor.c is no longer linked.
@@ -137,6 +142,20 @@ extern bool compositor_active;
 static struct {
     bool active;                    // Is MoonRock initialized and running?
 
+    // ── Compositor selection ownership ──
+    // A compositor must claim the _NET_WM_CM_S<screen> selection so that
+    // other compositors (and apps querying COMPOSITE_MANAGER) know a
+    // compositor is active. We create a tiny invisible window just to hold
+    // the selection — X requires a window as the selection owner.
+    Window cm_owner_win;
+
+    // ── XComposite overlay window ──
+    // The overlay window is a special child of root that sits above all
+    // normal windows. We render into it instead of root directly, which is
+    // the correct approach for a real compositor. Input is passed through
+    // via XFixes so the overlay doesn't eat mouse/keyboard events.
+    Window overlay_win;
+
     // ── GLX / OpenGL context ──
     // A "GLX context" is the bridge between X11 and OpenGL. It holds all
     // OpenGL state (current texture, blend mode, etc.) and must be "made
@@ -148,8 +167,8 @@ static struct {
     // We need one that supports texture_from_pixmap for binding X pixmaps.
     GLXFBConfig fb_config;
 
-    // The GLX drawable we render to — this is essentially the root window
-    // wrapped in a GLX surface so OpenGL can draw to it.
+    // The GLX drawable we render to — wraps the overlay window so OpenGL
+    // can draw to it via GLX.
     GLXWindow gl_window;
 
     // Screen dimensions — needed for the orthographic projection matrix
@@ -521,14 +540,45 @@ bool mr_init(CCWM *wm)
     fprintf(stderr, "[moonrock] GLX context created (direct: %s)\n",
             glXIsDirect(wm->dpy, mr.gl_context) ? "yes" : "no");
 
-    // ── Step 7: Create a GLX window from the root window ──
-    // We can't render directly to an X window — we need a GLX wrapper.
-    // This creates a GLX drawable backed by the root window, which is where
-    // our composited output will appear.
+    // ── Step 7: Get the XComposite overlay window and create a GLX surface ──
+    //
+    // The overlay window is a special X11 window managed by the XComposite
+    // extension that sits above ALL other windows on the screen. Rendering
+    // into it (rather than directly into root) is the correct approach for a
+    // real compositor because:
+    //   1. It does not interfere with root's background pixmap or other WM state.
+    //   2. The X server already knows to display it on top of everything.
+    //   3. It avoids FBConfig BadMatch errors that can occur when binding root.
+    //
+    // After getting the overlay window we:
+    //   a. Wrap it in a GLX surface so OpenGL can render to it.
+    //   b. Use XFixes to set an empty input shape so mouse/keyboard events
+    //      pass straight through to the windows beneath — the overlay must
+    //      NEVER eat input events.
+    mr.overlay_win = XCompositeGetOverlayWindow(wm->dpy, wm->root);
+    if (!mr.overlay_win) {
+        fprintf(stderr, "[moonrock] ERROR: Cannot get XComposite overlay window\n");
+        glXDestroyContext(wm->dpy, mr.gl_context);
+        mr.gl_context = NULL;
+        return false;
+    }
+    fprintf(stderr, "[moonrock] Overlay window obtained (0x%lx)\n", mr.overlay_win);
+
+    // Allow input events to pass through the overlay to windows underneath.
+    // An empty XserverRegion means "no input area" — the overlay is invisible
+    // to the input system.
+    XserverRegion empty_region = XFixesCreateRegion(wm->dpy, NULL, 0);
+    XFixesSetWindowShapeRegion(wm->dpy, mr.overlay_win,
+                               ShapeInput, 0, 0, empty_region);
+    XFixesDestroyRegion(wm->dpy, empty_region);
+
+    // Wrap the overlay window in a GLX drawable so OpenGL can render to it.
     mr.gl_window = glXCreateWindow(wm->dpy, mr.fb_config,
-                                         wm->root, NULL);
+                                   mr.overlay_win, NULL);
     if (!mr.gl_window) {
-        fprintf(stderr, "[moonrock] ERROR: Cannot create GLX window\n");
+        fprintf(stderr, "[moonrock] ERROR: Cannot create GLX window from overlay\n");
+        XCompositeReleaseOverlayWindow(wm->dpy, wm->root);
+        mr.overlay_win = 0;
         glXDestroyContext(wm->dpy, mr.gl_context);
         mr.gl_context = NULL;
         return false;
@@ -561,6 +611,39 @@ bool mr_init(CCWM *wm)
     } else {
         fprintf(stderr, "[moonrock] WARNING: VSync not available "
                 "(may see tearing)\n");
+    }
+
+    // ── Step 10.8: Claim the compositor selection _NET_WM_CM_S<n> ──
+    // X11 convention: any program that wants to act as a compositor must
+    // claim this selection on the screen it manages. Other compositors check
+    // for this selection before starting — if it's already owned, they back
+    // off. Apps can also query it to know whether compositing is active.
+    //
+    // We create a minimal invisible window just to hold the selection.
+    // X11 requires a window as the selection owner; the window itself
+    // doesn't need to be visible or functional.
+    {
+        char sel_name[32];
+        snprintf(sel_name, sizeof(sel_name), "_NET_WM_CM_S%d", wm->screen);
+        Atom cm_atom = XInternAtom(wm->dpy, sel_name, False);
+
+        // Warn if something else already owns it (another compositor running)
+        Window existing = XGetSelectionOwner(wm->dpy, cm_atom);
+        if (existing != None) {
+            fprintf(stderr, "[moonrock] WARNING: %s already owned by window 0x%lx — "
+                    "another compositor may be active\n", sel_name, existing);
+        }
+
+        // Create the owner window (1x1 px, off-screen at -10,-10)
+        mr.cm_owner_win = XCreateSimpleWindow(wm->dpy, wm->root,
+                                               -10, -10, 1, 1, 0, 0, 0);
+        XSetSelectionOwner(wm->dpy, cm_atom, mr.cm_owner_win, CurrentTime);
+
+        if (XGetSelectionOwner(wm->dpy, cm_atom) == mr.cm_owner_win) {
+            fprintf(stderr, "[moonrock] Compositor selection %s claimed\n", sel_name);
+        } else {
+            fprintf(stderr, "[moonrock] WARNING: Failed to claim %s\n", sel_name);
+        }
     }
 
     // ── Step 11: Set up XComposite redirection ──
@@ -680,6 +763,57 @@ bool mr_init(CCWM *wm)
     // (frame.c, decor.c) knows compositing is available. This flag controls
     // whether frame windows get ARGB visuals and shadow padding.
     compositor_active = true;
+
+    // ── Step 16: Initialize MoonRock subsystems ──
+    //
+    // Each subsystem is independent — if one fails, the compositor still works,
+    // just without that feature. Order matters: display and color must come
+    // before anything that queries scale factors or monitor geometry.
+
+    // Display management — enumerates connected monitors via XRandR, tracks
+    // output geometry for multi-monitor support and direct scanout bypass.
+    if (!display_init(wm->dpy, wm->screen)) {
+        fprintf(stderr, "[moonrock] WARNING: Display subsystem init failed "
+                "(multi-monitor features unavailable)\n");
+    }
+
+    // Color management — detects display PPI and computes scale factors for
+    // HiDPI rendering. Also loads GL uniform functions for tone mapping.
+    if (!color_init(wm->dpy, wm->screen)) {
+        fprintf(stderr, "[moonrock] WARNING: Color subsystem init failed "
+                "(scale factor defaults to 1.0x)\n");
+    }
+
+    // Robustness layer — sets up hardware cursor (smooth mouse regardless of
+    // compositor load), crash recovery fallback, session persistence, and
+    // power management detection.
+    if (!robust_init(wm->dpy, wm->screen)) {
+        fprintf(stderr, "[moonrock] WARNING: Robust subsystem init failed "
+                "(hardware cursor and crash recovery unavailable)\n");
+    }
+
+    // Plugin system — initializes the theme engine with Snow Leopard defaults,
+    // hot corner array, and window rule storage. Must come before any code
+    // that queries plugin_get_theme() (e.g., blur-behind in mr_composite).
+    if (!plugin_init()) {
+        fprintf(stderr, "[moonrock] WARNING: Plugin subsystem init failed "
+                "(theming unavailable)\n");
+    }
+
+    // Animation framework — zeroes the fixed-size animation slot array.
+    // Must be ready before mr_composite() calls anim_update()/anim_draw().
+    anim_init();
+
+    // Mission Control — creates the initial Space and assigns existing windows.
+    // Must come after the WM has scanned existing windows (wm->clients populated).
+    mc_init(wm);
+
+    // Touch input — finds XInput2 touchscreen devices and registers for
+    // multitouch events. Non-fatal if no touchscreen is present (e.g., desktop).
+    if (!touch_init(wm->dpy, wm->root)) {
+        fprintf(stderr, "[moonrock] NOTE: Touch input not available "
+                "(no touchscreen detected)\n");
+    }
 
     fprintf(stderr, "[moonrock] MoonRock Compositor initialized successfully\n");
     fprintf(stderr, "[moonrock] OpenGL renderer: %s\n", glGetString(GL_RENDERER));
@@ -1728,15 +1862,49 @@ void mr_composite(CCWM *wm)
 
             // ── Apply blur-behind for translucent panels ──
             // Dock and panel windows (pass 2) can have frosted glass blur.
-            // Before drawing the panel, we capture the region behind it,
-            // blur it, and draw the blurred result. The panel's own texture
-            // is then composited on top, creating the frosted glass look.
+            //
+            // The technique:
+            //   1. Capture the current framebuffer contents at the panel's
+            //      screen region into a temporary GL texture. This texture
+            //      contains everything rendered so far (desktop + normal
+            //      windows) — exactly what should appear blurred behind
+            //      the panel.
+            //   2. Pass that texture to plugin_effect_blur, which runs a
+            //      two-pass Gaussian blur and draws the result back to the
+            //      screen at the same position.
+            //   3. Delete the temporary texture — it is only needed this frame.
+            //   4. The panel's own window texture is then drawn on top,
+            //      creating the frosted glass look.
+            //
+            // The key fix here: we used to pass texture ID 0 (the GL default
+            // "no texture" state), which sampled nothing. Now we capture the
+            // real scene content first.
             if (window_pass == 2 && mr.shaders.blur_h && mr.shaders.blur_v) {
                 ThemeDefinition *theme = plugin_get_theme();
                 float blur_radius = theme ? theme->blur_behind_radius : 0.0f;
                 if (blur_radius > 0.0f) {
-                    plugin_effect_blur(0, wt->x, wt->y, wt->w, wt->h,
-                                       blur_radius);
+                    // Capture the framebuffer region behind this panel.
+                    // glCopyTexImage2D reads from the current read buffer
+                    // (the default framebuffer here) into a new texture.
+                    //
+                    // GL coordinate origin is bottom-left, screen coordinates
+                    // are top-left, so we flip the Y: gl_y = root_h - y - h.
+                    GLuint capture_tex = 0;
+                    glGenTextures(1, &capture_tex);
+                    glBindTexture(GL_TEXTURE_2D, capture_tex);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    int gl_y = mr.root_h - wt->y - wt->h;
+                    glCopyTexImage2D(GL_TEXTURE_2D, 0, GL_RGB,
+                                     wt->x, gl_y, wt->w, wt->h, 0);
+                    glBindTexture(GL_TEXTURE_2D, 0);
+
+                    plugin_effect_blur(capture_tex, wt->x, wt->y,
+                                       wt->w, wt->h, blur_radius);
+
+                    // Done — the blurred result is already on screen.
+                    // Free the temporary capture texture.
+                    glDeleteTextures(1, &capture_tex);
                 }
             }
 
@@ -1773,10 +1941,28 @@ void mr_composite(CCWM *wm)
         }
     }
 
-    // Deactivate shaders before buffer swap to leave GL in a clean state
+    // Deactivate shaders before overlay passes
     shaders_use_none();
 
-    // ── Step 5: Swap buffers ──
+    // ── Step 5: Animations ──
+    // Advance all active animations (genie minimize, fade in/out, zoom) by
+    // computing elapsed time and applying easing curves. Then draw them on
+    // top of normal windows — animations are overlays that temporarily replace
+    // the window's static texture with a moving/fading version.
+    anim_update();
+    anim_draw(mr.shaders.basic, mr.shaders.genie, mr.projection);
+
+    // ── Step 6: Mission Control overlay ──
+    // If Mission Control is active (user triggered the bird's-eye view),
+    // update its animation state and draw the tiled window grid + Space
+    // thumbnails on top of everything. Mission Control takes over the entire
+    // screen when active, so it draws last (except for the buffer swap).
+    if (mc_is_active()) {
+        mc_update(wm);
+        mc_draw(wm, mr.shaders.basic, mr.projection);
+    }
+
+    // ── Step 7: Swap buffers ──
     // We've been drawing to the "back buffer" (an invisible off-screen surface).
     // glXSwapBuffers swaps the back buffer with the front buffer (what's on
     // screen), making our new frame visible instantaneously. This is called
@@ -1982,6 +2168,31 @@ void mr_shutdown(CCWM *wm)
 
     fprintf(stderr, "[moonrock] Shutting down MoonRock Compositor...\n");
 
+    // ── Shut down subsystems in reverse init order ──
+    // Reverse order ensures dependencies are respected — subsystems that were
+    // initialized last (and may depend on earlier ones) are torn down first.
+
+    // Touch input — releases accelerometer claim, dismisses OSK, clears state
+    touch_shutdown();
+
+    // Mission Control — frees Space window lists and thumbnail textures
+    mc_shutdown(wm);
+
+    // Animation framework — marks all slots inactive
+    anim_shutdown();
+
+    // Plugin system — unloads plugins, closes shared library handles
+    plugin_shutdown();
+
+    // Robustness layer — closes log file, flushes buffered data
+    robust_shutdown();
+
+    // Color management — clears display info and resets gamma
+    color_shutdown();
+
+    // Display management — frees output array and screencast resources
+    display_shutdown();
+
     // Destroy shader programs and VBO before releasing GL context
     shaders_shutdown(&mr.shaders);
     shaders_shutdown_quad_vbo();
@@ -2003,9 +2214,12 @@ void mr_shutdown(CCWM *wm)
     }
 
     // Destroy the GLX context and window.
-    // Order matters: release the context first, then destroy the window.
+    // Order matters: release the context first, then destroy the GLX surface,
+    // then release the overlay window back to the X server.
     if (mr.gl_context) {
-        // Make sure nothing is current before destroying
+        // Detach the context from all drawables before destroying it.
+        // This is required — destroying a context while it is current is
+        // undefined behavior in GLX.
         glXMakeContextCurrent(wm->dpy, None, None, NULL);
 
         if (mr.gl_window) {
@@ -2015,6 +2229,24 @@ void mr_shutdown(CCWM *wm)
 
         glXDestroyContext(wm->dpy, mr.gl_context);
         mr.gl_context = NULL;
+    }
+
+    // Release the XComposite overlay window back to the X server.
+    // Without this, the overlay window stays mapped after we exit and
+    // blocks input to all other windows.
+    if (mr.overlay_win) {
+        XCompositeReleaseOverlayWindow(wm->dpy, wm->root);
+        mr.overlay_win = 0;
+        fprintf(stderr, "[moonrock] Overlay window released\n");
+    }
+
+    // Release the compositor selection by destroying the owner window.
+    // When the owner window is destroyed, X automatically clears the
+    // selection so other compositors can claim it.
+    if (mr.cm_owner_win) {
+        XDestroyWindow(wm->dpy, mr.cm_owner_win);
+        mr.cm_owner_win = 0;
+        fprintf(stderr, "[moonrock] Compositor selection released\n");
     }
 
     // Free the ARGB colormap (the visual is owned by X, not us)

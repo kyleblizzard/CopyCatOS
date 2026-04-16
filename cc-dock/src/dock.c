@@ -211,6 +211,8 @@ bool dock_init(DockState *state)
 
     // --- Calculate initial dock window size ---
     state->win_w = dock_calculate_total_width(state) + 2 * SHELF_PADDING;
+    // Clamp dock width to screen width so it never overflows
+    if (state->win_w > state->screen_w) state->win_w = state->screen_w;
     state->win_h = DOCK_HEIGHT;
     state->win_x = (state->screen_w - state->win_w) / 2;
     state->win_y = state->screen_h - state->win_h;
@@ -541,6 +543,7 @@ void dock_run(DockState *state)
                 // Resize the dock window if magnification changed the total width
                 {
                     int new_w = dock_calculate_total_width(state) + 2 * SHELF_PADDING;
+                    if (new_w > state->screen_w) new_w = state->screen_w;
                     if (new_w != state->win_w) {
                         state->win_w = new_w;
                         state->win_x = (state->screen_w - new_w) / 2;
@@ -742,8 +745,9 @@ void dock_run(DockState *state)
                 // Recompute all derived sizes
                 dock_config_from_icon_size(&state->cfg, icon_size);
 
-                // Resize the dock window
+                // Resize the dock window (clamp to screen width)
                 int new_w = dock_calculate_total_width(state) + 2 * SHELF_PADDING;
+                if (new_w > state->screen_w) new_w = state->screen_w;
                 int new_h = DOCK_HEIGHT;
                 state->win_w = new_w;
                 state->win_h = new_h;

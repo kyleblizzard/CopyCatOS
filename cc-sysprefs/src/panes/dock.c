@@ -81,11 +81,11 @@ static void read_config(void)
         } else if (strcmp(section, "dock") == 0 && strncmp(p, "icon_size=", 10) == 0) {
             dock_icon_size = atoi(p + 10);
             if (dock_icon_size < 32)  dock_icon_size = 32;
-            if (dock_icon_size > 128) dock_icon_size = 128;
+            if (dock_icon_size > 196) dock_icon_size = 196;
         } else if (strcmp(section, "menubar") == 0 && strncmp(p, "height=", 7) == 0) {
             menubar_h = atoi(p + 7);
             if (menubar_h < 22) menubar_h = 22;
-            if (menubar_h > 44) menubar_h = 44;
+            if (menubar_h > 88) menubar_h = 88;
         }
     }
     fclose(fp);
@@ -277,13 +277,13 @@ void dock_pane_paint(SysPrefsState *state)
     content_y += 35;
     draw_slider(cr, content_y,
                 "Dock Size:", "Small", "Large",
-                dock_icon_size, 32, 128);
+                dock_icon_size, 32, 196);
 
     // ── Menubar Height slider ──────────────────────────────────────
     content_y += 60;
     draw_slider(cr, content_y,
-                "Menu Bar:", "Normal", "Large",
-                menubar_h, 22, 44);
+                "Menu Bar:", "Normal", "Touch",
+                menubar_h, 22, 88);
 
     // ── Description text ───────────────────────────────────────────
     content_y += 50;
@@ -313,7 +313,7 @@ static int hit_test_slider(int x, int y)
 
     // Dock size slider
     {
-        double frac = (double)(dock_icon_size - 32) / (128 - 32);
+        double frac = (double)(dock_icon_size - 32) / (196 - 32);
         double knob_x = SLIDER_LEFT + frac * SLIDER_TRACK_W;
         double dx = x - knob_x;
         double dy = y - content_y;
@@ -330,7 +330,7 @@ static int hit_test_slider(int x, int y)
     // Menubar height slider
     content_y += 60;
     {
-        double frac = (double)(menubar_h - 22) / (44 - 22);
+        double frac = (double)(menubar_h - 22) / (88 - 22);
         double knob_x = SLIDER_LEFT + frac * SLIDER_TRACK_W;
         double dx = x - knob_x;
         double dy = y - content_y;
@@ -364,9 +364,9 @@ bool dock_pane_click(SysPrefsState *state, int x, int y)
 
         // Immediately update value to click position
         if (slider == SLIDER_DOCK_SIZE) {
-            dock_icon_size = x_to_value(x, 32, 128);
+            dock_icon_size = x_to_value(x, 32, 196);
         } else if (slider == SLIDER_MENUBAR_H) {
-            menubar_h = x_to_value(x, 22, 44);
+            menubar_h = x_to_value(x, 22, 88);
         }
 
         return true;
@@ -381,9 +381,9 @@ bool dock_pane_motion(SysPrefsState *state, int x, int y)
     if (dragging_slider == SLIDER_NONE) return false;
 
     if (dragging_slider == SLIDER_DOCK_SIZE) {
-        dock_icon_size = x_to_value(x, 32, 128);
+        dock_icon_size = x_to_value(x, 32, 196);
     } else if (dragging_slider == SLIDER_MENUBAR_H) {
-        menubar_h = x_to_value(x, 22, 44);
+        menubar_h = x_to_value(x, 22, 88);
     }
 
     return true; // Needs repaint

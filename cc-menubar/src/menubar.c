@@ -34,8 +34,12 @@
 #include "systray.h"
 
 // Runtime menubar height — configurable via ~/.config/copicatos/desktop.conf
-// Default 22px (Snow Leopard standard), range 22-44 for handheld devices.
+// Default 22px (Snow Leopard standard), range 22-88 for handheld devices.
 int menubar_height = DEFAULT_MENUBAR_HEIGHT;
+
+// Proportional scale factor — all dimensions scale by this value.
+// At 22px (default), scale is 1.0. At 44px, scale is 2.0. At 88px, scale is 4.0.
+double menubar_scale = 1.0;
 
 // SIGHUP reload flag — set by signal handler, checked in event loop
 static volatile bool reload_config = false;
@@ -67,12 +71,16 @@ static void read_menubar_config(void)
             in_menubar = (strncmp(p, "[menubar]", 9) == 0);
         } else if (in_menubar && strncmp(p, "height=", 7) == 0) {
             int h = atoi(p + 7);
-            if (h >= 22 && h <= 44) {
+            if (h >= 22 && h <= 88) {
                 menubar_height = h;
             }
         }
     }
     fclose(fp);
+
+    // Update the proportional scale factor any time height changes.
+    // All S() and SF() macros throughout the codebase use this value.
+    menubar_scale = (double)menubar_height / 22.0;
 }
 
 // ── Forward declarations ────────────────────────────────────────────
@@ -89,8 +97,18 @@ bool menubar_init(MenuBar *mb)
     read_menubar_config();
     fprintf(stderr, "[cc-menubar] Config: height=%d\n", menubar_height);
 
-    // Install SIGHUP handler for live config reload
-    signal(SIGHUP, sighup_handler);
+    // Install SIGHUP handler for live config reload.
+    // Use sigaction instead of signal() — on Linux, signal() may reset
+    // the handler to SIG_DFL after the first delivery (System V semantics),
+    // which would cause the second SIGHUP to terminate the process.
+    // SA_RESTART ensures interrupted syscalls (like select()) resume.
+    {
+        struct sigaction sa;
+        sa.sa_handler = sighup_handler;
+        sigemptyset(&sa.sa_mask);
+        sa.sa_flags = SA_RESTART;
+        sigaction(SIGHUP, &sa, NULL);
+    }
 
     // Zero out the entire struct
     memset(mb, 0, sizeof(MenuBar));
@@ -208,10 +226,12 @@ bool menubar_init(MenuBar *mb)
     XFlush(mb->dpy);
 
     // ── Compute layout regions ──────────────────────────────────
+    // All positions scale proportionally so the bar looks correct
+    // at any height from 22px to 88px.
     mb->apple_x = 0;
-    mb->apple_w = 50;
+    mb->apple_w = S(50);
 
-    mb->appname_x = 58;
+    mb->appname_x = S(58);
     mb->appname_w = 0;
 
     mb->menus_x = 0;
@@ -284,7 +304,7 @@ static int hit_test_menu(MenuBar *mb, int mx)
     int item_x = mb->menus_x;
     for (int i = 0; i < menu_count; i++) {
         double w = render_measure_text(menus[i], false);
-        int item_w = (int)w + 20;
+        int item_w = (int)w + S(20);
         if (mx >= item_x && mx < item_x + item_w) {
             return i + 1;
         }
@@ -311,7 +331,7 @@ static void open_menu_at(MenuBar *mb, int index)
 
         int dx = mb->menus_x;
         for (int j = 0; j < index - 1 && j < count; j++) {
-            dx += (int)render_measure_text(menus[j], false) + 20;
+            dx += (int)render_measure_text(menus[j], false) + S(20);
         }
         appmenu_show_dropdown(mb, index - 1, dx);
     }
@@ -366,13 +386,44 @@ void menubar_run(MenuBar *mb)
                     my = ev.xmotion.y;
                 }
 
-                // Only process hover changes when mouse is in the bar
+                // Mouse below the bar — might be in the dropdown popup.
+                // Route hover events to the active dropdown for highlight.
                 if (my < 0 || my >= MENUBAR_HEIGHT) {
-                    // Mouse is below the bar. If we had a hover, clear it
-                    // but don't close the dropdown (user might be in it).
                     if (mb->hover_index != -1) {
                         mb->hover_index = -1;
                         menubar_paint(mb);
+                    }
+
+                    // Forward hover to the active dropdown if mouse is inside it
+                    if (mb->open_menu >= 0) {
+                        Window dropdown = (mb->open_menu == 0)
+                            ? apple_get_popup()
+                            : appmenu_get_dropdown_win();
+
+                        if (dropdown != None) {
+                            XWindowAttributes dwa;
+                            XGetWindowAttributes(mb->dpy, dropdown, &dwa);
+                            if (mx >= dwa.x && mx < dwa.x + dwa.width &&
+                                my >= dwa.y && my < dwa.y + dwa.height) {
+                                int local_y = my - dwa.y;
+                                if (mb->open_menu == 0) {
+                                    apple_handle_motion(mb, local_y);
+                                } else {
+                                    // Forward as synthetic MotionNotify
+                                    XEvent synth = ev;
+                                    synth.xmotion.window = dropdown;
+                                    synth.xmotion.x = mx - dwa.x;
+                                    synth.xmotion.y = local_y;
+                                    XSendEvent(mb->dpy, dropdown, True,
+                                               PointerMotionMask, &synth);
+                                }
+                            } else {
+                                // Mouse left dropdown area — clear hover
+                                if (mb->open_menu == 0) {
+                                    apple_handle_motion(mb, -999);
+                                }
+                            }
+                        }
                     }
                     break;
                 }
@@ -443,9 +494,15 @@ void menubar_run(MenuBar *mb)
                         }
                     } else {
                         // Clicked outside the menu bar entirely.
-                        // Check if click is in the dropdown window.
-                        // If not, dismiss everything.
-                        Window dropdown = appmenu_get_dropdown_win();
+                        // Check if click is inside the active dropdown popup
+                        // (either the Apple menu or an app menu dropdown).
+                        Window dropdown = None;
+                        if (mb->open_menu == 0) {
+                            dropdown = apple_get_popup();
+                        } else {
+                            dropdown = appmenu_get_dropdown_win();
+                        }
+
                         if (dropdown != None) {
                             // Get dropdown geometry to check if click is inside
                             XWindowAttributes dwa;
@@ -455,14 +512,25 @@ void menubar_run(MenuBar *mb)
 
                             if (mx >= dx && mx < dx + dw &&
                                 my >= dy && my < dy + dh) {
-                                // Click is inside the dropdown — let it handle it.
-                                // Re-dispatch as a synthetic event to the dropdown.
-                                XEvent synth = ev;
-                                synth.xbutton.window = dropdown;
-                                synth.xbutton.x = mx - dx;
-                                synth.xbutton.y = my - dy;
-                                XSendEvent(mb->dpy, dropdown, True, ButtonPressMask, &synth);
-                                XFlush(mb->dpy);
+                                // Click is inside the dropdown.
+                                int local_x = mx - dx;
+                                int local_y = my - dy;
+
+                                if (mb->open_menu == 0) {
+                                    // Apple menu — handle click and execute action
+                                    if (apple_handle_click(mb, local_x, local_y)) {
+                                        dismiss_open_menu(mb);
+                                        menubar_paint(mb);
+                                    }
+                                } else {
+                                    // App menu — re-dispatch to dropdown handler
+                                    XEvent synth = ev;
+                                    synth.xbutton.window = dropdown;
+                                    synth.xbutton.x = local_x;
+                                    synth.xbutton.y = local_y;
+                                    XSendEvent(mb->dpy, dropdown, True, ButtonPressMask, &synth);
+                                    XFlush(mb->dpy);
+                                }
                                 break;
                             }
                         }
@@ -551,6 +619,14 @@ void menubar_run(MenuBar *mb)
                 Atom ss = XInternAtom(mb->dpy, "_NET_WM_STRUT", False);
                 XChangeProperty(mb->dpy, mb->win, ss, XA_CARDINAL, 32,
                                 PropModeReplace, (unsigned char *)struts, 4);
+
+                // Recompute scaled layout regions for the new height
+                mb->apple_w = S(50);
+                mb->appname_x = S(58);
+
+                // Reload Apple logo at the new scale so it renders
+                // at the correct size for the new bar height
+                apple_reload(mb);
             }
 
             menubar_paint(mb);
@@ -596,8 +672,8 @@ void menubar_paint(MenuBar *mb)
     // ── Bold app name ───────────────────────────────────────────
     // Vertically center text in the menubar. At 22px height, this gives y=3
     // (matching Snow Leopard). At larger heights, text stays centered.
-    int text_y = (MENUBAR_HEIGHT - 16) / 2;
-    if (text_y < 2) text_y = 2;
+    int text_y = (MENUBAR_HEIGHT - S(16)) / 2;
+    if (text_y < S(2)) text_y = S(2);
 
     double appname_w = render_text(cr, mb->active_app,
                                    mb->appname_x, text_y,
@@ -608,19 +684,19 @@ void menubar_paint(MenuBar *mb)
     int menu_count;
     appmenu_get_menus(mb->active_class, &menus, &menu_count);
 
-    mb->menus_x = mb->appname_x + (int)appname_w + 16;
+    mb->menus_x = mb->appname_x + (int)appname_w + S(16);
 
     int item_x = mb->menus_x;
     for (int i = 0; i < menu_count; i++) {
         double w = render_measure_text(menus[i], false);
-        int item_w = (int)w + 20;
+        int item_w = (int)w + S(20);
 
         if (mb->hover_index == i + 1 || mb->open_menu == i + 1) {
-            render_hover_highlight(cr, item_x, 1, item_w, MENUBAR_HEIGHT - 2);
+            render_hover_highlight(cr, item_x, S(1), item_w, MENUBAR_HEIGHT - S(2));
         }
 
         render_text(cr, menus[i],
-                    item_x + 10, text_y,
+                    item_x + S(10), text_y,
                     false, 0.1, 0.1, 0.1);
 
         item_x += item_w;
@@ -628,7 +704,7 @@ void menubar_paint(MenuBar *mb)
 
     // ── Hover highlight for Apple logo ──────────────────────────
     if (mb->hover_index == 0 || mb->open_menu == 0) {
-        render_hover_highlight(cr, mb->apple_x, 1, mb->apple_w, MENUBAR_HEIGHT - 2);
+        render_hover_highlight(cr, mb->apple_x, S(1), mb->apple_w, MENUBAR_HEIGHT - S(2));
     }
 
     // ── System tray (right side) ────────────────────────────────

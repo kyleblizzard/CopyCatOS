@@ -138,64 +138,120 @@ void decor_paint(CCWM *wm, Client *c)
     cairo_stroke(cr);
 
     // ── Traffic light buttons ──
-    // Active windows get real Snow Leopard PNG buttons.
-    // Inactive windows get gray circles (exact Snow Leopard behavior).
+    // Active windows get real Snow Leopard PNG buttons. When the mouse
+    // hovers over the button region, all three buttons show their glyphs
+    // (x for close, - for minimize, + for zoom). Pressing a button
+    // darkens it to give click feedback. Inactive windows get gray dots.
     int bx = BUTTON_LEFT_PAD;
     int by = BUTTON_TOP_PAD;
 
+    // Check hover/pressed state from the WM
+    bool hovering = (wm->buttons_hover && wm->hover_client == c && active);
+    int pressed = (wm->hover_client == c) ? wm->pressed_button : 0;
+
     if (active) {
-        cairo_surface_t *close_img = assets_get_close_button();
-        cairo_surface_t *min_img = assets_get_minimize_button();
-        cairo_surface_t *zoom_img = assets_get_zoom_button();
+        cairo_surface_t *btn_imgs[3] = {
+            assets_get_close_button(),
+            assets_get_minimize_button(),
+            assets_get_zoom_button()
+        };
 
-        // Scale each button image to BUTTON_DIAMETER x BUTTON_DIAMETER.
-        // The close button PNG is 30x30 while minimize and zoom are 14x14,
-        // so we must normalize them all to the same rendered size.
-        if (close_img) {
-            int img_w = cairo_image_surface_get_width(close_img);
-            int img_h = cairo_image_surface_get_height(close_img);
-            cairo_save(cr);
-            cairo_translate(cr, bx, by);
-            cairo_scale(cr, (double)BUTTON_DIAMETER / img_w, (double)BUTTON_DIAMETER / img_h);
-            cairo_set_source_surface(cr, close_img, 0, 0);
-            cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR);
-            cairo_paint(cr);
-            cairo_restore(cr);
-        }
-        bx += BUTTON_DIAMETER + BUTTON_SPACING;
+        for (int i = 0; i < 3; i++) {
+            cairo_surface_t *img = btn_imgs[i];
+            double cx = bx + BUTTON_DIAMETER / 2.0;
+            double cy = by + BUTTON_DIAMETER / 2.0;
 
-        if (min_img) {
-            int img_w = cairo_image_surface_get_width(min_img);
-            int img_h = cairo_image_surface_get_height(min_img);
-            cairo_save(cr);
-            cairo_translate(cr, bx, by);
-            cairo_scale(cr, (double)BUTTON_DIAMETER / img_w, (double)BUTTON_DIAMETER / img_h);
-            cairo_set_source_surface(cr, min_img, 0, 0);
-            cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR);
-            cairo_paint(cr);
-            cairo_restore(cr);
-        }
-        bx += BUTTON_DIAMETER + BUTTON_SPACING;
+            // Paint the button circle (from PNG asset or fallback)
+            if (img) {
+                int img_w = cairo_image_surface_get_width(img);
+                int img_h = cairo_image_surface_get_height(img);
+                cairo_save(cr);
+                cairo_translate(cr, bx, by);
+                cairo_scale(cr, (double)BUTTON_DIAMETER / img_w,
+                                (double)BUTTON_DIAMETER / img_h);
+                cairo_set_source_surface(cr, img, 0, 0);
+                cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR);
+                cairo_paint(cr);
+                cairo_restore(cr);
+            }
 
-        if (zoom_img) {
-            int img_w = cairo_image_surface_get_width(zoom_img);
-            int img_h = cairo_image_surface_get_height(zoom_img);
-            cairo_save(cr);
-            cairo_translate(cr, bx, by);
-            cairo_scale(cr, (double)BUTTON_DIAMETER / img_w, (double)BUTTON_DIAMETER / img_h);
-            cairo_set_source_surface(cr, zoom_img, 0, 0);
-            cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR);
-            cairo_paint(cr);
-            cairo_restore(cr);
+            // Unsaved changes dot — when a document has unsaved changes,
+            // the close button displays a dark dot in its center (HIG
+            // Figure 14-8). This is the standard macOS indicator that
+            // closing will prompt to save. Detected from title prefix.
+            if (i == 0 && c->unsaved && !hovering && pressed == 0) {
+                cairo_save(cr);
+                cairo_arc(cr, cx, cy, 2.0, 0, 2 * M_PI);
+                cairo_set_source_rgba(cr, 0.22, 0.0, 0.0, 0.85);
+                cairo_fill(cr);
+                cairo_restore(cr);
+            }
+
+            // Pressed state — darken the button circle to show feedback.
+            // Real Snow Leopard darkens the pressed button by overlaying
+            // a semi-transparent black on the circle.
+            if (pressed == (i + 1)) {
+                double r = BUTTON_DIAMETER / 2.0;
+                cairo_save(cr);
+                cairo_arc(cr, cx, cy, r - 0.5, 0, 2 * M_PI);
+                cairo_set_source_rgba(cr, 0, 0, 0, 0.25);
+                cairo_fill(cr);
+                cairo_restore(cr);
+            }
+
+            // Hover glyphs — when mouse enters the button region, ALL
+            // three buttons show their glyph simultaneously. The glyphs
+            // are rendered as dark marks with a subtle shadow, matching
+            // the real Snow Leopard appearance.
+            if (hovering || pressed > 0) {
+                double r = BUTTON_DIAMETER / 2.0;
+                double glyph_size = r * 0.55;  // Glyph fits inside circle
+
+                cairo_save(cr);
+                cairo_set_line_width(cr, 1.2);
+                cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+
+                if (i == 0) {
+                    // Close glyph: × (two diagonal lines crossing)
+                    // Dark mark with slight transparency for depth
+                    cairo_set_source_rgba(cr, 0.25, 0.0, 0.0, 0.9);
+                    cairo_move_to(cr, cx - glyph_size, cy - glyph_size);
+                    cairo_line_to(cr, cx + glyph_size, cy + glyph_size);
+                    cairo_stroke(cr);
+                    cairo_move_to(cr, cx + glyph_size, cy - glyph_size);
+                    cairo_line_to(cr, cx - glyph_size, cy + glyph_size);
+                    cairo_stroke(cr);
+                } else if (i == 1) {
+                    // Minimize glyph: − (horizontal line)
+                    cairo_set_source_rgba(cr, 0.25, 0.12, 0.0, 0.9);
+                    cairo_move_to(cr, cx - glyph_size, cy);
+                    cairo_line_to(cr, cx + glyph_size, cy);
+                    cairo_stroke(cr);
+                } else {
+                    // Zoom glyph: + (horizontal + vertical lines)
+                    cairo_set_source_rgba(cr, 0.0, 0.18, 0.0, 0.9);
+                    cairo_move_to(cr, cx - glyph_size, cy);
+                    cairo_line_to(cr, cx + glyph_size, cy);
+                    cairo_stroke(cr);
+                    cairo_move_to(cr, cx, cy - glyph_size);
+                    cairo_line_to(cr, cx, cy + glyph_size);
+                    cairo_stroke(cr);
+                }
+
+                cairo_restore(cr);
+            }
+
+            bx += BUTTON_DIAMETER + BUTTON_SPACING;
         }
     } else {
-        // Inactive: identical gray dots (#B0B0B0) for all three buttons
+        // Inactive: identical gray dots (#B0B0B0) for all three buttons.
+        // No glyphs shown on inactive windows (matches real Snow Leopard).
         for (int i = 0; i < 3; i++) {
             double cx = bx + BUTTON_DIAMETER / 2.0;
             double cy = by + BUTTON_DIAMETER / 2.0;
             double r = BUTTON_DIAMETER / 2.0;
 
-            cairo_arc(cr, cx, cy, r, 0, 2 * 3.14159265);
+            cairo_arc(cr, cx, cy, r, 0, 2 * M_PI);
             cairo_set_source_rgb(cr, 176/255.0, 176/255.0, 176/255.0);
             cairo_fill_preserve(cr);
             cairo_set_source_rgb(cr, 150/255.0, 150/255.0, 150/255.0);

@@ -29,6 +29,8 @@ sources = [
   'src/paneview.c',
   'src/panes/stub.c',
   'src/panes/dock.c',
+  'src/panes/controller.c',
+  'src/panes/power.c',
 ]
 
 executable('cc-sysprefs', sources,

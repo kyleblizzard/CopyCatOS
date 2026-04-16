@@ -6,8 +6,11 @@
 
 #include "ewmh.h"
 #include "moonrock.h"
+#include <X11/Xcursor/Xcursor.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 void ewmh_setup(CCWM *wm)
 {
@@ -64,6 +67,7 @@ void ewmh_setup(CCWM *wm)
         atom_desktop_geom,
         atom_num_desktops,
         atom_cur_desktop,
+        wm->atom_net_wm_ping,
     };
     XChangeProperty(wm->dpy, wm->root, wm->atom_net_supported,
                     XA_ATOM, 32, PropModeReplace,
@@ -207,5 +211,128 @@ void ewmh_get_title(CCWM *wm, Window w, char *buf, int buflen)
     if (XGetWMName(wm->dpy, w, &tp) && tp.value) {
         snprintf(buf, buflen, "%s", (char *)tp.value);
         XFree(tp.value);
+    }
+}
+
+// ── _NET_WM_PING implementation ──────────────────────────────────
+
+// Helper: get elapsed time in milliseconds between two timespecs
+static long timespec_diff_ms(struct timespec *start, struct timespec *end)
+{
+    return (end->tv_sec - start->tv_sec) * 1000 +
+           (end->tv_nsec - start->tv_nsec) / 1000000;
+}
+
+bool ewmh_supports_ping(CCWM *wm, Window w)
+{
+    // Check if _NET_WM_PING is listed in the window's WM_PROTOCOLS
+    Atom type_ret;
+    int fmt;
+    unsigned long nitems, after;
+    unsigned char *data = NULL;
+
+    if (XGetWindowProperty(wm->dpy, w, wm->atom_wm_protocols,
+                           0, 32, False, XA_ATOM,
+                           &type_ret, &fmt, &nitems, &after, &data) == Success
+        && data) {
+        Atom *protocols = (Atom *)data;
+        for (unsigned long i = 0; i < nitems; i++) {
+            if (protocols[i] == wm->atom_net_wm_ping) {
+                XFree(data);
+                return true;
+            }
+        }
+        XFree(data);
+    }
+    return false;
+}
+
+void ewmh_send_ping(CCWM *wm, Client *c)
+{
+    if (!c || !c->supports_ping) return;
+    if (c->ping_pending) return; // Don't send another while one is outstanding
+
+    // Generate a unique timestamp for this ping. We use the current time
+    // in milliseconds as the serial — the app must echo it back exactly.
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    unsigned long serial = (unsigned long)(now.tv_sec * 1000 + now.tv_nsec / 1000000);
+
+    // Send _NET_WM_PING as a WM_PROTOCOLS ClientMessage to the client.
+    // Format: message_type = WM_PROTOCOLS, data.l[0] = _NET_WM_PING,
+    // data.l[1] = timestamp, data.l[2] = client window
+    XEvent ev = {0};
+    ev.type = ClientMessage;
+    ev.xclient.window = c->client;
+    ev.xclient.message_type = wm->atom_wm_protocols;
+    ev.xclient.format = 32;
+    ev.xclient.data.l[0] = (long)wm->atom_net_wm_ping;
+    ev.xclient.data.l[1] = (long)serial;
+    ev.xclient.data.l[2] = (long)c->client;
+
+    XSendEvent(wm->dpy, c->client, False, NoEventMask, &ev);
+
+    // Record ping state
+    c->ping_pending = true;
+    c->ping_serial = serial;
+    c->ping_sent = now;
+}
+
+Client *ewmh_handle_pong(CCWM *wm, XClientMessageEvent *cm)
+{
+    // A pong is a ClientMessage sent to the ROOT window with:
+    // message_type = WM_PROTOCOLS, data.l[0] = _NET_WM_PING,
+    // data.l[2] = the client window that was pinged.
+    if (cm->message_type != wm->atom_wm_protocols) return NULL;
+    if ((Atom)cm->data.l[0] != wm->atom_net_wm_ping) return NULL;
+
+    // Find the client that responded
+    Window client_win = (Window)cm->data.l[2];
+    Client *c = wm_find_client(wm, client_win);
+    if (!c) return NULL;
+
+    // Clear ping state
+    c->ping_pending = false;
+
+    // If the window was marked unresponsive, restore normal cursor
+    if (c->unresponsive) {
+        c->unresponsive = false;
+        if (c->frame) {
+            // Remove the beach ball cursor from the frame — this
+            // restores the default cursor (inherited from root)
+            XUndefineCursor(wm->dpy, c->frame);
+        }
+        if (getenv("AURA_DEBUG")) {
+            fprintf(stderr, "[cc-wm] '%s' is responsive again\n", c->title);
+        }
+    }
+
+    return c;
+}
+
+void ewmh_check_ping_timeouts(CCWM *wm)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+
+    for (int i = 0; i < wm->num_clients; i++) {
+        Client *c = &wm->clients[i];
+        if (!c->mapped || !c->ping_pending) continue;
+
+        long elapsed = timespec_diff_ms(&c->ping_sent, &now);
+
+        if (elapsed >= PING_TIMEOUT_MS && !c->unresponsive) {
+            // Window didn't respond in time — show the beach ball!
+            // This is the same behavior as macOS showing the spinning
+            // rainbow pinwheel after 2-4 seconds of no event processing.
+            c->unresponsive = true;
+
+            if (c->frame && wm->beach_ball_cursor) {
+                XDefineCursor(wm->dpy, c->frame, (Cursor)wm->beach_ball_cursor);
+            }
+
+            fprintf(stderr, "[cc-wm] '%s' is unresponsive — beach ball!\n",
+                    c->title);
+        }
     }
 }

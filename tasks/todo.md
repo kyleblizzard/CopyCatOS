@@ -137,7 +137,7 @@
 - [x] Clean shutdown on WM exit
 - [x] Create aura.desktop for /usr/share/xsessions/
 - [x] Set QT_STYLE_OVERRIDE=AquaStyle in session env
-- [ ] Set icon theme to AquaKDE-icons
+- [x] Set icon theme to AquaKDE-icons
 - [ ] Gate: log in via DM, select CopiCatOS, all components start
 
 ## Step 9: AppImage Packaging
@@ -150,10 +150,31 @@
 - [ ] Gate: build test AppImage (Kate), Qt widgets render Aqua
 
 ## Step 10: Polish
-- [ ] Traffic light hover states: show glyphs (x, -, +) on hover
+- [x] Traffic light hover states: show glyphs (x, -, +) on hover
+- [x] Traffic light pressed state: darken button on click, action fires on release
 - [ ] Inactive window buttons: colorize on hover
 - [x] Smart zoom button: toggle between saved size and maximized
 - [x] App grouping: WM_CLASS-based, Super+H hides all app windows
-- [ ] Menu bar translucency fine-tuning against reference screenshots
+- [x] Menu bar translucency (ARGB visual already active, real menubar_bg.png tiled)
+- [x] Menu bar fallback gradient matches SL color values (#F2F2F2 -> #D2D2D2 + #A8A8A8 border)
+- [x] Unsaved changes dot in close button (detected from title prefix * or •)
 - [ ] Genie minimize animation (compositor captures pixmap, distorts into dock)
-- [ ] Unsaved changes dot in close button
+
+## Step 11: Input Daemon (cc-inputd) — Legion Go Controller Support
+- [x] cc-inputd skeleton: main.c, meson.build, systemd service/udev rules
+- [x] Device discovery: libudev, Legion Go identification, EVIOCGRAB
+- [x] Virtual devices: uinput mouse, keyboard, gamepad
+- [x] Mapper engine: button→action mapping with desktop/game/login profiles
+- [x] Right stick mouse: deadzone, expo curve, 120Hz timerfd
+- [x] Power button: state machine (short=suspend, hold=restart)
+- [x] Config parser: input.conf INI format, SIGHUP reload
+- [x] IPC: Unix socket server for session bridge
+- [x] cc-input-session: X11 window tracking, action dispatch, auto game mode
+- [x] System Preferences: Controller pane (sensitivity/deadzone sliders)
+- [x] System Preferences: Energy Saver pane (power button thresholds)
+- [x] Build system: build-all.sh updated, cc-session.sh updated
+- [ ] Gate: deploy to Legion Go, verify controller works at login + desktop
+- [ ] Gate: game mode passthrough works with Steam
+- [ ] Gate: power button suspend/restart works correctly
+- [ ] Genie minimize animation (compositor captures pixmap, distorts into dock)
+- [x] Unsaved changes dot in close button (detected from title prefix * or •)

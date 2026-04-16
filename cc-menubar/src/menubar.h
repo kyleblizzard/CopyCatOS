@@ -21,16 +21,31 @@
 #include <X11/Xatom.h>
 #include <stdbool.h>
 
-// Default height matching macOS Snow Leopard. Configurable 22-44 via
+// Default height matching macOS Snow Leopard. Configurable 22-88 via
 // ~/.config/copicatos/desktop.conf [menubar] section.
+// Range 22-44 is standard desktop use; 44-88 enables touch-friendly sizing
+// for handheld devices like the Lenovo Legion Go.
 #define DEFAULT_MENUBAR_HEIGHT 22
 
 // Runtime height — set during init from config file, used everywhere.
 // External modules (render.c, systray.c) reference this via extern.
 extern int menubar_height;
 
+// Proportional scale factor: menubar_height / 22.0 (1.0 at standard size).
+// All pixel dimensions throughout the menubar use this to scale proportionally,
+// so the UI looks correct whether the bar is 22px (desktop) or 88px (touch).
+extern double menubar_scale;
+
 // Convenience macro so existing code doesn't need to change
 #define MENUBAR_HEIGHT menubar_height
+
+// Scale a pixel value proportionally and round to the nearest integer.
+// Use for all hardcoded pixel dimensions (padding, widths, heights, offsets).
+#define S(x) ((int)((x) * menubar_scale + 0.5))
+
+// Scale a floating-point value proportionally (no rounding).
+// Use for Cairo coordinates, corner radii, and other fractional values.
+#define SF(x) ((x) * menubar_scale)
 
 // Core state for the entire menu bar.
 // A single instance is created in main.c and shared with every module.

@@ -51,6 +51,9 @@ COMPONENTS=(
     "cc-menubar"
     "cc-dock"
     "cc-spotlight"
+    "cc-inputd"
+    "cc-input-session"
+    "cc-sysprefs"
 )
 
 FAILED=0
@@ -67,5 +70,15 @@ else
     echo -e "  ${RED}$FAILED of ${#COMPONENTS[@]} components failed${NC}"
 fi
 echo "════════════════════════════════════════"
+
+# Install helper scripts to ~/.local/bin so they're on PATH alongside
+# the cc-* binaries. This makes cc-game-mode available for the Apple menu
+# action in cc-menubar to launch without needing an absolute path.
+echo ""
+echo "Installing scripts to ~/.local/bin..."
+mkdir -p "$HOME/.local/bin"
+cp "$ROOT/scripts/game-mode.sh" "$HOME/.local/bin/cc-game-mode"
+chmod +x "$HOME/.local/bin/cc-game-mode"
+echo -e "${GREEN}[DONE]${NC} cc-game-mode installed"
 
 exit $FAILED

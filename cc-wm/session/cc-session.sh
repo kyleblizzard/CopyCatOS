@@ -13,9 +13,10 @@ export XDG_CURRENT_DESKTOP=CopiCatOS
 export QT_QPA_PLATFORMTHEME=kde
 export QT_STYLE_OVERRIDE=AquaStyle
 
-# Cursor theme
-export XCURSOR_THEME=Breeze_Light
-export XCURSOR_SIZE=24
+# Cursor theme — real Snow Leopard cursors extracted from Mac OS X 10.6
+# Built from snowleopardaura/MacAssets/Cursors/ via scripts/build-cursor-theme.sh
+export XCURSOR_THEME=SnowLeopard
+export XCURSOR_SIZE=32
 
 # Font config — make sure Lucida Grande is available
 if [ -d "$HOME/.local/share/fonts" ]; then
@@ -102,6 +103,9 @@ sleep 0.2
 cc-menubar &
 cc-dock &
 cc-spotlight &
+
+# ─── Input daemon (controller → mouse/keyboard mapping) ───
+cc-input-session &
 
 # ─── Default Finder window ───
 cc-finder ~ &

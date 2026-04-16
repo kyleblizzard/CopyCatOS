@@ -51,7 +51,10 @@ xcursor_dep = dependency('xcursor', required: false)
 # To use MoonRock as a pre-built library instead, install it and use:
 #   moonrock_dep = dependency('moonrock')
 
-# MoonRock source files (synced from /Volumes/Development/MoonRock/src/)
+# MoonRock sources are developed here in CopiCatOS/cc-wm/src/.
+# This is the authoritative copy. To publish changes to the standalone
+# MoonRock repo, run: scripts/sync-moonrock.sh
+# That script copies all moonrock_*.c/h files to /Volumes/Development/MoonRock/src/.
 moonrock_sources = [
   'src/moonrock_shaders.c',
   'src/moonrock_anim.c',

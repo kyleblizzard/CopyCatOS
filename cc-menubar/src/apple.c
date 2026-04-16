@@ -33,6 +33,16 @@
 #include "apple.h"
 #include "render.h"
 
+// ── Font scaling helper (mirrors the one in render.c) ──────────────
+static char *apple_scaled_font(const char *base_name, int base_size)
+{
+    static char buf[128];
+    int scaled_size = (int)(base_size * menubar_scale + 0.5);
+    if (scaled_size < base_size) scaled_size = base_size;
+    snprintf(buf, sizeof(buf), "%s %d", base_name, scaled_size);
+    return buf;
+}
+
 // ── Module state ────────────────────────────────────────────────────
 
 // The Apple logo surfaces, scaled to 22x15 pixels (measured from real Snow Leopard).
@@ -43,30 +53,62 @@ static cairo_surface_t *logo_selected = NULL;
 // The Apple menu dropdown popup window. None if not open.
 static Window apple_popup = None;
 
-// ── Apple menu item definitions ─────────────────────────────────────
-// These mimic the classic macOS Apple menu. "---" is a separator.
-// "(disabled)" suffix marks items that are shown in gray text.
+// Currently hovered item index in the dropdown (-1 = none)
+static int apple_hover = -1;
 
-static const char *apple_items[] = {
-    "About CopiCatOS",
+// ── Apple menu item definitions ─────────────────────────────────────
+// These match the real Snow Leopard Apple menu per Apple HIG Figure 13-14.
+// "---" is a separator. Items have optional right-aligned keyboard shortcuts.
+
+// Dynamic "Log Out" label with the actual username
+static char logout_label[128] = "Log Out...";
+
+static const char *apple_items[17] = {
+    "About This Mac",
+    "---",
+    "Software Update...",
     "---",
     "System Preferences...",
+    "Dock",
+    "Recent Items",
     "---",
     "Force Quit...",
     "---",
     "Sleep",
+    "Game Mode...",      // Switch to Steam Big Picture via gamescope
     "Restart...",
     "Shut Down...",
     "---",
-    "Log Out Kyle..."
+    NULL  // Placeholder for logout_label (set dynamically in apple_init)
 };
-static const int apple_item_count = 11;
+static const int apple_item_count = 16;
+
+// Keyboard shortcuts displayed right-aligned next to menu items.
+// NULL means no shortcut. Uses Mac-style symbols (⌘ ⌥ ⇧).
+static const char *apple_shortcuts[] = {
+    NULL,           // About This Mac
+    NULL,           // ---
+    NULL,           // Software Update...
+    NULL,           // ---
+    NULL,           // System Preferences...
+    NULL,           // Dock
+    NULL,           // Recent Items
+    NULL,           // ---
+    "⌥⌘Esc",       // Force Quit...
+    NULL,           // ---
+    NULL,           // Sleep
+    NULL,           // Game Mode...
+    NULL,           // Restart...
+    NULL,           // Shut Down...
+    NULL,           // ---
+    "⇧⌘Q",         // Log Out
+};
 
 // Which items are disabled (grayed out, non-clickable)?
-// Index 0 = "About CopiCatOS" is disabled for now.
 static bool is_disabled(int index)
 {
-    return (index == 0); // Only "About CopiCatOS" is disabled
+    // About, Software Update, Dock submenu, Recent Items — disabled stubs
+    return (index == 0 || index == 2 || index == 5 || index == 6);
 }
 
 // ── Internal: load a PNG, scale it, and extract an alpha mask ───────
@@ -154,6 +196,14 @@ void apple_init(MenuBar *mb)
 {
     (void)mb;
 
+    // Build the "Log Out <username>..." label from the actual system user.
+    // Real Snow Leopard shows the short username (e.g., "Log Out Kyle...").
+    const char *user = getenv("USER");
+    if (!user) user = "User";
+    snprintf(logout_label, sizeof(logout_label), "Log Out %s...", user);
+    // Point the last item slot to our dynamic label
+    apple_items[apple_item_count - 1] = logout_label;
+
     // Build the paths to the Apple logo PNGs.
     // We use $HOME to avoid hardcoding a username.
     const char *home = getenv("HOME");
@@ -166,15 +216,41 @@ void apple_init(MenuBar *mb)
     snprintf(path_selected, sizeof(path_selected),
              "%s/.local/share/aqua-widgets/menubar/apple_logo_selected.png", home);
 
-    // Load and scale both variants to 22x15 pixels (measured from real Snow Leopard:
-    // the Apple logo spans x=14 to x=36, y=3 to y=18, giving 22x15 pixels)
-    logo_normal   = load_and_scale_png(path_normal, 22, 15);
-    logo_selected = load_and_scale_png(path_selected, 22, 15);
+    // Load and scale to proportionally-sized mask. At scale 1.0 (22px bar),
+    // the logo is 22x15 pixels (measured from real Snow Leopard: x=14..36,
+    // y=3..18). At larger bar heights the logo scales proportionally.
+    logo_normal   = load_and_scale_png(path_normal, S(22), S(15));
+    logo_selected = load_and_scale_png(path_selected, S(22), S(15));
 
     if (!logo_normal) {
         fprintf(stderr, "cc-menubar: Apple logo not found at %s (using fallback)\n",
                 path_normal);
     }
+}
+
+void apple_reload(MenuBar *mb)
+{
+    (void)mb;
+
+    // Free old logo surfaces
+    if (logo_normal)   { cairo_surface_destroy(logo_normal);   logo_normal = NULL; }
+    if (logo_selected) { cairo_surface_destroy(logo_selected); logo_selected = NULL; }
+
+    // Reload at the new scale
+    const char *home = getenv("HOME");
+    if (!home) return;
+
+    char path_normal[512], path_selected[512];
+    snprintf(path_normal, sizeof(path_normal),
+             "%s/.local/share/aqua-widgets/menubar/apple_logo.png", home);
+    snprintf(path_selected, sizeof(path_selected),
+             "%s/.local/share/aqua-widgets/menubar/apple_logo_selected.png", home);
+
+    logo_normal   = load_and_scale_png(path_normal, S(22), S(15));
+    logo_selected = load_and_scale_png(path_selected, S(22), S(15));
+
+    fprintf(stderr, "[apple] Reloaded logos at scale %.1f (%dx%d)\n",
+            menubar_scale, S(22), S(15));
 }
 
 void apple_paint(MenuBar *mb, cairo_t *cr)
@@ -185,10 +261,10 @@ void apple_paint(MenuBar *mb, cairo_t *cr)
     bool active = (mb->hover_index == 0 || mb->open_menu == 0);
     cairo_surface_t *logo = (active && logo_selected) ? logo_selected : logo_normal;
 
-    // Position: x=14, vertically centered in the 22px bar
-    // Measured from real Snow Leopard: logo starts at x=14, y=3
-    double x = 14.0;
-    double y = (MENUBAR_HEIGHT - 15) / 2.0; // Center 15px icon in 22px bar (≈3.5, close to measured y=3)
+    // Position: x=S(14), vertically centered in the bar
+    // Measured from real Snow Leopard: logo starts at x=14, y=3 (at 22px height)
+    double x = SF(14.0);
+    double y = (MENUBAR_HEIGHT - S(15)) / 2.0;
 
     if (logo) {
         // Draw the logo as a solid-color silhouette using the alpha mask.
@@ -211,7 +287,7 @@ void apple_paint(MenuBar *mb, cairo_t *cr)
         // Fallback: draw a simple filled circle as a placeholder.
         // This is a dark gray circle roughly matching the Apple logo position.
         cairo_set_source_rgb(cr, 0.2, 0.2, 0.2);
-        cairo_arc(cr, x + 11, MENUBAR_HEIGHT / 2.0, 7.0, 0, 2 * M_PI);
+        cairo_arc(cr, x + SF(11.0), MENUBAR_HEIGHT / 2.0, SF(7.0), 0, 2 * M_PI);
         cairo_fill(cr);
     }
 }
@@ -240,52 +316,107 @@ static void paint_apple_dropdown(MenuBar *mb, int popup_w, int popup_h)
     );
     cairo_t *cr = cairo_create(surface);
 
-    // Background: slightly transparent white
+    // Background: slightly transparent white with scaled corner radius
     cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 245.0 / 255.0);
-    apple_rounded_rect(cr, 0, 0, popup_w, popup_h, 5.0);
+    apple_rounded_rect(cr, 0, 0, popup_w, popup_h, SF(5.0));
     cairo_fill(cr);
 
     // Border: subtle dark outline
     cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 60.0 / 255.0);
     cairo_set_line_width(cr, 1.0);
-    apple_rounded_rect(cr, 0.5, 0.5, popup_w - 1, popup_h - 1, 5.0);
+    apple_rounded_rect(cr, 0.5, 0.5, popup_w - 1, popup_h - 1, SF(5.0));
     cairo_stroke(cr);
 
-    // Draw each menu item
-    int y = 4; // Top padding
+    // Draw each menu item — all dimensions scale proportionally
+    int y = S(4); // Top padding
 
     for (int i = 0; i < apple_item_count; i++) {
-        if (strcmp(apple_items[i], "---") == 0) {
+        const char *label = apple_items[i];
+        if (!label) continue; // Safety: skip NULL entries
+
+        if (strcmp(label, "---") == 0) {
             // Separator line
             cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 40.0 / 255.0);
             cairo_set_line_width(cr, 1.0);
-            cairo_move_to(cr, 10, y + 3.5);
-            cairo_line_to(cr, popup_w - 10, y + 3.5);
+            cairo_move_to(cr, S(10), y + SF(3.5));
+            cairo_line_to(cr, popup_w - S(10), y + SF(3.5));
             cairo_stroke(cr);
-            y += 7;
+            y += S(7);
         } else {
-            // Menu item text
+            // Check if this item is hovered — draw blue highlight
+            // behind it, matching the Snow Leopard selection blue (#3875D7)
+            bool disabled = is_disabled(i);
+            bool hovered = (i == apple_hover && !disabled);
+
+            if (hovered) {
+                // Blue selection highlight (rounded rect)
+                cairo_set_source_rgba(cr, 56/255.0, 117/255.0, 215/255.0, 0.9);
+                double rx = S(4), ry = y, rw = popup_w - S(8), rh = S(22), rr = SF(3.0);
+                cairo_new_sub_path(cr);
+                cairo_arc(cr, rx + rw - rr, ry + rr, rr, -M_PI/2, 0);
+                cairo_arc(cr, rx + rw - rr, ry + rh - rr, rr, 0, M_PI/2);
+                cairo_arc(cr, rx + rr, ry + rh - rr, rr, M_PI/2, M_PI);
+                cairo_arc(cr, rx + rr, ry + rr, rr, M_PI, 3*M_PI/2);
+                cairo_close_path(cr);
+                cairo_fill(cr);
+            }
+
+            // Text color: white on blue highlight, gray for disabled, dark otherwise
+            if (hovered) {
+                cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+            } else if (disabled) {
+                cairo_set_source_rgb(cr, 0.6, 0.6, 0.6);
+            } else {
+                cairo_set_source_rgb(cr, 0.1, 0.1, 0.1);
+            }
+
+            // Menu item label (left-aligned) with scaled font
             PangoLayout *layout = pango_cairo_create_layout(cr);
-            pango_layout_set_text(layout, apple_items[i], -1);
+            pango_layout_set_text(layout, label, -1);
 
             PangoFontDescription *desc = pango_font_description_from_string(
-                "Lucida Grande 13"
+                apple_scaled_font("Lucida Grande", 13)
             );
             pango_layout_set_font_description(layout, desc);
             pango_font_description_free(desc);
 
-            // Disabled items are drawn in gray; active items in dark text
-            if (is_disabled(i)) {
-                cairo_set_source_rgb(cr, 0.6, 0.6, 0.6); // Gray for disabled
-            } else {
-                cairo_set_source_rgb(cr, 0.1, 0.1, 0.1); // Dark for active
-            }
-
-            cairo_move_to(cr, 18, y + 2);
+            cairo_move_to(cr, S(18), y + S(2));
             pango_cairo_show_layout(cr, layout);
             g_object_unref(layout);
 
-            y += 22;
+            // Submenu indicator arrow for Dock and Recent Items
+            if (strcmp(label, "Dock") == 0 ||
+                strcmp(label, "Recent Items") == 0) {
+                // Draw a small right-pointing triangle, scaled proportionally
+                double ax = popup_w - S(16);
+                double ay = y + SF(10.0);
+                cairo_move_to(cr, ax, ay - SF(4.0));
+                cairo_line_to(cr, ax + SF(5.0), ay);
+                cairo_line_to(cr, ax, ay + SF(4.0));
+                cairo_close_path(cr);
+                cairo_fill(cr);
+            }
+
+            // Keyboard shortcut (right-aligned, smaller scaled font)
+            if (i < apple_item_count && apple_shortcuts[i]) {
+                PangoLayout *sc_layout = pango_cairo_create_layout(cr);
+                pango_layout_set_text(sc_layout, apple_shortcuts[i], -1);
+
+                PangoFontDescription *sc_desc = pango_font_description_from_string(
+                    apple_scaled_font("Lucida Grande", 12)
+                );
+                pango_layout_set_font_description(sc_layout, sc_desc);
+                pango_font_description_free(sc_desc);
+
+                int sc_w, sc_h;
+                pango_layout_get_pixel_size(sc_layout, &sc_w, &sc_h);
+
+                cairo_move_to(cr, popup_w - sc_w - S(12), y + S(2));
+                pango_cairo_show_layout(cr, sc_layout);
+                g_object_unref(sc_layout);
+            }
+
+            y += S(22);
         }
     }
 
@@ -299,13 +430,13 @@ void apple_show_menu(MenuBar *mb)
     // Dismiss any existing Apple menu first
     apple_dismiss(mb);
 
-    // ── Calculate popup size ────────────────────────────────────
-    int popup_w = 220; // Fixed width matching Snow Leopard Apple menu
+    // ── Calculate popup size (all dimensions scale proportionally) ──
+    int popup_w = S(220); // Fixed width matching Snow Leopard Apple menu
 
-    // Height: 22px per item, 7px per separator, plus padding
-    int popup_h = 8;
+    // Height: S(22) per item, S(7) per separator, plus scaled padding
+    int popup_h = S(8);
     for (int i = 0; i < apple_item_count; i++) {
-        popup_h += (strcmp(apple_items[i], "---") == 0) ? 7 : 22;
+        popup_h += (strcmp(apple_items[i], "---") == 0) ? S(7) : S(22);
     }
 
     // ── Create the popup window ─────────────────────────────────
@@ -337,8 +468,187 @@ void apple_dismiss(MenuBar *mb)
     if (apple_popup != None) {
         XDestroyWindow(mb->dpy, apple_popup);
         apple_popup = None;
+        apple_hover = -1;
         XFlush(mb->dpy);
     }
+}
+
+Window apple_get_popup(void)
+{
+    return apple_popup;
+}
+
+// ── Item hit testing ───────────────────────────────────────────────
+// Convert a Y coordinate inside the popup to the menu item index.
+// Returns -1 for separators, padding, or out-of-bounds.
+static int apple_y_to_item(int y)
+{
+    int row_y = S(4); // Top padding (scaled)
+    for (int i = 0; i < apple_item_count; i++) {
+        const char *label = apple_items[i];
+        if (!label) continue;
+
+        if (strcmp(label, "---") == 0) {
+            row_y += S(7);
+        } else {
+            if (y >= row_y && y < row_y + S(22)) {
+                return i;
+            }
+            row_y += S(22);
+        }
+    }
+    return -1;
+}
+
+// ── Action execution ───────────────────────────────────────────────
+// Executes the system action for the clicked Apple menu item.
+// This is where menu items become functional — each item maps to
+// a real system command matching macOS Snow Leopard behavior.
+static void apple_execute(MenuBar *mb, int index)
+{
+    const char *label = apple_items[index];
+    if (!label) return;
+    if (is_disabled(index)) return; // Don't execute disabled items
+
+    fprintf(stderr, "[apple] Execute: %s\n", label);
+
+    if (strcmp(label, "System Preferences...") == 0) {
+        // Launch the CopiCatOS System Preferences app
+        if (fork() == 0) {
+            setsid();
+            execlp("cc-sysprefs", "cc-sysprefs", NULL);
+            _exit(1);
+        }
+    } else if (strcmp(label, "Force Quit...") == 0) {
+        // Show xkill or a force-quit dialog
+        // For now, launch xkill which lets user click a window to kill it
+        if (fork() == 0) {
+            setsid();
+            execlp("xkill", "xkill", NULL);
+            _exit(1);
+        }
+    } else if (strcmp(label, "Sleep") == 0) {
+        // Suspend the system (same as power button short press)
+        system("systemctl suspend");
+    } else if (strcmp(label, "Game Mode...") == 0) {
+        // Switch to Steam Big Picture via gamescope.
+        // game-mode.sh kills all CopiCatOS shell components (not cc-wm),
+        // launches gamescope+steam, then restores the desktop on exit.
+        // We fork + setsid so the script is fully detached — cc-menubar
+        // will be killed by the script moments later without crashing here.
+        if (fork() == 0) {
+            setsid();
+            // Look for the script next to the binary, then fall back to PATH.
+            // execlp searches PATH automatically if the name has no slash.
+            execlp("cc-game-mode", "cc-game-mode", NULL);
+            // Fallback: try the scripts directory relative to $HOME
+            const char *home = getenv("HOME");
+            if (home) {
+                char path[512];
+                snprintf(path, sizeof(path),
+                         "%s/CopiCatOS/scripts/game-mode.sh", home);
+                execl(path, "game-mode.sh", NULL);
+            }
+            _exit(1);
+        }
+    } else if (strncmp(label, "Restart", 7) == 0) {
+        // Reboot the system
+        // TODO: Show confirmation dialog first
+        system("systemctl reboot");
+    } else if (strncmp(label, "Shut Down", 9) == 0) {
+        // Power off the system
+        // TODO: Show confirmation dialog first
+        system("systemctl poweroff");
+    } else if (strncmp(label, "Log Out", 7) == 0) {
+        // Log out by killing the window manager, which triggers
+        // cc-session.sh's cleanup (kills all shell components).
+        // This is how Snow Leopard does it — the WM exit triggers
+        // the loginwindow to reappear.
+        pid_t wm_pid = 0;
+        FILE *proc = popen("pgrep -x cc-wm", "r");
+        if (proc) {
+            char buf[32];
+            if (fgets(buf, sizeof(buf), proc)) {
+                wm_pid = (pid_t)atoi(buf);
+            }
+            pclose(proc);
+        }
+        if (wm_pid > 0) {
+            kill(wm_pid, SIGTERM);
+        }
+    }
+}
+
+// ── Event handling ─────────────────────────────────────────────────
+// Handles hover highlighting and click-to-execute inside the Apple
+// menu popup. Called from the menubar event loop when events are
+// routed to the Apple popup window.
+
+void apple_handle_motion(MenuBar *mb, int motion_y)
+{
+    int item = apple_y_to_item(motion_y);
+    // Don't highlight disabled items or separators
+    if (item >= 0 && is_disabled(item)) item = -1;
+
+    if (item != apple_hover) {
+        apple_hover = item;
+        // Repaint the dropdown with updated highlight
+        if (apple_popup != None) {
+            XWindowAttributes wa;
+            XGetWindowAttributes(mb->dpy, apple_popup, &wa);
+            paint_apple_dropdown(mb, wa.width, wa.height);
+        }
+    }
+}
+
+bool apple_handle_click(MenuBar *mb, int click_x, int click_y)
+{
+    (void)click_x;
+    int item = apple_y_to_item(click_y);
+
+    if (item >= 0 && !is_disabled(item)) {
+        // Execute the action, then dismiss
+        apple_execute(mb, item);
+        return true; // Should dismiss
+    }
+    return false; // Clicked on separator, disabled, or padding
+}
+
+bool apple_handle_event(MenuBar *mb, XEvent *ev, bool *should_dismiss)
+{
+    *should_dismiss = false;
+
+    if (apple_popup == None) return false;
+    if (ev->xany.window != apple_popup) return false;
+
+    switch (ev->type) {
+    case Expose:
+        if (ev->xexpose.count == 0) {
+            XWindowAttributes wa;
+            XGetWindowAttributes(mb->dpy, apple_popup, &wa);
+            paint_apple_dropdown(mb, wa.width, wa.height);
+        }
+        return true;
+
+    case MotionNotify:
+        apple_handle_motion(mb, ev->xmotion.y);
+        return true;
+
+    case LeaveNotify:
+        if (apple_hover != -1) {
+            apple_hover = -1;
+            XWindowAttributes wa;
+            XGetWindowAttributes(mb->dpy, apple_popup, &wa);
+            paint_apple_dropdown(mb, wa.width, wa.height);
+        }
+        return true;
+
+    case ButtonPress:
+        *should_dismiss = apple_handle_click(mb, ev->xbutton.x, ev->xbutton.y);
+        return true;
+    }
+
+    return false;
 }
 
 void apple_cleanup(void)

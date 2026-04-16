@@ -15,6 +15,8 @@
 #include "paneview.h"
 #include "panes/stub.h"
 #include "panes/dock.h"
+#include "panes/controller.h"
+#include "panes/power.h"
 
 #include <string.h>
 
@@ -34,6 +36,12 @@ void paneview_paint(SysPrefsState *state)
         // Both Dock and Appearance settings are in the Dock pane
         // (dock size + menubar height are the core display controls)
         dock_pane_paint(state);
+    } else if (strcmp(id, "mouse") == 0) {
+        // Mouse pane shows controller/gamepad input settings
+        controller_pane_paint(state);
+    } else if (strcmp(id, "energy-saver") == 0) {
+        // Energy Saver pane shows power button timing settings
+        power_pane_paint(state);
     } else {
         // All other panes show the stub view
         stub_paint(state, state->current_pane);
@@ -53,6 +61,10 @@ bool paneview_handle_click(SysPrefsState *state, int x, int y)
 
     if (strcmp(id, "dock") == 0 || strcmp(id, "appearance") == 0) {
         return dock_pane_click(state, x, y);
+    } else if (strcmp(id, "mouse") == 0) {
+        return controller_pane_click(state, x, y);
+    } else if (strcmp(id, "energy-saver") == 0) {
+        return power_pane_click(state, x, y);
     }
 
     return false;
@@ -71,6 +83,10 @@ bool paneview_handle_motion(SysPrefsState *state, int x, int y)
 
     if (strcmp(id, "dock") == 0 || strcmp(id, "appearance") == 0) {
         return dock_pane_motion(state, x, y);
+    } else if (strcmp(id, "mouse") == 0) {
+        return controller_pane_motion(state, x, y);
+    } else if (strcmp(id, "energy-saver") == 0) {
+        return power_pane_motion(state, x, y);
     }
 
     return false;
@@ -89,5 +105,9 @@ void paneview_handle_release(SysPrefsState *state)
 
     if (strcmp(id, "dock") == 0 || strcmp(id, "appearance") == 0) {
         dock_pane_release(state);
+    } else if (strcmp(id, "mouse") == 0) {
+        controller_pane_release(state);
+    } else if (strcmp(id, "energy-saver") == 0) {
+        power_pane_release(state);
     }
 }

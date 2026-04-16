@@ -37,6 +37,17 @@
 #include "systray.h"
 #include "render.h"
 
+// ── Font scaling helper (mirrors the one in render.c) ──────────────
+// Builds a Pango font description string scaled to the current menubar size.
+static char *systray_scaled_font(const char *base_name, int base_size)
+{
+    static char buf[128];
+    int scaled_size = (int)(base_size * menubar_scale + 0.5);
+    if (scaled_size < base_size) scaled_size = base_size;
+    snprintf(buf, sizeof(buf), "%s %d", base_name, scaled_size);
+    return buf;
+}
+
 // ============================================================================
 //  Icon assets — loaded once from real Snow Leopard MenuExtras PNGs
 // ============================================================================
@@ -82,23 +93,30 @@ static cairo_surface_t *load_extra(const char *home, const char *name)
 // ============================================================================
 
 // Paint an icon surface at (x, y), vertically centered in the menubar.
-// Returns the icon width in pixels (for cursor advancement).
+// Icons are scaled proportionally with the menubar height using cairo
+// transforms so they stay crisp at any size. Returns the scaled icon
+// width in pixels (for cursor advancement).
 static int paint_icon(cairo_t *cr, cairo_surface_t *icon, double x)
 {
     if (!icon) return 0;
 
     int w = cairo_image_surface_get_width(icon);
     int h = cairo_image_surface_get_height(icon);
-    double y = (MENUBAR_HEIGHT - h) / 2.0;
+    // Scale the icon proportionally with the menubar
+    double icon_scale = menubar_scale;
+    double scaled_w = w * icon_scale;
+    double scaled_h = h * icon_scale;
+    double y = (MENUBAR_HEIGHT - scaled_h) / 2.0;
 
     cairo_save(cr);
-    cairo_rectangle(cr, x, y, w, h);
-    cairo_clip(cr);
-    cairo_set_source_surface(cr, icon, x, y);
+    cairo_translate(cr, x, y);
+    cairo_scale(cr, icon_scale, icon_scale);
+    cairo_set_source_surface(cr, icon, 0, 0);
+    cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BEST);
     cairo_paint(cr);
     cairo_restore(cr);
 
-    return w;
+    return (int)(scaled_w + 0.5);
 }
 
 // ============================================================================
@@ -219,17 +237,18 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
 {
     (void)mb;
 
-    // Paint right-to-left from the right edge with 8px margin
-    int cursor = right_edge - 8;
+    // Paint right-to-left from the right edge with scaled margin
+    int cursor = right_edge - S(8);
 
     // ── Spotlight icon (rightmost) ──────────────────────────────────
     if (spotlight_icon) {
         int w = cairo_image_surface_get_width(spotlight_icon);
         int h = cairo_image_surface_get_height(spotlight_icon);
-        cursor -= w;
-        // Spotlight TIF may be larger — scale to 14x14
-        double target = 14.0;
+        // Spotlight TIF may be larger — scale to S(14) x S(14)
+        double target = SF(14.0);
         double scale = target / (w > h ? w : h);
+        int scaled_w = (int)(w * scale + 0.5);
+        cursor -= scaled_w;
         double sx = cursor + (target - w * scale) / 2.0;
         double sy = (MENUBAR_HEIGHT - h * scale) / 2.0;
 
@@ -237,22 +256,23 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
         cairo_translate(cr, sx, sy);
         cairo_scale(cr, scale, scale);
         cairo_set_source_surface(cr, spotlight_icon, 0, 0);
+        cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BEST);
         cairo_paint(cr);
         cairo_restore(cr);
     } else {
         // Fallback: simple magnifying glass with Cairo
-        cursor -= 14;
-        double ix = cursor, iy = (MENUBAR_HEIGHT - 14) / 2.0;
+        cursor -= S(14);
+        double ix = cursor, iy = (MENUBAR_HEIGHT - SF(14.0)) / 2.0;
         cairo_set_source_rgb(cr, 0.29, 0.29, 0.29);
-        cairo_set_line_width(cr, 1.6);
-        cairo_arc(cr, ix + 5.5, iy + 5.5, 4.0, 0, 2 * M_PI);
+        cairo_set_line_width(cr, SF(1.6));
+        cairo_arc(cr, ix + SF(5.5), iy + SF(5.5), SF(4.0), 0, 2 * M_PI);
         cairo_stroke(cr);
-        cairo_move_to(cr, ix + 8.3, iy + 8.3);
-        cairo_line_to(cr, ix + 13.0, iy + 13.0);
+        cairo_move_to(cr, ix + SF(8.3), iy + SF(8.3));
+        cairo_line_to(cr, ix + SF(13.0), iy + SF(13.0));
         cairo_stroke(cr);
     }
 
-    cursor -= 12; // Gap
+    cursor -= S(12); // Gap
 
     // ── Clock ──────────────────────────────────────────────────────
     time_t now = time(NULL);
@@ -262,9 +282,12 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
 
     double clock_w = render_measure_text(clock_buf, false);
     cursor -= (int)clock_w;
-    render_text(cr, clock_buf, cursor, 3, false, 0.1, 0.1, 0.1);
+    // Vertically center the clock text in the menubar
+    int clock_y = (MENUBAR_HEIGHT - S(16)) / 2;
+    if (clock_y < S(2)) clock_y = S(2);
+    render_text(cr, clock_buf, cursor, clock_y, false, 0.1, 0.1, 0.1);
 
-    cursor -= 12; // Gap
+    cursor -= S(12); // Gap
 
     // ── Battery (if present) ───────────────────────────────────────
     // Real SL shows battery icon + percentage text like "(100%)"
@@ -276,7 +299,7 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
         PangoLayout *layout = pango_cairo_create_layout(cr);
         pango_layout_set_text(layout, batt_buf, -1);
         PangoFontDescription *desc =
-            pango_font_description_from_string("Lucida Grande 11");
+            pango_font_description_from_string(systray_scaled_font("Lucida Grande", 11));
         pango_layout_set_font_description(layout, desc);
         pango_font_description_free(desc);
 
@@ -286,11 +309,14 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
 
         cursor -= batt_text_w;
         cairo_set_source_rgb(cr, 0.1, 0.1, 0.1);
-        cairo_move_to(cr, cursor, 4);
+        // Vertically center battery text
+        int batt_y = (MENUBAR_HEIGHT - S(16)) / 2;
+        if (batt_y < S(2)) batt_y = S(2);
+        cairo_move_to(cr, cursor, batt_y);
         pango_cairo_show_layout(cr, layout);
         g_object_unref(layout);
 
-        cursor -= 4; // Small gap between text and icon
+        cursor -= S(4); // Small gap between text and icon
 
         // Choose battery icon based on state
         cairo_surface_t *batt_icon = NULL;
@@ -303,12 +329,12 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
         }
 
         if (batt_icon) {
-            int bw = cairo_image_surface_get_width(batt_icon);
+            int bw = (int)(cairo_image_surface_get_width(batt_icon) * menubar_scale + 0.5);
             cursor -= bw;
             paint_icon(cr, batt_icon, cursor);
         }
 
-        cursor -= 12; // Gap
+        cursor -= S(12); // Gap
     }
 
     // ── Volume icon ────────────────────────────────────────────────
@@ -326,14 +352,14 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
         }
 
         if (vol_icon) {
-            int vw = cairo_image_surface_get_width(vol_icon);
+            int vw = (int)(cairo_image_surface_get_width(vol_icon) * menubar_scale + 0.5);
             cursor -= vw;
             paint_icon(cr, vol_icon, cursor);
         } else {
-            cursor -= 17; // Fallback width
+            cursor -= S(17); // Fallback width
         }
 
-        cursor -= 12; // Gap
+        cursor -= S(12); // Gap
     }
 
     // ── WiFi / AirPort icon ────────────────────────────────────────
@@ -341,14 +367,14 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
         // Full signal for now — dynamic detection later
         cairo_surface_t *wifi_icon = airport_icons[4];
         if (wifi_icon) {
-            int ww = cairo_image_surface_get_width(wifi_icon);
+            int ww = (int)(cairo_image_surface_get_width(wifi_icon) * menubar_scale + 0.5);
             cursor -= ww;
             paint_icon(cr, wifi_icon, cursor);
         } else {
-            cursor -= 22; // Fallback width
+            cursor -= S(22); // Fallback width
         }
 
-        cursor -= 12; // Gap
+        cursor -= S(12); // Gap
     }
 
     // ── Bluetooth icon ─────────────────────────────────────────────
@@ -356,14 +382,14 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
         // Idle state for now — dynamic detection later
         cairo_surface_t *bt_icon = bluetooth_icons[1];
         if (bt_icon) {
-            int bw = cairo_image_surface_get_width(bt_icon);
+            int bw = (int)(cairo_image_surface_get_width(bt_icon) * menubar_scale + 0.5);
             cursor -= bw;
             paint_icon(cr, bt_icon, cursor);
         } else {
-            cursor -= 14; // Fallback width
+            cursor -= S(14); // Fallback width
         }
 
-        cursor -= 10; // Final gap
+        cursor -= S(10); // Final gap
     }
 
     return right_edge - cursor;

@@ -42,6 +42,16 @@
 #include "appmenu.h"
 #include "render.h"
 
+// ── Font scaling helper (mirrors the one in render.c) ──────────────
+static char *appmenu_scaled_font(const char *base_name, int base_size)
+{
+    static char buf[128];
+    int scaled_size = (int)(base_size * menubar_scale + 0.5);
+    if (scaled_size < base_size) scaled_size = base_size;
+    snprintf(buf, sizeof(buf), "%s %d", base_name, scaled_size);
+    return buf;
+}
+
 // ── App name mapping ────────────────────────────────────────────────
 // Maps WM_CLASS strings to human-readable names. WM_CLASS is a
 // standardized X11 property that identifies which program owns a window.
@@ -385,9 +395,9 @@ static void dropdown_rounded_rect(cairo_t *cr, double x, double y,
 // Returns -1 if the y position is in padding or on a separator.
 static int y_to_item_index(int y)
 {
-    int cur_y = 4; // top padding
+    int cur_y = S(4); // top padding (scaled)
     for (int i = 0; i < dropdown_item_count; i++) {
-        int row_h = (strcmp(dropdown_items[i], "---") == 0) ? 7 : 22;
+        int row_h = (strcmp(dropdown_items[i], "---") == 0) ? S(7) : S(22);
         if (y >= cur_y && y < cur_y + row_h) {
             // Only return non-separator items as hoverable
             if (strcmp(dropdown_items[i], "---") == 0) return -1;
@@ -415,28 +425,29 @@ static void paint_dropdown(MenuBar *mb)
     // ── Clear background ────────────────────────────────────────
     // Fill with slightly transparent white to match Snow Leopard's
     // menu appearance (not fully opaque, slightly translucent).
+    // Corner radius scales proportionally with the menubar height.
     cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 245.0 / 255.0);
-    dropdown_rounded_rect(cr, 0, 0, dropdown_w, dropdown_h, 5.0);
+    dropdown_rounded_rect(cr, 0, 0, dropdown_w, dropdown_h, SF(5.0));
     cairo_fill(cr);
 
     // ── Border ──────────────────────────────────────────────────
     cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 60.0 / 255.0);
     cairo_set_line_width(cr, 1.0);
-    dropdown_rounded_rect(cr, 0.5, 0.5, dropdown_w - 1, dropdown_h - 1, 5.0);
+    dropdown_rounded_rect(cr, 0.5, 0.5, dropdown_w - 1, dropdown_h - 1, SF(5.0));
     cairo_stroke(cr);
 
-    // ── Draw each item ──────────────────────────────────────────
-    int y = 4; // Top padding inside the dropdown
+    // ── Draw each item (all dimensions scale proportionally) ────
+    int y = S(4); // Top padding inside the dropdown
 
     for (int i = 0; i < dropdown_item_count; i++) {
         if (strcmp(dropdown_items[i], "---") == 0) {
-            // Separator: a thin gray line with horizontal margins
+            // Separator: a thin gray line with scaled horizontal margins
             cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 40.0 / 255.0);
             cairo_set_line_width(cr, 1.0);
-            cairo_move_to(cr, 10, y + 3.5); // 3px vertical margin, 10px horizontal
-            cairo_line_to(cr, dropdown_w - 10, y + 3.5);
+            cairo_move_to(cr, S(10), y + SF(3.5));
+            cairo_line_to(cr, dropdown_w - S(10), y + SF(3.5));
             cairo_stroke(cr);
-            y += 7; // 3px margin + 1px line + 3px margin
+            y += S(7);
         } else {
             // ── Hover highlight ─────────────────────────────────
             // If this item is hovered, draw a blue rounded-rect background
@@ -446,16 +457,16 @@ static void paint_dropdown(MenuBar *mb)
                 // Snow Leopard uses a blue gradient for selected items.
                 // We use a solid blue that matches the top of that gradient.
                 cairo_set_source_rgb(cr, 56.0/255.0, 117.0/255.0, 215.0/255.0);
-                dropdown_rounded_rect(cr, 4, y, dropdown_w - 8, 22, 3.0);
+                dropdown_rounded_rect(cr, S(4), y, dropdown_w - S(8), S(22), SF(3.0));
                 cairo_fill(cr);
             }
 
-            // ── Item label (left side) ──────────────────────────
+            // ── Item label (left side) with scaled font ─────────
             PangoLayout *layout = pango_cairo_create_layout(cr);
             pango_layout_set_text(layout, dropdown_items[i], -1);
 
             PangoFontDescription *desc = pango_font_description_from_string(
-                "Lucida Grande 13"
+                appmenu_scaled_font("Lucida Grande", 13)
             );
             pango_layout_set_font_description(layout, desc);
             pango_font_description_free(desc);
@@ -466,18 +477,18 @@ static void paint_dropdown(MenuBar *mb)
             } else {
                 cairo_set_source_rgb(cr, 0.1, 0.1, 0.1);
             }
-            cairo_move_to(cr, 18, y + 2); // 18px left indent, 2px top padding
+            cairo_move_to(cr, S(18), y + S(2)); // Scaled left indent and top padding
             pango_cairo_show_layout(cr, layout);
             g_object_unref(layout);
 
-            // ── Keyboard shortcut (right side) ──────────────────
+            // ── Keyboard shortcut (right side) with scaled font ─
             // Draw the shortcut label right-aligned if one exists
             if (dropdown_shortcuts && dropdown_shortcuts[i]) {
                 PangoLayout *sc_layout = pango_cairo_create_layout(cr);
                 pango_layout_set_text(sc_layout, dropdown_shortcuts[i], -1);
 
                 PangoFontDescription *sc_desc = pango_font_description_from_string(
-                    "Lucida Grande 12"
+                    appmenu_scaled_font("Lucida Grande", 12)
                 );
                 pango_layout_set_font_description(sc_layout, sc_desc);
                 pango_font_description_free(sc_desc);
@@ -491,12 +502,12 @@ static void paint_dropdown(MenuBar *mb)
                 } else {
                     cairo_set_source_rgb(cr, 0.35, 0.35, 0.35);
                 }
-                cairo_move_to(cr, dropdown_w - sc_w - 14, y + 2);
+                cairo_move_to(cr, dropdown_w - sc_w - S(14), y + S(2));
                 pango_cairo_show_layout(cr, sc_layout);
                 g_object_unref(sc_layout);
             }
 
-            y += 22; // Each item row is 22px tall
+            y += S(22); // Each item row height scales proportionally
         }
     }
 
@@ -531,26 +542,26 @@ void appmenu_show_dropdown(MenuBar *mb, int menu_index, int x)
     dropdown_item_count = item_count;
     dropdown_hover     = -1;
 
-    // ── Calculate popup size ────────────────────────────────────
-    // Width: find the widest item + shortcut + padding. Minimum 200px.
-    int popup_w = 200;
+    // ── Calculate popup size (all dimensions scale proportionally) ──
+    // Width: find the widest item + shortcut + padding. Minimum S(200) px.
+    int popup_w = S(200);
     for (int i = 0; i < item_count; i++) {
         if (strcmp(items[i], "---") != 0) {
             double w = render_measure_text(items[i], false);
             // Account for shortcut width if present
             int shortcut_extra = 0;
             if (shortcuts && shortcuts[i]) {
-                shortcut_extra = (int)render_measure_text(shortcuts[i], false) + 30;
+                shortcut_extra = (int)render_measure_text(shortcuts[i], false) + S(30);
             }
-            int needed = (int)w + 40 + shortcut_extra;
+            int needed = (int)w + S(40) + shortcut_extra;
             if (needed > popup_w) popup_w = needed;
         }
     }
 
-    // Height: 22px per item, 7px per separator, plus top/bottom padding
-    int popup_h = 8; // 4px top + 4px bottom padding
+    // Height: S(22) per item, S(7) per separator, plus scaled top/bottom padding
+    int popup_h = S(8); // S(4) top + S(4) bottom padding
     for (int i = 0; i < item_count; i++) {
-        popup_h += (strcmp(items[i], "---") == 0) ? 7 : 22;
+        popup_h += (strcmp(items[i], "---") == 0) ? S(7) : S(22);
     }
 
     dropdown_w = popup_w;
