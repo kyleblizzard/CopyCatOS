@@ -5,6 +5,7 @@
 // _NET_CLIENT_LIST, _NET_ACTIVE_WINDOW, etc.
 
 #include "ewmh.h"
+#include "frame.h"
 #include "moonrock.h"
 #include <X11/Xcursor/Xcursor.h>
 #include <stdio.h>
