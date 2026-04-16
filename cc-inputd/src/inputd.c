@@ -598,6 +598,7 @@ int inputd_init(InputDaemon *daemon)
     // ------------------------------------------------------------------
     daemon->running        = true;
     daemon->reload_pending = 0;
+    daemon->was_game_mode  = false;
 
     fprintf(stderr, "inputd: initialization complete (%d devices found)\n",
             daemon->devices->device_count);
@@ -784,12 +785,14 @@ void inputd_run(InputDaemon *daemon)
                     continue;
                 }
 
-                // Gamepad events: right stick axes go to mouse emulator,
-                // everything else goes through the mapper
+                // Gamepad events: in desktop/login mode, right stick axes go to
+                // the mouse emulator for pointer control. In game mode, they
+                // fall through to the mapper so they get forwarded to the
+                // virtual gamepad for games to use as camera/aim input.
                 if (dev->is_gamepad) {
-                    // Right stick axes (ABS_RX, ABS_RY) feed the mouse emulator
                     if (ev.type == EV_ABS &&
-                        (ev.code == ABS_RX || ev.code == ABS_RY)) {
+                        (ev.code == ABS_RX || ev.code == ABS_RY) &&
+                        daemon->mapper->active_profile != PROFILE_GAME) {
                         mouse_update_axis(daemon->mouse, ev.code, ev.value);
                         continue;
                     }
@@ -827,6 +830,33 @@ void inputd_run(InputDaemon *daemon)
             } else {
                 fprintf(stderr, "inputd: config file not found, keeping current settings\n");
             }
+        }
+
+        // ── Game mode auto-switch ────────────────────────────────────
+        // game-mode.sh creates a marker file when entering game mode and
+        // removes it on exit. We poll for this file each loop iteration
+        // (~100ms via EPOLL_TIMEOUT_MS) and automatically switch between
+        // PROFILE_GAME and PROFILE_DESKTOP on transitions. This avoids
+        // needing the session bridge to be running during game mode.
+        {
+            bool in_game = game_mode_is_active();
+            if (in_game && !daemon->was_game_mode) {
+                // Transition: desktop → game mode
+                fprintf(stderr, "inputd: game mode activated, switching to PROFILE_GAME\n");
+                mapper_set_profile(daemon->mapper, PROFILE_GAME);
+
+                // Zero the mouse emulator's stored right-stick axes so the
+                // cursor doesn't drift at whatever velocity was held when
+                // game mode kicked in. The 120Hz mouse timer would keep
+                // moving the cursor using stale axis values otherwise.
+                mouse_update_axis(daemon->mouse, ABS_RX, 0);
+                mouse_update_axis(daemon->mouse, ABS_RY, 0);
+            } else if (!in_game && daemon->was_game_mode) {
+                // Transition: game mode → desktop
+                fprintf(stderr, "inputd: game mode deactivated, switching to PROFILE_DESKTOP\n");
+                mapper_set_profile(daemon->mapper, PROFILE_DESKTOP);
+            }
+            daemon->was_game_mode = in_game;
         }
     }
 

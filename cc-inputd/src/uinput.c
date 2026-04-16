@@ -363,13 +363,19 @@ static int create_virtual_gamepad(void) {
     }
 
     // --- Configure the device identity ---
+    // We masquerade as an Xbox 360 wired controller so that Steam, SDL,
+    // and other game input libraries recognize the device and apply the
+    // correct default button mappings. SDL computes a GUID from bustype +
+    // vendor + product, and Xbox 360 is in every built-in mapping database.
+    // Without this, our virtual gamepad shows up as "Unknown" and games
+    // get scrambled button assignments.
     struct uinput_setup setup;
     memset(&setup, 0, sizeof(setup));
-    snprintf(setup.name, UINPUT_MAX_NAME_SIZE, "CopyCatOS Virtual Gamepad");
-    setup.id.bustype = BUS_VIRTUAL;
-    setup.id.vendor  = 0x0000;
-    setup.id.product = 0x0003;
-    setup.id.version = 1;
+    snprintf(setup.name, UINPUT_MAX_NAME_SIZE, "Microsoft X-Box 360 pad");
+    setup.id.bustype = BUS_USB;       // Must be USB so SDL GUID matches real xpad
+    setup.id.vendor  = 0x045e;        // Microsoft
+    setup.id.product = 0x028e;        // Xbox 360 Controller
+    setup.id.version = 0x0110;
 
     if (ioctl(fd, UI_DEV_SETUP, &setup) < 0) goto fail;
     if (ioctl(fd, UI_DEV_CREATE, 0)     < 0) goto fail;

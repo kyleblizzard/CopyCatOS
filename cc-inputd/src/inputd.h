@@ -64,6 +64,11 @@ typedef struct InputDaemon {
                                    // loop checks this each iteration and
                                    // reloads config when it fires.
 
+    bool was_game_mode;            // Tracks whether game mode was active on
+                                   // the previous loop iteration. Used to
+                                   // detect transitions and auto-switch
+                                   // between PROFILE_GAME and PROFILE_DESKTOP.
+
     // --- Self-pipe trick ---
     // Signals are asynchronous — they can arrive at any point, even in the
     // middle of an epoll_wait(). The "self-pipe trick" converts a signal
