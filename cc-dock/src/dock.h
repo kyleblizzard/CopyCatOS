@@ -44,6 +44,13 @@
 #define MAX_DOCK_ITEMS      32      // Maximum number of items the dock can hold
 #define PROCESS_CHECK_INTERVAL 3.0  // Seconds between running-app checks
 
+// Auto-hide animation constants
+// The dock slides off the bottom of the screen when auto-hide is enabled.
+// These control how fast it slides and how long to wait before hiding.
+#define HIDE_ANIM_DURATION  0.25    // Seconds for slide-in or slide-out
+#define HIDE_DELAY          0.5     // Seconds to wait after mouse leaves before hiding
+#define HIDE_HOT_ZONE       2       // Pixels of dock to leave visible as the mouse trigger
+
 // ---------------------------------------------------------------------------
 // DockConfig — Runtime sizing values, computed from icon_size
 //
@@ -186,6 +193,28 @@ typedef struct {
 
     // Event loop control
     bool running_loop;            // Set to false to exit the main loop
+
+    // ---------------------------------------------------------------------------
+    // Auto-hide state
+    //
+    // When auto_hide is on, the dock rests just off the bottom of the screen with
+    // HIDE_HOT_ZONE pixels visible as a mouse trigger. When the mouse enters that
+    // strip the dock slides up. When the mouse leaves (after HIDE_DELAY seconds)
+    // it slides back down. This exactly mirrors Snow Leopard's dock auto-hide.
+    //
+    // hide_visible tracks the *logical* state (shown vs hidden) so we know which
+    // direction to animate even while a previous animation is still in progress.
+    // hide_anim_from_y / hide_anim_to_y hold the start and target win_y values
+    // for the current slide. hide_delay_timer is set to now() when the mouse
+    // leaves; we start hiding once now() - hide_delay_timer >= HIDE_DELAY.
+    // ---------------------------------------------------------------------------
+    bool   auto_hide;            // Is auto-hide mode enabled?
+    bool   hide_visible;         // True while dock is slid up (shown), false when hidden
+    bool   hide_animating;       // True while a slide animation is in progress
+    double hide_anim_start;      // Monotonic time when the current animation began
+    double hide_anim_from_y;     // win_y at the start of the current animation
+    double hide_anim_to_y;       // win_y target for the current animation
+    double hide_delay_timer;     // Time when mouse left the dock (0 if not counting down)
 
     // (Drag-and-drop state is managed by dnd.c using a local DndState variable)
 } DockState;

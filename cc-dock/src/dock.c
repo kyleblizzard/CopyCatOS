@@ -102,6 +102,9 @@ static Visual *find_argb_visual(Display *dpy, int screen)
 // Struts tell the window manager "don't put other windows here." This is
 // how panels, taskbars, and docks reserve space. We reserve SHELF_HEIGHT
 // pixels at the bottom of the screen so maximized windows don't overlap us.
+//
+// When auto-hide is enabled the dock is not always present at the bottom,
+// so we set all struts to zero — windows are allowed to use the full screen.
 // ---------------------------------------------------------------------------
 static void set_struts(DockState *state)
 {
@@ -110,9 +113,16 @@ static void set_struts(DockState *state)
     //  right_start_y, right_end_y, top_start_x, top_end_x,
     //  bottom_start_x, bottom_end_x]
     long struts[12] = {0};
-    struts[3] = SHELF_HEIGHT;         // bottom strut height
-    struts[10] = 0;                    // bottom strut starts at left edge
-    struts[11] = state->screen_w;      // bottom strut extends to right edge
+
+    if (!state->auto_hide) {
+        // Normal mode: reserve SHELF_HEIGHT pixels at the bottom so windows
+        // don't slide under the dock.
+        struts[3] = SHELF_HEIGHT;
+        struts[10] = 0;
+        struts[11] = state->screen_w;
+    }
+    // Auto-hide mode: leave all struts zero — the dock slides away so apps
+    // get the full screen and the dock pops up on demand.
 
     Atom strut_atom = XInternAtom(state->dpy, "_NET_WM_STRUT_PARTIAL", False);
     XChangeProperty(state->dpy, state->win, strut_atom, XA_CARDINAL, 32,
@@ -172,10 +182,11 @@ bool dock_init(DockState *state)
                                        state->visual, AllocNone);
 
     // --- Load sizing config from shared desktop.conf ---
-    // Reads [dock] icon_size from ~/.config/copycatos/desktop.conf.
-    // If the file doesn't exist, uses DEFAULT_ICON_SIZE (64).
+    // Reads [dock] section from ~/.config/copycatos/desktop.conf.
+    // If the file doesn't exist, uses defaults (64px icons, auto-hide off).
     {
         int icon_size = DEFAULT_ICON_SIZE;
+        bool auto_hide = false;
         const char *home = getenv("HOME");
         if (home) {
             char path[512];
@@ -186,22 +197,26 @@ bool dock_init(DockState *state)
                 char line[256];
                 bool in_dock = false;
                 while (fgets(line, sizeof(line), fp)) {
-                    // Strip whitespace
+                    // Strip leading whitespace
                     char *p = line;
                     while (*p == ' ' || *p == '\t') p++;
                     if (*p == '[') {
                         in_dock = (strncmp(p, "[dock]", 6) == 0);
                     } else if (in_dock && strncmp(p, "icon_size=", 10) == 0) {
                         icon_size = atoi(p + 10);
+                    } else if (in_dock && strncmp(p, "auto_hide=", 10) == 0) {
+                        // auto_hide=1 enables the slide-up-on-hover behavior
+                        auto_hide = atoi(p + 10) != 0;
                     }
                 }
                 fclose(fp);
             }
         }
         dock_config_from_icon_size(&state->cfg, icon_size);
-        fprintf(stderr, "[cc-dock] Config: icon_size=%d shelf=%d dock=%d spacing=%d\n",
+        state->auto_hide = auto_hide;
+        fprintf(stderr, "[cc-dock] Config: icon_size=%d shelf=%d dock=%d spacing=%d auto_hide=%d\n",
                 state->cfg.icon_size, state->cfg.shelf_height,
-                state->cfg.dock_height, state->cfg.icon_spacing);
+                state->cfg.dock_height, state->cfg.icon_spacing, (int)auto_hide);
     }
 
     // --- Load dock items from config file, or use defaults on first launch ---
@@ -215,7 +230,18 @@ bool dock_init(DockState *state)
     if (state->win_w > state->screen_w) state->win_w = state->screen_w;
     state->win_h = DOCK_HEIGHT;
     state->win_x = (state->screen_w - state->win_w) / 2;
-    state->win_y = state->screen_h - state->win_h;
+
+    if (state->auto_hide) {
+        // Start hidden: position the dock so only HIDE_HOT_ZONE pixels peek out
+        // at the bottom of the screen. The mouse entering this sliver triggers
+        // the slide-up animation.
+        state->win_y = state->screen_h - HIDE_HOT_ZONE;
+        state->hide_visible = false;
+    } else {
+        // Normal mode: dock sits at the bottom, fully visible.
+        state->win_y = state->screen_h - state->win_h;
+        state->hide_visible = true;  // Consider it "visible" even in non-hide mode
+    }
 
     // --- Create the dock window ---
     XSetWindowAttributes attrs;
@@ -562,6 +588,23 @@ void dock_run(DockState *state)
                 state->mouse_in_dock = true;
                 state->mouse_x = ev.xcrossing.x;
                 state->mouse_y = ev.xcrossing.y;
+
+                // Auto-hide: slide the dock up when the mouse enters the hot zone
+                if (state->auto_hide && !state->hide_visible) {
+                    // Cancel any pending hide delay (mouse came back before we hid)
+                    state->hide_delay_timer = 0;
+                    // Kick off the slide-up animation from wherever we currently are
+                    state->hide_anim_from_y = (double)state->win_y;
+                    state->hide_anim_to_y   = (double)(state->screen_h - state->win_h);
+                    state->hide_anim_start  = get_time();
+                    state->hide_animating   = true;
+                    state->hide_visible     = true;
+                    fprintf(stderr, "[cc-dock] auto-hide: sliding up\n");
+                } else if (state->auto_hide && state->hide_visible) {
+                    // Mouse re-entered while still shown — cancel any pending hide
+                    state->hide_delay_timer = 0;
+                }
+
                 magnify_update(state);
                 needs_repaint = true;
                 break;
@@ -569,6 +612,15 @@ void dock_run(DockState *state)
             case LeaveNotify:
                 // Mouse left the dock window — reset magnification and hide tooltip
                 state->mouse_in_dock = false;
+
+                // Auto-hide: start the hide delay countdown.
+                // We don't hide immediately — wait HIDE_DELAY seconds so the user
+                // can move their mouse back without the dock flickering away.
+                if (state->auto_hide && state->hide_visible && !state->hide_animating) {
+                    state->hide_delay_timer = get_time();
+                    fprintf(stderr, "[cc-dock] auto-hide: hide delay started\n");
+                }
+
                 magnify_update(state);
                 tooltip_hide(state);
 
@@ -670,6 +722,63 @@ void dock_run(DockState *state)
         // --- Timer-based tasks ---
         double now = get_time();
 
+        // --- Auto-hide: advance slide animation and handle hide delay ---
+        if (state->auto_hide) {
+
+            // Advance the slide animation if one is in progress.
+            // We interpolate win_y between hide_anim_from_y and hide_anim_to_y
+            // using a simple ease: ease-out (decelerate) when showing, ease-in
+            // (accelerate) when hiding. This matches the real Snow Leopard feel.
+            if (state->hide_animating) {
+                double t = (now - state->hide_anim_start) / HIDE_ANIM_DURATION;
+                if (t >= 1.0) {
+                    t = 1.0;
+                    state->hide_animating = false;
+                }
+
+                double ease;
+                if (state->hide_anim_to_y < state->hide_anim_from_y) {
+                    // Sliding up (showing) — ease-out: starts fast, decelerates
+                    ease = 1.0 - (1.0 - t) * (1.0 - t);
+                } else {
+                    // Sliding down (hiding) — ease-in: starts slow, accelerates
+                    ease = t * t;
+                }
+
+                int new_y = (int)(state->hide_anim_from_y
+                                  + (state->hide_anim_to_y - state->hide_anim_from_y) * ease);
+
+                // Only move the window if the position actually changed to
+                // avoid hammering XMoveWindow with no-op calls every frame.
+                if (new_y != state->win_y) {
+                    state->win_y = new_y;
+                    XMoveWindow(state->dpy, state->win, state->win_x, state->win_y);
+                }
+                needs_repaint = true;
+            }
+
+            // Check whether the hide delay has elapsed and it's time to hide.
+            // We only start hiding if:
+            //   - The dock is fully shown (hide_visible = true)
+            //   - The mouse is not in the dock
+            //   - The hide delay timer is running
+            //   - No animation is already in progress (we'd interrupt it otherwise)
+            if (state->hide_visible
+                    && !state->mouse_in_dock
+                    && state->hide_delay_timer > 0
+                    && !state->hide_animating
+                    && now - state->hide_delay_timer >= HIDE_DELAY) {
+                state->hide_delay_timer = 0;
+                // Kick off the slide-down animation back to the hot-zone position
+                state->hide_anim_from_y = (double)state->win_y;
+                state->hide_anim_to_y   = (double)(state->screen_h - HIDE_HOT_ZONE);
+                state->hide_anim_start  = now;
+                state->hide_animating   = true;
+                state->hide_visible     = false;
+                fprintf(stderr, "[cc-dock] auto-hide: sliding down\n");
+            }
+        }
+
         // Check running processes periodically
         if (now - state->last_process_check >= PROCESS_CHECK_INTERVAL) {
             launch_check_running(state->items, state->item_count);
@@ -722,8 +831,9 @@ void dock_run(DockState *state)
                 g_reload_config = false;
                 fprintf(stderr, "[cc-dock] Reloading config...\n");
 
-                // Re-read icon_size from desktop.conf
+                // Re-read [dock] section from desktop.conf
                 int icon_size = DEFAULT_ICON_SIZE;
+                bool auto_hide = false;
                 const char *home = getenv("HOME");
                 if (home) {
                     char path[512];
@@ -739,6 +849,8 @@ void dock_run(DockState *state)
                             if (*p == '[') in_dock = (strncmp(p, "[dock]", 6) == 0);
                             else if (in_dock && strncmp(p, "icon_size=", 10) == 0)
                                 icon_size = atoi(p + 10);
+                            else if (in_dock && strncmp(p, "auto_hide=", 10) == 0)
+                                auto_hide = atoi(p + 10) != 0;
                         }
                         fclose(fp);
                     }
@@ -746,6 +858,7 @@ void dock_run(DockState *state)
 
                 // Recompute all derived sizes
                 dock_config_from_icon_size(&state->cfg, icon_size);
+                state->auto_hide = auto_hide;
 
                 // Resize the dock window (clamp to screen width)
                 int new_w = dock_calculate_total_width(state) + 2 * SHELF_PADDING;
@@ -754,7 +867,21 @@ void dock_run(DockState *state)
                 state->win_w = new_w;
                 state->win_h = new_h;
                 state->win_x = (state->screen_w - new_w) / 2;
-                state->win_y = state->screen_h - new_h;
+
+                // Position depends on auto-hide setting.
+                // If auto_hide just got turned on, park the dock at the hot zone.
+                // If it got turned off, snap fully visible.
+                if (auto_hide) {
+                    state->win_y = state->screen_h - HIDE_HOT_ZONE;
+                    state->hide_visible   = false;
+                    state->hide_animating = false;
+                    state->hide_delay_timer = 0;
+                } else {
+                    state->win_y = state->screen_h - new_h;
+                    state->hide_visible   = true;
+                    state->hide_animating = false;
+                    state->hide_delay_timer = 0;
+                }
 
                 XMoveResizeWindow(state->dpy, state->win,
                                   state->win_x, state->win_y,
@@ -762,12 +889,12 @@ void dock_run(DockState *state)
                 cairo_xlib_surface_set_size(state->surface,
                                             state->win_w, state->win_h);
 
-                // Update struts for the new shelf height
+                // Update struts — auto-hide mode uses zero struts
                 set_struts(state);
 
-                fprintf(stderr, "[cc-dock] Resized: icon=%d shelf=%d dock=%d\n",
+                fprintf(stderr, "[cc-dock] Resized: icon=%d shelf=%d dock=%d auto_hide=%d\n",
                         state->cfg.icon_size, state->cfg.shelf_height,
-                        state->cfg.dock_height);
+                        state->cfg.dock_height, (int)auto_hide);
                 needs_repaint = true;
             }
         }
@@ -790,12 +917,13 @@ void dock_run(DockState *state)
         // periodic process check (every 3 seconds). The old 500ms timeout
         // caused ~2 repaints/sec even when idle, wasting CPU cycles.
         struct timeval tv;
-        if (state->any_bouncing || poof_is_active()) {
-            // ~60fps for smooth animation (bounce or poof)
+        if (state->any_bouncing || poof_is_active() || state->hide_animating) {
+            // ~60fps for smooth animation (bounce, poof, or auto-hide slide)
             tv.tv_sec = 0;
             tv.tv_usec = BOUNCE_FRAME_MS * 1000;
-        } else if (tooltip_is_visible() || _dnd.pending) {
-            // Responsive timer for tooltip hover delay and drag threshold
+        } else if (tooltip_is_visible() || _dnd.pending || state->hide_delay_timer > 0) {
+            // Responsive timer for tooltip hover delay, drag threshold,
+            // and auto-hide delay countdown
             tv.tv_sec = 0;
             tv.tv_usec = 100000;  // 100ms
         } else {
