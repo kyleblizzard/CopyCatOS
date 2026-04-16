@@ -1,0 +1,12 @@
+# Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
+# CopyCatOS Input Daemon — udev rules
+#
+# Gives the "input" group read/write access to /dev/uinput so cc-inputd
+# can create virtual input devices. Without this rule, only root can
+# open /dev/uinput.
+#
+# Install: sudo cp 99-cc-inputd.rules /usr/lib/udev/rules.d/
+# Reload:  sudo udevadm control --reload-rules && sudo udevadm trigger
+
+# Allow input group to create virtual devices via /dev/uinput
+KERNEL=="uinput", GROUP="input", MODE="0660"

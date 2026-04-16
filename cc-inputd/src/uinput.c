@@ -36,20 +36,7 @@
 // EV_REL, EV_ABS), key codes (KEY_A, BTN_LEFT), and axis codes (ABS_X).
 #include <linux/input.h>
 
-#include "inputd.h"
-
-// --------------------------------------------------------------------------
-// VirtualDevices — Holds the uinput file descriptors for our virtual devices
-// --------------------------------------------------------------------------
-// This struct is forward-declared in inputd.h and fully defined here.
-// Each fd corresponds to one virtual device created via /dev/uinput.
-// A value of -1 means that device was not created (or creation failed).
-// --------------------------------------------------------------------------
-struct VirtualDevices {
-    int mouse_fd;      // Virtual mouse — emits REL_X, REL_Y, buttons
-    int keyboard_fd;   // Virtual keyboard — emits key press/release events
-    int gamepad_fd;    // Virtual gamepad — passes through controller events
-};
+#include "uinput.h"
 
 // --------------------------------------------------------------------------
 // emit_event — Write a single input event to a uinput device
@@ -403,7 +390,7 @@ fail:
 //
 // Returns true if at least the mouse and keyboard were created.
 // --------------------------------------------------------------------------
-bool uinput_init(VirtualDevices *vdev) {
+int uinput_init(VirtualDevices *vdev) {
     // Initialize all fds to -1 (invalid) so we know which ones to
     // skip during shutdown if creation fails partway through.
     vdev->mouse_fd    = -1;
@@ -422,7 +409,7 @@ bool uinput_init(VirtualDevices *vdev) {
                 "virtual devices (mouse=%d, keyboard=%d)\n",
                 vdev->mouse_fd, vdev->keyboard_fd);
         uinput_shutdown(vdev);
-        return false;
+        return -1;
     }
 
     if (vdev->gamepad_fd < 0) {
@@ -431,7 +418,7 @@ bool uinput_init(VirtualDevices *vdev) {
     }
 
     fprintf(stderr, "[cc-inputd] virtual devices ready\n");
-    return true;
+    return 0;
 }
 
 // --------------------------------------------------------------------------
@@ -504,7 +491,7 @@ void uinput_key(VirtualDevices *vdev, int keycode, int value) {
 //   vdev — the virtual devices struct
 //   ev   — pointer to the raw input_event from the physical controller
 // --------------------------------------------------------------------------
-void uinput_gamepad_forward(VirtualDevices *vdev, struct input_event *ev) {
+void uinput_gamepad_forward(VirtualDevices *vdev, const struct input_event *ev) {
     if (vdev->gamepad_fd < 0 || !ev) return;
 
     // Write the event directly to the virtual gamepad

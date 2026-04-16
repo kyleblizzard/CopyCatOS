@@ -25,6 +25,7 @@
 #ifndef MAPPER_H
 #define MAPPER_H
 
+#include <stdbool.h>
 #include <linux/input.h>
 
 // Forward declarations — these structs are defined in their own headers

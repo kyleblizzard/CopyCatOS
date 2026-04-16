@@ -780,7 +780,7 @@ void inputd_run(InputDaemon *daemon)
                 // Power button events go to the power handler
                 if (dev->is_power_button && ev.type == EV_KEY &&
                     ev.code == KEY_POWER) {
-                    PowerAction action = power_handle(daemon->power, &ev);
+                    PowerAction action = power_handle(daemon->power, ev.value);
                     execute_power_action(daemon, action);
                     continue;
                 }

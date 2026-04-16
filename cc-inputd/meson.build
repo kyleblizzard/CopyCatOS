@@ -52,8 +52,14 @@ dep_math = meson.get_compiler('c').find_library('m', required : true)
 # --------------------------------------------------------------------------
 sources = files(
     'src/main.c',
+    'src/inputd.c',
     'src/device.c',
     'src/uinput.c',
+    'src/mapper.c',
+    'src/mouse.c',
+    'src/power.c',
+    'src/config.c',
+    'src/ipc.c',
 )
 
 # --------------------------------------------------------------------------
