@@ -1882,6 +1882,12 @@ void mr_composite(CCWM *wm)
             if (window_pass == 2 && mr.shaders.blur_h && mr.shaders.blur_v) {
                 ThemeDefinition *theme = plugin_get_theme();
                 float blur_radius = theme ? theme->blur_behind_radius : 0.0f;
+                // Only blur narrow panel windows (menubar ~46px).
+                // The dock window is ~160px tall — its glass shelf look comes
+                // from the scurve-xl-opaque.png texture, not blur-behind.
+                // Blurring the whole dock rectangle creates a dark haze over
+                // the transparent icon area above the shelf.
+                if (blur_radius > 0.0f && wt->h > 80) blur_radius = 0.0f;
                 if (blur_radius > 0.0f) {
                     // Capture the framebuffer region behind this panel.
                     // glCopyTexImage2D reads from the current read buffer
