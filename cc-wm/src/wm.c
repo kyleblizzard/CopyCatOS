@@ -179,8 +179,9 @@ void wm_intern_atoms(CCWM *wm)
     wm->atom_net_wm_strut        = XInternAtom(d, "_NET_WM_STRUT", False);
     wm->atom_net_wm_strut_partial = XInternAtom(d, "_NET_WM_STRUT_PARTIAL", False);
     wm->atom_net_wm_ping         = XInternAtom(d, "_NET_WM_PING", False);
-    wm->atom_wm_change_state     = XInternAtom(d, "WM_CHANGE_STATE", False);
-    wm->atom_utf8_string         = XInternAtom(d, "UTF8_STRING", False);
+    wm->atom_wm_change_state          = XInternAtom(d, "WM_CHANGE_STATE", False);
+    wm->atom_utf8_string              = XInternAtom(d, "UTF8_STRING", False);
+    wm->atom_cc_dock_icon_positions   = XInternAtom(d, "_CC_DOCK_ICON_POSITIONS", False);
 }
 
 Client *wm_find_client(CCWM *wm, Window w)

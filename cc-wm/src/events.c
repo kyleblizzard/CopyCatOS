@@ -11,6 +11,8 @@
 #include "resize.h"
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>   // strcasecmp
+#include <stdlib.h>    // free
 #include <time.h>
 
 // Forward declarations for event handlers
@@ -236,6 +238,107 @@ static void on_configure_request(CCWM *wm, XEvent *e)
     }
 }
 
+// ── Dock icon position lookup ──
+//
+// Reads _CC_DOCK_ICON_POSITIONS from the root window (published by cc-dock
+// after every paint) and returns the screen-absolute center of the dock icon
+// whose process_name or exec_base matches the client's WM_CLASS.
+//
+// The property format (set by dock_publish_icon_positions in dock.c) is
+// newline-separated entries: "process_name:exec_base:x:y\n"
+//
+// Matching strategy:
+//   1. Try exact case-insensitive match: wm_class == process_name
+//   2. Try exact case-insensitive match: wm_class == exec_base
+//   3. Try substring: process_name or exec_base starts with wm_class, or vice versa
+// This handles variations like "firefox-bin" matching "Firefox".
+//
+// On no match, or if the property doesn't exist (dock not running), falls
+// back to center-of-screen at the dock's estimated Y so the genie still
+// plays — it just aims at the middle of the dock rather than a specific icon.
+static void get_dock_icon_pos(CCWM *wm, Client *c, int *out_x, int *out_y)
+{
+    // Sensible fallback: horizontal center of screen, near dock bottom.
+    *out_x = wm->root_w / 2;
+    *out_y = wm->root_h - 48;
+
+    Atom actual_type;
+    int  actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *data = NULL;
+
+    int rc = XGetWindowProperty(
+        wm->dpy, wm->root,
+        wm->atom_cc_dock_icon_positions,
+        0,           // Offset (0 = start from beginning)
+        4096 / 4,    // Max length in 32-bit units (4096 bytes / 4 = 1024 longs)
+        False,       // Don't delete after read
+        XA_STRING,   // Expected type
+        &actual_type, &actual_format, &nitems, &bytes_after,
+        &data);
+
+    if (rc != Success || !data || nitems == 0) {
+        if (data) XFree(data);
+        return; // Dock not running or property not set — use fallback
+    }
+
+    // Parse each newline-separated entry.
+    // We operate on a NUL-terminated copy so strtok is safe.
+    char *text = strndup((char *)data, nitems);
+    XFree(data);
+    if (!text) return;
+
+    char *line = strtok(text, "\n");
+    while (line) {
+        // Each line: "process_name:exec_base:x:y"
+        char proc[128], exec_base[256];
+        int  ix, iy;
+
+        if (sscanf(line, "%127[^:]:%255[^:]:%d:%d",
+                   proc, exec_base, &ix, &iy) == 4) {
+
+            // Try to match against the client's instance name (wm_class)
+            // and class name (wm_class_name). We try exact match first, then
+            // a "starts-with" match for names like "firefox-esr" vs "Firefox".
+            const char *candidates[2] = { c->wm_class, c->wm_class_name };
+
+            for (int ci = 0; ci < 2; ci++) {
+                const char *cand = candidates[ci];
+                if (!cand[0]) continue;
+
+                // Check against both process_name and exec_base
+                const char *keys[2] = { proc, exec_base };
+                for (int ki = 0; ki < 2; ki++) {
+                    const char *key = keys[ki];
+                    if (!key[0]) continue;
+
+                    // Exact match (case-insensitive)
+                    if (strcasecmp(cand, key) == 0) {
+                        *out_x = ix;
+                        *out_y = iy;
+                        free(text);
+                        return;
+                    }
+
+                    // Prefix match — handles "firefox" matching "firefox-bin"
+                    size_t clen = strlen(cand);
+                    size_t klen = strlen(key);
+                    size_t minlen = clen < klen ? clen : klen;
+                    if (strncasecmp(cand, key, minlen) == 0) {
+                        *out_x = ix;
+                        *out_y = iy;
+                        // Don't return immediately — keep looking for exact match
+                    }
+                }
+            }
+        }
+
+        line = strtok(NULL, "\n");
+    }
+
+    free(text);
+}
+
 // ── Traffic light button hit testing ──
 // Returns which button (1=close, 2=minimize, 3=zoom) the point (fx,fy)
 // falls within, or 0 if it's not on any button. The coordinates are
@@ -367,11 +470,11 @@ static void on_button_release(CCWM *wm, XEvent *e)
                 break;
             case 2: // Minimize
                 if (mr_is_active()) {
-                    // Start the genie minimize animation. The completion callback
-                    // (on_genie_minimize_done in moonrock.c) will unmap the frame
-                    // and call ewmh_update_client_list once the animation finishes.
-                    int dock_x = wm->root_w / 2;
-                    int dock_y = wm->root_h - 48;
+                    // Look up where this window's dock icon is so the genie
+                    // animation pours toward the real icon, not a hardcoded
+                    // center-of-screen fallback.
+                    int dock_x, dock_y;
+                    get_dock_icon_pos(wm, c, &dock_x, &dock_y);
                     mr_animate_minimize(wm, c, dock_x, dock_y);
                 } else {
                     // No compositor — hide immediately with no animation.
@@ -523,8 +626,8 @@ static void on_client_message(CCWM *wm, XEvent *e)
                 if (mr_is_active()) {
                     // Use the genie animation — same path as clicking the
                     // yellow minimize button in the title bar.
-                    int dock_x = wm->root_w / 2;
-                    int dock_y = wm->root_h - 48;
+                    int dock_x, dock_y;
+                    get_dock_icon_pos(wm, c, &dock_x, &dock_y);
                     mr_animate_minimize(wm, c, dock_x, dock_y);
                 } else {
                     // No compositor — hide immediately with no animation.

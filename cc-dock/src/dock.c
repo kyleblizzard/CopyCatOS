@@ -365,6 +365,68 @@ int dock_hit_test(DockState *state, int mx, int my)
     return -1;
 }
 
+// Publish all icon screen positions on the root window as the X property
+// _CC_DOCK_ICON_POSITIONS. cc-wm reads this when minimizing a window so
+// the genie animation can aim at the real dock icon instead of a hardcoded
+// center-of-screen fallback.
+//
+// Format: newline-separated entries, each "process_name:exec_base:x:y\n"
+//   process_name — the process_name field from the dock config (e.g. "konsole")
+//   exec_base    — basename of exec_path (e.g. "konsole" from "/usr/bin/konsole")
+//   x, y         — screen-absolute center of the icon (integer pixels)
+//
+// cc-wm tries to match the window's WM_CLASS instance name against both
+// process_name and exec_base (case-insensitive). First match wins.
+// If no match is found, cc-wm falls back to the center of the dock.
+static void dock_publish_icon_positions(DockState *state)
+{
+    // Build the property string into a stack buffer. With MAX_DOCK_ITEMS=32
+    // and ~60 chars per entry, 32*60 = 1920 bytes — well within 4096.
+    char buf[4096];
+    int  pos = 0;
+
+    // Compute the constant Y: center of the icon, in screen-absolute coords.
+    // Icon vertical center = dock_window_top + (win_h - icon_bottom_offset - icon_size/2)
+    int icon_center_y = state->win_y + state->win_h
+                        - state->cfg.icon_bottom_offset
+                        - state->cfg.icon_size / 2;
+
+    for (int i = 0; i < state->item_count; i++) {
+        DockItem *item = &state->items[i];
+
+        // Spacers have no app identity — skip them.
+        if (item->is_spacer) continue;
+
+        // Screen-absolute X center of this icon.
+        int icon_center_x = (int)(state->win_x + dock_get_icon_center_x(state, i));
+
+        // Get the basename of exec_path (the bit after the last '/').
+        const char *exec_base = strrchr(item->exec_path, '/');
+        exec_base = exec_base ? exec_base + 1 : item->exec_path;
+
+        // Append: "process_name:exec_base:x:y\n"
+        int written = snprintf(buf + pos, sizeof(buf) - pos,
+                               "%s:%s:%d:%d\n",
+                               item->process_name, exec_base,
+                               icon_center_x, icon_center_y);
+        if (written < 0 || pos + written >= (int)sizeof(buf)) break;
+        pos += written;
+    }
+
+    // Publish on root window. XChangeProperty replaces any previous value.
+    // This is safe to call from the paint loop — XChangeProperty is O(n)
+    // for the string length (a few KB), which is negligible at 60fps.
+    static Atom prop = None;
+    if (prop == None)
+        prop = XInternAtom(state->dpy, "_CC_DOCK_ICON_POSITIONS", False);
+
+    XChangeProperty(state->dpy, state->root, prop, XA_STRING,
+                    8,               // 8-bit format (byte array / string)
+                    PropModeReplace,
+                    (unsigned char *)buf,
+                    pos);            // Length in bytes (no trailing NUL needed)
+}
+
 void dock_paint(DockState *state)
 {
     // --- Double-buffering: paint to an off-screen image first ---
@@ -507,6 +569,12 @@ void dock_paint(DockState *state)
     // Flush the Cairo surface so X11 sees the updated pixels
     cairo_surface_flush(state->surface);
     XFlush(state->dpy);
+
+    // Publish current icon positions so cc-wm can aim the genie animation
+    // at the real icon center rather than a hardcoded screen-center fallback.
+    // Called after every paint so the property always reflects the current
+    // layout (icon order, dock position, auto-hide slide offset).
+    dock_publish_icon_positions(state);
 }
 
 // Module-level drag-and-drop state (used across event handlers)
