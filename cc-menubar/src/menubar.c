@@ -133,6 +133,8 @@ bool menubar_init(MenuBar *mb)
 
     // ── Intern atoms ────────────────────────────────────────────
     mb->atom_net_active_window       = XInternAtom(mb->dpy, "_NET_ACTIVE_WINDOW", False);
+    mb->atom_net_close_window        = XInternAtom(mb->dpy, "_NET_CLOSE_WINDOW", False);
+    mb->atom_wm_change_state         = XInternAtom(mb->dpy, "WM_CHANGE_STATE",  False);
     mb->atom_net_wm_window_type      = XInternAtom(mb->dpy, "_NET_WM_WINDOW_TYPE", False);
     mb->atom_net_wm_window_type_dock = XInternAtom(mb->dpy, "_NET_WM_WINDOW_TYPE_DOCK", False);
     mb->atom_net_wm_strut            = XInternAtom(mb->dpy, "_NET_WM_STRUT", False);

@@ -102,6 +102,7 @@ struct CCWM {
     Atom atom_net_wm_strut;
     Atom atom_net_wm_strut_partial;
     Atom atom_net_wm_ping;       // _NET_WM_PING for responsiveness detection
+    Atom atom_wm_change_state;   // WM_CHANGE_STATE — minimize request from apps/menubar
     Atom atom_utf8_string;
 
     // Beach ball cursor — loaded from SnowLeopard theme, set on

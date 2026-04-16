@@ -499,15 +499,42 @@ static void on_client_message(CCWM *wm, XEvent *e)
     }
 
     if (cm->message_type == wm->atom_net_active_window) {
-        // Request to activate a window
+        // Request to activate a window — restore it if minimized and focus it
         Client *c = wm_find_client(wm, cm->window);
         if (c) {
             if (c->frame) XMapWindow(wm->dpy, c->frame);
-            c->mapped = true;
+            c->mapped     = true;
+            c->minimized  = false;   // Clear minimized state on restore
             wm_focus_client(wm, c);
         }
     } else if (cm->message_type == wm->atom_net_close_window) {
         ewmh_send_delete(wm, cm->window);
+    } else if (cm->message_type == wm->atom_wm_change_state) {
+        // ICCCM WM_CHANGE_STATE: apps or shell components request an iconic
+        // (minimized) state transition. IconicState = 3.
+        // This is how cc-menubar's "Window > Minimize" fires the genie effect.
+        if (cm->data.l[0] == IconicState) {
+            Client *c = wm_find_client(wm, cm->window);
+            if (!c) {
+                // Try finding by frame too (some senders use the frame XID)
+                c = wm_find_client_by_frame(wm, cm->window);
+            }
+            if (c && c->mapped && !c->minimized) {
+                if (mr_is_active()) {
+                    // Use the genie animation — same path as clicking the
+                    // yellow minimize button in the title bar.
+                    int dock_x = wm->root_w / 2;
+                    int dock_y = wm->root_h - 48;
+                    mr_animate_minimize(wm, c, dock_x, dock_y);
+                } else {
+                    // No compositor — hide immediately with no animation.
+                    XUnmapWindow(wm->dpy, c->frame);
+                    c->mapped    = false;
+                    c->minimized = true;
+                    ewmh_update_client_list(wm);
+                }
+            }
+        }
     }
 }
 

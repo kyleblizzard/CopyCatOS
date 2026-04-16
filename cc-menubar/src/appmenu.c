@@ -72,7 +72,36 @@ static const struct {
     {"kdenlive",         "Kdenlive"},
     {"strawberry",       "Strawberry"},
     {"systemsettings",   "System Preferences"},
-    {"cc-desktop",     "Finder"},
+    {"cc-desktop",       "Finder"},
+
+    // KDE apps — appear as their KDE identities
+    {"ark",               "Archive Utility"},
+    {"spectacle",         "Screenshot"},
+    {"okular",            "Preview"},
+    {"gwenview",          "Preview"},
+    {"kolourpaint",       "Paintbrush"},
+    {"kcolorchooser",     "Digital Color Meter"},
+    {"kwrite",            "TextEdit"},
+    {"gedit",             "TextEdit"},
+    {"mousepad",          "TextEdit"},
+    {"featherpad",        "TextEdit"},
+    {"libreoffice",       "Pages"},
+    {"soffice",           "Pages"},
+    {"vlc",               "QuickTime Player"},
+    {"mpv",               "QuickTime Player"},
+    {"totem",             "QuickTime Player"},
+    {"audacity",          "GarageBand"},
+    {"obs",               "QuickTime Player"},
+    {"signal",            "Messages"},
+    {"thunderbird",       "Mail"},
+    {"evolution",         "Mail"},
+    {"nm-connection-editor", "Network Preferences"},
+    {"cc-sysprefs",       "System Preferences"},
+    {"cc-spotlight",      "Spotlight"},
+    {"steam",             "Steam"},
+    {"lutris",            "Lutris"},
+    {"heroic",            "Game Center"},
+
     {NULL,               NULL}
 };
 
@@ -91,6 +120,10 @@ static const int   terminal_menu_count = 5;
 
 static const char *browser_menus[] = {"File", "Edit", "View", "History", "Bookmarks", "Window", "Help"};
 static const int   browser_menu_count = 7;
+
+// System Preferences menu titles
+static const char *sysprefs_menus[] = {"File", "Edit", "View", "Window", "Help"};
+static const int   sysprefs_menu_count = 5;
 
 // ── Dropdown menu item definitions ──────────────────────────────────
 // A menu item is either a regular item (with a label) or a separator
@@ -142,6 +175,15 @@ static const char *window_items[] = {
 };
 static const int window_item_count = 4;
 
+// Keyboard shortcut labels for Window menu items.
+// ⌘M = minimize. Zoom has no keyboard shortcut in Snow Leopard.
+static const char *window_shortcuts[] = {
+    "\xe2\x8c\x98M",   // ⌘M — Minimize
+    NULL,               // Zoom (no keyboard shortcut in SL)
+    NULL,               // --- separator
+    NULL                // Bring All to Front
+};
+
 // Help menu items
 static const char *help_items[] = {
     "Search", "---", "CopyCatOS Help"
@@ -153,6 +195,15 @@ static const char *shell_items[] = {
     "New Window", "New Tab", "---", "Close Window", "Close Tab"
 };
 static const int shell_item_count = 5;
+
+// Keyboard shortcut labels for Shell menu items.
+static const char *shell_shortcuts[] = {
+    "\xe2\x8c\x98N",                           // ⌘N — New Window
+    "\xe2\x8c\x98T",                           // ⌘T — New Tab
+    NULL,                                       // --- separator
+    "\xe2\x8c\x98W",                           // ⌘W — Close Window
+    "\xe2\x8c\xa5\xe2\x8c\x98W"               // ⌥⌘W — Close Tab (Option+Cmd+W)
+};
 
 // History menu items for browsers
 static const char *history_items[] = {
@@ -319,6 +370,10 @@ void appmenu_get_menus(const char *app_class, const char ***menus, int *count)
                strcasecmp(app_class, "firefox") == 0) {
         *menus = browser_menus;
         *count = browser_menu_count;
+    } else if (strcasecmp(app_class, "cc-sysprefs") == 0 ||
+               strcasecmp(app_class, "systemsettings") == 0) {
+        *menus = sysprefs_menus;
+        *count = sysprefs_menu_count;
     } else {
         *menus = default_menus;
         *count = default_menu_count;
@@ -364,10 +419,12 @@ static void get_dropdown_items(const char *app_class, int menu_index,
         *items = go_items; *count = go_item_count;
     } else if (strcmp(title, "Window") == 0) {
         *items = window_items; *count = window_item_count;
+        *shortcuts = window_shortcuts;
     } else if (strcmp(title, "Help") == 0) {
         *items = help_items; *count = help_item_count;
     } else if (strcmp(title, "Shell") == 0) {
         *items = shell_items; *count = shell_item_count;
+        *shortcuts = shell_shortcuts;
     } else if (strcmp(title, "History") == 0) {
         *items = history_items; *count = history_item_count;
     } else if (strcmp(title, "Bookmarks") == 0) {
@@ -593,6 +650,105 @@ void appmenu_show_dropdown(MenuBar *mb, int menu_index, int x)
 
 }
 
+// Get the currently active (focused) client window XID from _NET_ACTIVE_WINDOW.
+// Returns None if no window is focused. Used when menu items need to target
+// the active window (e.g., Minimize, Close Window).
+static Window get_active_window(MenuBar *mb)
+{
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *data = NULL;
+
+    int status = XGetWindowProperty(
+        mb->dpy, mb->root,
+        mb->atom_net_active_window,
+        0, 1, False, XA_WINDOW,
+        &actual_type, &actual_format,
+        &nitems, &bytes_after, &data
+    );
+
+    if (status != Success || nitems == 0 || !data) {
+        if (data) XFree(data);
+        return None;
+    }
+
+    Window w = *(Window *)data;
+    XFree(data);
+    return w;
+}
+
+// Dispatch a menu item action when the user clicks a dropdown item.
+// 'item_label' is the text of the clicked item (e.g., "Minimize", "Close Window").
+// Most actions send ClientMessage events to the WM via the root window.
+static void dispatch_menu_action(MenuBar *mb, const char *item_label)
+{
+    if (!item_label || strcmp(item_label, "---") == 0) return;
+
+    // Get the currently focused window — most actions target it.
+    Window active = get_active_window(mb);
+
+    // ── Window menu actions ──────────────────────────────────────
+    if (strcmp(item_label, "Minimize") == 0) {
+        // Send WM_CHANGE_STATE with IconicState to ask the WM to minimize.
+        // The WM (cc-wm) handles this and triggers the genie animation.
+        // IconicState = 3 per ICCCM. This mirrors what clicking the yellow
+        // traffic light button does — the code path is identical in the WM.
+        if (active == None) return;
+        XEvent ev = {0};
+        ev.type                 = ClientMessage;
+        ev.xclient.window       = active;
+        ev.xclient.message_type = mb->atom_wm_change_state;
+        ev.xclient.format       = 32;
+        ev.xclient.data.l[0]    = 3; // IconicState
+        XSendEvent(mb->dpy, mb->root, False,
+                   SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+        XFlush(mb->dpy);
+
+    } else if (strcmp(item_label, "Close Window") == 0 ||
+               strcmp(item_label, "Close Tab") == 0) {
+        // Send _NET_CLOSE_WINDOW to ask the WM to close the active window.
+        // The WM sends WM_DELETE_WINDOW to the app so it can save and quit cleanly.
+        if (active == None) return;
+        XEvent ev = {0};
+        ev.type                 = ClientMessage;
+        ev.xclient.window       = active;
+        ev.xclient.message_type = mb->atom_net_close_window;
+        ev.xclient.format       = 32;
+        ev.xclient.data.l[0]    = 0; // timestamp (0 = use server time)
+        ev.xclient.data.l[1]    = 0; // source indication (0 = unknown)
+        XSendEvent(mb->dpy, mb->root, False,
+                   SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+        XFlush(mb->dpy);
+
+    } else if (strcmp(item_label, "Zoom") == 0) {
+        // Request a maximize toggle via _NET_ACTIVE_WINDOW ClientMessage.
+        // For now we re-activate the window to bring it front.
+        // TODO: wire to _NET_WM_STATE maximize when WM supports it.
+        if (active == None) return;
+        XEvent ev = {0};
+        ev.type                 = ClientMessage;
+        ev.xclient.window       = active;
+        ev.xclient.message_type = mb->atom_net_active_window;
+        ev.xclient.format       = 32;
+        ev.xclient.data.l[0]    = 2; // source: pager/tool
+        XSendEvent(mb->dpy, mb->root, False,
+                   SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+        XFlush(mb->dpy);
+
+    } else if (strcmp(item_label, "Bring All to Front") == 0) {
+        // Raise the active window to the top — simple implementation for now.
+        if (active == None) return;
+        XRaiseWindow(mb->dpy, active);
+        XFlush(mb->dpy);
+
+    }
+    // For all other menu items (File, Edit, Go, Help, etc.), we currently
+    // show the menu for informational purposes only. Full app integration
+    // would require IPC with each application, which is app-specific.
+    // The most impactful items (Minimize, Close) are handled above.
+}
+
 bool appmenu_handle_dropdown_event(MenuBar *mb, XEvent *ev, bool *should_dismiss)
 {
     *should_dismiss = false;
@@ -639,8 +795,12 @@ bool appmenu_handle_dropdown_event(MenuBar *mb, XEvent *ev, bool *should_dismiss
             return true;
 
         case ButtonPress:
-            // Click on a menu item — dismiss the dropdown.
-            // In the future, this could trigger the menu item's action.
+            // Click on a menu item. If the mouse is hovering over a real item
+            // (not a separator, not empty space), dispatch its action before
+            // dismissing the dropdown.
+            if (dropdown_hover >= 0 && dropdown_hover < dropdown_item_count) {
+                dispatch_menu_action(mb, dropdown_items[dropdown_hover]);
+            }
             *should_dismiss = true;
             return true;
 

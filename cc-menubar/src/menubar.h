@@ -77,6 +77,8 @@ typedef struct {
     // Atoms are unique identifiers for property names in X11. We look them
     // up once at init time and reuse them throughout the session.
     Atom atom_net_active_window;
+    Atom atom_net_close_window;   // Send to WM to close active window
+    Atom atom_wm_change_state;    // Send to WM to minimize active window (ICCCM)
     Atom atom_net_wm_window_type;
     Atom atom_net_wm_window_type_dock;
     Atom atom_net_wm_strut;
