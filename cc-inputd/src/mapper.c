@@ -9,7 +9,7 @@
 // This file implements the mapping engine that translates raw gamepad events
 // into desktop actions. It manages three profiles (LOGIN, DESKTOP, GAME)
 // each with their own set of rules. The DESKTOP profile is the primary one
-// with full mappings; LOGIN strips out CopiCatOS-specific actions for
+// with full mappings; LOGIN strips out CopyCatOS-specific actions for
 // security; GAME forwards everything unchanged.
 //
 // The mapping process works like this:
@@ -19,7 +19,7 @@
 //      - Inject a keyboard key via uinput
 //      - Inject a mouse button via uinput
 //      - Signal a mouse axis update (stick-to-pointer)
-//      - Return a CopiCatOS action code (Spotlight, Mission Control, etc.)
+//      - Return a CopyCatOS action code (Spotlight, Mission Control, etc.)
 //      - Forward the raw event to the virtual gamepad
 //
 
@@ -82,7 +82,7 @@ static const MappingRule *find_rule(const MappingProfile *profile,
 // --------------------------------------------------------------------------
 // Helper: Build the LOGIN profile from the DESKTOP profile
 // --------------------------------------------------------------------------
-// The LOGIN profile is a copy of DESKTOP with all ACTION_COPICATOS rules
+// The LOGIN profile is a copy of DESKTOP with all ACTION_COPYCATOS rules
 // replaced by ACTION_NONE. This prevents Spotlight, Mission Control, and
 // other shell features from being triggered on the login screen where
 // they don't make sense and could be a security concern.
@@ -95,12 +95,12 @@ static void build_login_from_desktop(Mapper *m)
     // Start with a clean slate
     login->rule_count = 0;
 
-    // Copy each desktop rule, but disable CopiCatOS-specific actions
+    // Copy each desktop rule, but disable CopyCatOS-specific actions
     for (int i = 0; i < desktop->rule_count; i++) {
         MappingRule rule = desktop->rules[i];
 
-        if (rule.action == ACTION_COPICATOS) {
-            // Replace CopiCatOS actions with no-ops on the login screen
+        if (rule.action == ACTION_COPYCATOS) {
+            // Replace CopyCatOS actions with no-ops on the login screen
             rule.action = ACTION_NONE;
             rule.param  = 0;
             rule.param2 = 0;
@@ -185,18 +185,18 @@ void mapper_init(Mapper *m, int threshold)
     // --- Build the DESKTOP profile with default rules ---
     MappingProfile *desktop = &m->profiles[PROFILE_DESKTOP];
 
-    // Face buttons → keyboard keys and CopiCatOS actions
+    // Face buttons → keyboard keys and CopyCatOS actions
     add_rule(desktop, EV_KEY, BTN_SOUTH, ACTION_KEY,      KEY_ENTER,  0);
     add_rule(desktop, EV_KEY, BTN_EAST,  ACTION_KEY,      KEY_ESC,    0);
-    add_rule(desktop, EV_KEY, BTN_WEST,  ACTION_COPICATOS, CC_ACTION_SPOTLIGHT, 0);
-    add_rule(desktop, EV_KEY, BTN_NORTH, ACTION_COPICATOS, CC_ACTION_MISSION_CONTROL, 0);
+    add_rule(desktop, EV_KEY, BTN_WEST,  ACTION_COPYCATOS, CC_ACTION_SPOTLIGHT, 0);
+    add_rule(desktop, EV_KEY, BTN_NORTH, ACTION_COPYCATOS, CC_ACTION_MISSION_CONTROL, 0);
 
     // Shoulder buttons → page navigation
     add_rule(desktop, EV_KEY, BTN_TL, ACTION_KEY, KEY_PAGEUP,   0);
     add_rule(desktop, EV_KEY, BTN_TR, ACTION_KEY, KEY_PAGEDOWN, 0);
 
     // Center buttons → desktop actions
-    add_rule(desktop, EV_KEY, BTN_SELECT, ACTION_COPICATOS, CC_ACTION_SHOW_DESKTOP, 0);
+    add_rule(desktop, EV_KEY, BTN_SELECT, ACTION_COPYCATOS, CC_ACTION_SHOW_DESKTOP, 0);
     add_rule(desktop, EV_KEY, BTN_START,  ACTION_KEY,       KEY_SPACE,  0);
 
     // D-pad axes → arrow keys
@@ -222,7 +222,7 @@ void mapper_init(Mapper *m, int threshold)
     add_rule(desktop, EV_ABS, ABS_RX, ACTION_MOUSE_MOVE, 0, 0);
     add_rule(desktop, EV_ABS, ABS_RY, ACTION_MOUSE_MOVE, 0, 0);
 
-    // --- Build LOGIN profile from DESKTOP (strip CopiCatOS actions) ---
+    // --- Build LOGIN profile from DESKTOP (strip CopyCatOS actions) ---
     build_login_from_desktop(m);
 
     // --- Build GAME profile (passthrough) ---
@@ -239,7 +239,7 @@ void mapper_init(Mapper *m, int threshold)
 // mapper_load_config — Apply user-defined mappings from config file
 // --------------------------------------------------------------------------
 // Replaces the DESKTOP profile's rules with user-defined ones. After
-// updating desktop, rebuilds the LOGIN profile (same rules minus CopiCatOS
+// updating desktop, rebuilds the LOGIN profile (same rules minus CopyCatOS
 // actions). The GAME profile is never modified — it's always passthrough.
 //
 // Parameters:
@@ -292,8 +292,8 @@ void mapper_load_config(Mapper *m, const MappingRule *rules, int count)
 //   mouse — the mouse emulator for stick-to-pointer conversion
 //
 // Returns:
-//   A CcAction value (>= 0) if a CopiCatOS action was triggered,
-//   or -1 if no CopiCatOS action was triggered (even if other actions
+//   A CcAction value (>= 0) if a CopyCatOS action was triggered,
+//   or -1 if no CopyCatOS action was triggered (even if other actions
 //   like key presses were performed).
 // --------------------------------------------------------------------------
 int mapper_process(Mapper *m, const struct input_event *ev,
@@ -304,7 +304,7 @@ int mapper_process(Mapper *m, const struct input_event *ev,
     // straight to the virtual gamepad without any transformation.
     if (m->active_profile == PROFILE_GAME) {
         uinput_gamepad_forward(vd, ev);
-        return -1;   // No CopiCatOS action
+        return -1;   // No CopyCatOS action
     }
 
     // We only process key events (button presses) and absolute axis events
@@ -338,8 +338,8 @@ int mapper_process(Mapper *m, const struct input_event *ev,
             uinput_mouse_button(vd, rule->param, ev->value);
             break;
 
-        case ACTION_COPICATOS:
-            // Trigger a CopiCatOS shell action, but only on press (not release).
+        case ACTION_COPYCATOS:
+            // Trigger a CopyCatOS shell action, but only on press (not release).
             // We don't want to fire the action twice (once on press, once on release).
             if (ev->value == 1) {
                 return rule->param;   // Return the CcAction code to the caller
@@ -358,7 +358,7 @@ int mapper_process(Mapper *m, const struct input_event *ev,
             break;
         }
 
-        return -1;   // No CopiCatOS action (or it was already returned above)
+        return -1;   // No CopyCatOS action (or it was already returned above)
     }
 
     // ======================================================================

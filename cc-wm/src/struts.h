@@ -3,7 +3,7 @@
 // Unauthorized copying, forking, or distribution of this file,
 // via any medium, is strictly prohibited.
 
-// CopiCatOS Window Manager — Strut (reserved screen space) management
+// CopyCatOS Window Manager — Strut (reserved screen space) management
 // Handles _NET_WM_STRUT and _NET_WM_STRUT_PARTIAL so that dock panels
 // and menu bars can reserve edges of the screen. The "work area" is
 // the remaining usable rectangle after all struts are subtracted.

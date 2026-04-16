@@ -513,7 +513,7 @@ static void apple_execute(MenuBar *mb, int index)
     fprintf(stderr, "[apple] Execute: %s\n", label);
 
     if (strcmp(label, "System Preferences...") == 0) {
-        // Launch the CopiCatOS System Preferences app
+        // Launch the CopyCatOS System Preferences app
         if (fork() == 0) {
             setsid();
             execlp("cc-sysprefs", "cc-sysprefs", NULL);
@@ -532,7 +532,7 @@ static void apple_execute(MenuBar *mb, int index)
         system("systemctl suspend");
     } else if (strcmp(label, "Game Mode...") == 0) {
         // Switch to Steam Big Picture via gamescope.
-        // game-mode.sh kills all CopiCatOS shell components (not cc-wm),
+        // game-mode.sh kills all CopyCatOS shell components (not cc-wm),
         // launches gamescope+steam, then restores the desktop on exit.
         // We fork + setsid so the script is fully detached — cc-menubar
         // will be killed by the script moments later without crashing here.
@@ -546,7 +546,7 @@ static void apple_execute(MenuBar *mb, int index)
             if (home) {
                 char path[512];
                 snprintf(path, sizeof(path),
-                         "%s/CopiCatOS/scripts/game-mode.sh", home);
+                         "%s/CopyCatOS/scripts/game-mode.sh", home);
                 execl(path, "game-mode.sh", NULL);
             }
             _exit(1);

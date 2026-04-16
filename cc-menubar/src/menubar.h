@@ -22,7 +22,7 @@
 #include <stdbool.h>
 
 // Default height matching macOS Snow Leopard. Configurable 22-88 via
-// ~/.config/copicatos/desktop.conf [menubar] section.
+// ~/.config/copycatos/desktop.conf [menubar] section.
 // Range 22-44 is standard desktop use; 44-88 enables touch-friendly sizing
 // for handheld devices like the Lenovo Legion Go.
 #define DEFAULT_MENUBAR_HEIGHT 22

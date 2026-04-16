@@ -6,7 +6,7 @@
 #
 # meson.build — Build configuration for cc-inputd
 #
-# cc-inputd is the CopiCatOS input daemon. It reads Legion Go gamepad
+# cc-inputd is the CopyCatOS input daemon. It reads Legion Go gamepad
 # events and translates them into mouse/keyboard/shell actions.
 #
 # Build:

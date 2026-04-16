@@ -1,4 +1,4 @@
-CopiCatOS Project Status — April 14, 2026
+CopyCatOS Project Status — April 14, 2026
 ==========================================
 
 COMPLETED FEATURES
@@ -43,7 +43,7 @@ cc-menubar — Global Menu Bar
     - Bluetooth: 3 states from Bluetooth.menu
     - Battery: 3 states + percentage from Battery.menu
     - Spotlight icon, Clock (Pango text)
-  - Configurable height via ~/.config/copicatos/desktop.conf
+  - Configurable height via ~/.config/copycatos/desktop.conf
   - SIGHUP live reload (no restart needed)
   - Hover highlights on menu items
 
@@ -89,7 +89,7 @@ cc-sysprefs — System Preferences App
     - Dock icon size slider: 32px (small) to 128px (large)
     - Menubar height slider: 22px (normal) to 44px (large)
     - Interactive draggable knobs (Snow Leopard style)
-    - Writes to ~/.config/copicatos/desktop.conf on release
+    - Writes to ~/.config/copycatos/desktop.conf on release
     - Sends SIGHUP to cc-dock and cc-menubar for instant live apply
 
 Qt6 Widget Styling
@@ -110,9 +110,9 @@ Assets & Infrastructure
   - Lucida Grande Regular + Bold font
   - 99 original Snow Leopard wallpapers
   - AppImage packaging script template
-  - Autologin configured (plasmalogin -> copicatos.desktop)
+  - Autologin configured (plasmalogin -> copycatos.desktop)
   - Session script starts all components in correct order
-  - Shared config file (~/.config/copicatos/desktop.conf)
+  - Shared config file (~/.config/copycatos/desktop.conf)
 
 
 NOT YET COMPLETED

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-# Build all CopiCatOS components in order.
+# Build all CopyCatOS components in order.
 # Run from the project root: bash scripts/build-all.sh
 
 set -euo pipefail
@@ -40,7 +40,7 @@ build_component() {
 }
 
 echo "════════════════════════════════════════"
-echo "  CopiCatOS — Building All Components"
+echo "  CopyCatOS — Building All Components"
 echo "════════════════════════════════════════"
 echo ""
 

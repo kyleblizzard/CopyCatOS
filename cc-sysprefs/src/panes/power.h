@@ -10,7 +10,7 @@
 // Provides controls for power button behavior: short press and long press
 // actions, plus timing thresholds for distinguishing between them.
 //
-// Changes are written to ~/.config/copicatos/input.conf [power] section
+// Changes are written to ~/.config/copycatos/input.conf [power] section
 // and applied live by sending SIGHUP to cc-inputd.
 // ============================================================================
 

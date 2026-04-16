@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// CopiCatOS Window Manager — Keyboard input (macOS-style shortcuts)
+// CopyCatOS Window Manager — Keyboard input (macOS-style shortcuts)
 
 #include "input.h"
 #include "ewmh.h"

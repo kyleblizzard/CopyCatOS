@@ -144,7 +144,7 @@ static const int window_item_count = 4;
 
 // Help menu items
 static const char *help_items[] = {
-    "Search", "---", "CopiCatOS Help"
+    "Search", "---", "CopyCatOS Help"
 };
 static const int help_item_count = 3;
 

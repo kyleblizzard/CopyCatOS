@@ -1,4 +1,4 @@
-# CopiCatOS Menu Bar — Build configuration
+# CopyCatOS Menu Bar — Build configuration
 #
 # This component creates the 22px global menu bar at the top of the screen.
 # It displays the Apple logo, active app name, app-specific menus, and a

@@ -4,7 +4,7 @@
 # Unauthorized copying, forking, or distribution of this file,
 # via any medium, is strictly prohibited.
 #
-# build-appimage.sh — Package a Qt6 application as an AppImage with CopiCatOS
+# build-appimage.sh — Package a Qt6 application as an AppImage with CopyCatOS
 # theming baked in (AquaStyle plugin, Lucida Grande font, Aqua widget assets).
 #
 # Usage:
@@ -15,7 +15,7 @@
 #
 # This is a TEMPLATE script. Not every Qt6 app will work out of the box —
 # some may need additional plugins, libraries, or data files. But this handles
-# the common case: a single binary that uses Qt6 widgets and needs CopiCatOS styling.
+# the common case: a single binary that uses Qt6 widgets and needs CopyCatOS styling.
 
 set -euo pipefail
 
@@ -40,7 +40,7 @@ APP_NAME="$1"        # Human-readable name, used for the .desktop file and outpu
 APP_BINARY="$2"      # Absolute path to the binary we're packaging
 APP_BIN_NAME="$(basename "$APP_BINARY")"  # Just the filename (e.g. "kate")
 
-# ── Locate the CopiCatOS project root ────────────────────────────────────────
+# ── Locate the CopyCatOS project root ────────────────────────────────────────
 # We assume this script lives in <project-root>/scripts/ and derive paths
 # to fonts, icons, and style assets relative to the project root.
 
@@ -193,7 +193,7 @@ cat > "$APPDIR/usr/etc/fonts/fonts.conf" << 'FONTCONF'
 <?xml version="1.0"?>
 <!DOCTYPE fontconfig SYSTEM "fonts.dtd">
 <!--
-  Minimal fontconfig for CopiCatOS AppImage.
+  Minimal fontconfig for CopyCatOS AppImage.
   Prioritizes the bundled Lucida Grande font so apps render with the correct
   Snow Leopard typeface, even if the host system doesn't have it installed.
 -->
@@ -243,7 +243,7 @@ Exec=${APP_BIN_NAME}
 Icon=app
 Type=Application
 Categories=Utility;
-Comment=CopiCatOS-themed ${APP_NAME}
+Comment=CopyCatOS-themed ${APP_NAME}
 DESKTOP
 
 # ── Step 10: Generate a placeholder icon ────────────────────────────────
@@ -265,7 +265,7 @@ fi
 echo -e "${GREEN}[GEN ]${NC} Generating AppRun"
 cat > "$APPDIR/AppRun" << APPRUN
 #!/bin/bash
-# AppRun — Entry point for the CopiCatOS-themed ${APP_NAME} AppImage.
+# AppRun — Entry point for the CopyCatOS-themed ${APP_NAME} AppImage.
 # Sets up paths to bundled Qt plugins, fonts, icons, and libraries
 # so the app uses AquaStyle and Lucida Grande regardless of the host system.
 
@@ -304,7 +304,7 @@ echo -e "${GREEN}═════════════════════
 echo ""
 
 if command -v appimagetool &> /dev/null; then
-    OUTPUT_FILE="${APP_NAME}-CopiCatOS-$(uname -m).AppImage"
+    OUTPUT_FILE="${APP_NAME}-CopyCatOS-$(uname -m).AppImage"
     echo -e "${GREEN}[BUILD]${NC} Running appimagetool..."
     appimagetool "$APPDIR" "$OUTPUT_FILE"
     echo ""
@@ -319,5 +319,5 @@ else
     echo "    sudo mv appimagetool-$(uname -m).AppImage /usr/local/bin/appimagetool"
     echo ""
     echo "  Then re-run this script, or manually run:"
-    echo "    appimagetool $APPDIR ${APP_NAME}-CopiCatOS-$(uname -m).AppImage"
+    echo "    appimagetool $APPDIR ${APP_NAME}-CopyCatOS-$(uname -m).AppImage"
 fi

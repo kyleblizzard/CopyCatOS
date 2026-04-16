@@ -3,7 +3,7 @@
 # Unauthorized copying, forking, or distribution of this file,
 # via any medium, is strictly prohibited.
 
-# cc-input-session — CopiCatOS session bridge
+# cc-input-session — CopyCatOS session bridge
 #
 # Connects to cc-inputd via Unix socket and provides X11 context
 # (active window tracking, desktop action dispatch).

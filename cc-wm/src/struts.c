@@ -3,7 +3,7 @@
 // Unauthorized copying, forking, or distribution of this file,
 // via any medium, is strictly prohibited.
 
-// CopiCatOS Window Manager — Strut (reserved screen space) management
+// CopyCatOS Window Manager — Strut (reserved screen space) management
 //
 // "Struts" are strips of screen real estate that panels, docks, and
 // menu bars reserve along screen edges.  The EWMH spec defines two
@@ -57,7 +57,7 @@ void struts_init(CCWM *wm)
     atom_net_current_desktop     = XInternAtom(wm->dpy, "_NET_CURRENT_DESKTOP", False);
 
     // --- _NET_NUMBER_OF_DESKTOPS ---
-    // CopiCatOS uses a single desktop for now, so we advertise 1.
+    // CopyCatOS uses a single desktop for now, so we advertise 1.
     long num_desktops = 1;
     XChangeProperty(wm->dpy, wm->root, atom_net_number_of_desktops,
                     XA_CARDINAL, 32, PropModeReplace,

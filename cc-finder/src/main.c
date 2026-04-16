@@ -5,7 +5,7 @@
 
 // main.c — Entry point for CCFinder
 //
-// CCFinder is the Snow Leopard-style file manager for CopiCatOS.
+// CCFinder is the Snow Leopard-style file manager for CopyCatOS.
 // It creates a normal window that cc-wm frames with Snow Leopard
 // title bar chrome. The window has three zones:
 //
@@ -62,7 +62,7 @@ int main(int argc, char *argv[])
     }
 
     fprintf(stderr, "╔══════════════════════════════════════╗\n");
-    fprintf(stderr, "║          CopiCatOS Finder v0.1          ║\n");
+    fprintf(stderr, "║          CopyCatOS Finder v0.1          ║\n");
     fprintf(stderr, "║     Snow Leopard File Manager        ║\n");
     fprintf(stderr, "╚══════════════════════════════════════╝\n");
 

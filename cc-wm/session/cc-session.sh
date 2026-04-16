@@ -1,13 +1,13 @@
 #!/bin/bash
 # Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-# CopiCatOS Session Script
+# CopyCatOS Session Script
 # Starts the custom WM and all shell components in the correct order.
 # Set CC_WM=kwin_x11 to fall back to kwin for testing.
 
 # Tell X11 and Qt what kind of session this is
 export XDG_SESSION_TYPE=x11
-export XDG_SESSION_DESKTOP=CopiCatOS
-export XDG_CURRENT_DESKTOP=CopiCatOS
+export XDG_SESSION_DESKTOP=CopyCatOS
+export XDG_CURRENT_DESKTOP=CopyCatOS
 
 # Qt styling — force AquaStyle (the Snow Leopard QStyle plugin)
 export QT_QPA_PLATFORMTHEME=kde
@@ -91,7 +91,7 @@ sleep 0.5
 # ─── Compositor for ARGB transparency ───
 # MoonRock Compositor is now handling compositing in manual mode.
 # picom is disabled — MoonRock draws all windows via OpenGL.
-# picom --config ~/CopiCatOS/cc-wm/session/picom.conf -b
+# picom --config ~/CopyCatOS/cc-wm/session/picom.conf -b
 sleep 0.3
 
 # ─── Desktop surface (wallpaper + icons) ───

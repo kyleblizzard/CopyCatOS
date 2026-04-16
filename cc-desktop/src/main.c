@@ -5,7 +5,7 @@
 
 // main.c — Entry point for the cc-desktop component
 //
-// cc-desktop is the wallpaper surface and desktop icon grid for CopiCatOS.
+// cc-desktop is the wallpaper surface and desktop icon grid for CopyCatOS.
 // It runs as a standalone process, separate from the window manager.
 // It creates a full-screen window with type _NET_WM_WINDOW_TYPE_DESKTOP,
 // which tells the WM to place it below all other windows and skip framing.
@@ -53,7 +53,7 @@ int main(int argc, char *argv[])
     }
 
     fprintf(stderr, "╔══════════════════════════════════════╗\n");
-    fprintf(stderr, "║        CopiCatOS Desktop Surface        ║\n");
+    fprintf(stderr, "║        CopyCatOS Desktop Surface        ║\n");
     fprintf(stderr, "║   Wallpaper + Icons + Context Menu   ║\n");
     fprintf(stderr, "╚══════════════════════════════════════╝\n");
 

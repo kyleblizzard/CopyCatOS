@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// CopiCatOS Window Manager — EWMH/ICCCM compliance
+// CopyCatOS Window Manager — EWMH/ICCCM compliance
 
 #ifndef CC_EWMH_H
 #define CC_EWMH_H

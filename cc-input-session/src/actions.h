@@ -4,16 +4,16 @@
 // via any medium, is strictly prohibited.
 
 //
-// actions.h — CopiCatOS desktop action dispatch
+// actions.h — CopyCatOS desktop action dispatch
 //
-// When cc-inputd sends a COPICATOS_ACTION message, this module figures
+// When cc-inputd sends a COPYCATOS_ACTION message, this module figures
 // out what to do with it. Actions are high-level desktop operations
 // like "open Spotlight" or "show desktop" that get triggered by
 // hardware buttons, gestures, or hotkeys on the input device.
 //
 // The session bridge is the right place for this because these actions
 // need X11 access (e.g., sending ClientMessages to the root window)
-// or need to signal other CopiCatOS shell components.
+// or need to signal other CopyCatOS shell components.
 //
 
 #ifndef CC_ACTIONS_H

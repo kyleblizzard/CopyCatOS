@@ -148,7 +148,7 @@ static int create_virtual_mouse(void) {
     // tools like evtest or libinput list-devices.
     struct uinput_setup setup;
     memset(&setup, 0, sizeof(setup));
-    snprintf(setup.name, UINPUT_MAX_NAME_SIZE, "CopiCatOS Virtual Mouse");
+    snprintf(setup.name, UINPUT_MAX_NAME_SIZE, "CopyCatOS Virtual Mouse");
     setup.id.bustype = BUS_VIRTUAL;   // Mark it as a virtual device
     setup.id.vendor  = 0x0000;        // No real vendor
     setup.id.product = 0x0001;        // Arbitrary product ID
@@ -235,7 +235,7 @@ static int create_virtual_keyboard(void) {
     // --- Configure the device identity ---
     struct uinput_setup setup;
     memset(&setup, 0, sizeof(setup));
-    snprintf(setup.name, UINPUT_MAX_NAME_SIZE, "CopiCatOS Virtual Keyboard");
+    snprintf(setup.name, UINPUT_MAX_NAME_SIZE, "CopyCatOS Virtual Keyboard");
     setup.id.bustype = BUS_VIRTUAL;
     setup.id.vendor  = 0x0000;
     setup.id.product = 0x0002;
@@ -365,7 +365,7 @@ static int create_virtual_gamepad(void) {
     // --- Configure the device identity ---
     struct uinput_setup setup;
     memset(&setup, 0, sizeof(setup));
-    snprintf(setup.name, UINPUT_MAX_NAME_SIZE, "CopiCatOS Virtual Gamepad");
+    snprintf(setup.name, UINPUT_MAX_NAME_SIZE, "CopyCatOS Virtual Gamepad");
     setup.id.bustype = BUS_VIRTUAL;
     setup.id.vendor  = 0x0000;
     setup.id.product = 0x0003;

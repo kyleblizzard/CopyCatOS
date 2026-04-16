@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// CopiCatOS Window Manager — X11 event dispatch
+// CopyCatOS Window Manager — X11 event dispatch
 
 #ifndef AURA_EVENTS_H
 #define AURA_EVENTS_H

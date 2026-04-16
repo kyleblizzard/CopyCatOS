@@ -1,5 +1,5 @@
 [Unit]
-Description=CopiCatOS Input Daemon
+Description=CopyCatOS Input Daemon
 Documentation=man:cc-inputd(8)
 After=systemd-udevd.service
 Conflicts=inputplumber.service hhd@.service

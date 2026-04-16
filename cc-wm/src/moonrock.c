@@ -3,9 +3,9 @@
 // Unauthorized copying, forking, or distribution of this file,
 // via any medium, is strictly prohibited.
 //
-// CopiCatOS — MoonRock Compositor (Phase 1)
+// CopyCatOS — MoonRock Compositor (Phase 1)
 //
-// MoonRock is CopiCatOS's built-in OpenGL compositor, replacing picom. Instead of
+// MoonRock is CopyCatOS's built-in OpenGL compositor, replacing picom. Instead of
 // relying on an external program to composite windows, MoonRock handles it
 // directly inside the window manager using OpenGL for GPU-accelerated rendering.
 //
@@ -130,7 +130,7 @@ struct WindowTexture {
 // file scope means only mr.c can access it, keeping the compositor's
 // internals private from the rest of the window manager.
 
-// Global flag indicating whether compositing is active. In CopiCatOS this is
+// Global flag indicating whether compositing is active. In CopyCatOS this is
 // defined in decor.c and shared with frame.c. In standalone MoonRock we
 // define it here since there is no external WM module providing it.
 #if !defined(MR_EMBEDDED_IN_WM)

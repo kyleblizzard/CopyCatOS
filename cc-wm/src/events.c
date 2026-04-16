@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// CopiCatOS Window Manager — X11 event dispatch
+// CopyCatOS Window Manager — X11 event dispatch
 // Uses function pointer array for O(1) dispatch (dwm pattern)
 
 #include "events.h"

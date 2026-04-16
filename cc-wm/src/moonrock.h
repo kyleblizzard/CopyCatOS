@@ -4,7 +4,7 @@
 // via any medium, is strictly prohibited.
 //
 // ============================================================================
-//  MoonRock Compositor — CopiCatOS's custom OpenGL X11 compositor
+//  MoonRock Compositor — CopyCatOS's custom OpenGL X11 compositor
 // ============================================================================
 //
 // MoonRock replaces the old compositor.h/compositor.c module (which used Cairo
@@ -14,7 +14,7 @@
 // Why "MoonRock"?
 //   Apple's macOS uses "Quartz Compositor" for its window compositing engine.
 //   MoonRock is our playful nod to that — a different kind of clear, beautiful
-//   mineral. It fits the CopiCatOS aesthetic of recreating the Snow Leopard look
+//   mineral. It fits the CopyCatOS aesthetic of recreating the Snow Leopard look
 //   and feel on Linux with our own technology.
 //
 // Why replace picom?

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// CopiCatOS Window Manager — Core state and initialization
+// CopyCatOS Window Manager — Core state and initialization
 
 #include "wm.h"
 #include "ewmh.h"

@@ -153,7 +153,7 @@ bool desktop_init(Desktop *d, const char *wallpaper_path)
                     PropModeReplace, (unsigned char *)&wm_desktop, 1);
 
     // Give the window a name (visible in xprop/xwininfo for debugging)
-    XStoreName(d->dpy, d->win, "CopiCatOS Desktop");
+    XStoreName(d->dpy, d->win, "CopyCatOS Desktop");
 
     // Show the window on screen
     XMapWindow(d->dpy, d->win);

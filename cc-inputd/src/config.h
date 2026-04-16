@@ -7,7 +7,7 @@
 // config.h — Input daemon configuration types and API
 //
 // Defines the InputConfig struct that holds all user-configurable settings
-// loaded from ~/.config/copicatos/input.conf. The config file uses a simple
+// loaded from ~/.config/copycatos/input.conf. The config file uses a simple
 // INI format with [section] headers, following the same pattern as the
 // desktop.conf parser in cc-sysprefs.
 //
@@ -32,7 +32,7 @@
 //
 //   CFG_ACTION_KEY       — Emit a keyboard keycode (e.g. KEY_RETURN)
 //   CFG_ACTION_MOUSE     — Emit a mouse button (e.g. BTN_LEFT)
-//   CFG_ACTION_COPICATOS — Trigger a CopiCatOS-specific action (e.g. Spotlight)
+//   CFG_ACTION_COPYCATOS — Trigger a CopyCatOS-specific action (e.g. Spotlight)
 //                          These are sent over IPC to the session bridge.
 //   CFG_ACTION_NONE      — No mapping; the event is silently dropped.
 // --------------------------------------------------------------------------
@@ -40,7 +40,7 @@ typedef enum {
     CFG_ACTION_NONE = 0,
     CFG_ACTION_KEY,
     CFG_ACTION_MOUSE,
-    CFG_ACTION_COPICATOS
+    CFG_ACTION_COPYCATOS
 } CfgActionType;
 
 // --------------------------------------------------------------------------
@@ -48,13 +48,13 @@ typedef enum {
 // --------------------------------------------------------------------------
 // Maps a Linux input event code (e.g. BTN_SOUTH = 0x130) to an action.
 // For ACTION_KEY/ACTION_MOUSE, `param` is the target keycode/button code.
-// For ACTION_COPICATOS, `param_str` names the action (e.g. "spotlight").
+// For ACTION_COPYCATOS, `param_str` names the action (e.g. "spotlight").
 // --------------------------------------------------------------------------
 typedef struct {
     int           event_code;          // Source event code (e.g. BTN_SOUTH)
     CfgActionType action;              // What kind of action to perform
     int           param;               // Target code for KEY/MOUSE actions
-    char          param_str[64];       // Action name for COPICATOS actions
+    char          param_str[64];       // Action name for COPYCATOS actions
 } CfgMappingRule;
 
 // Maximum number of desktop mapping rules we support.
@@ -113,7 +113,7 @@ typedef struct InputConfig {
 // Public API
 // --------------------------------------------------------------------------
 
-// config_load_input — Load configuration from ~/.config/copicatos/input.conf.
+// config_load_input — Load configuration from ~/.config/copycatos/input.conf.
 // Sets sensible defaults first, then overwrites with values from the file.
 // Returns true if the file was found and parsed, false if using defaults only.
 bool config_load_input(InputConfig *cfg);

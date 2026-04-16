@@ -1,4 +1,4 @@
-# CopiCatOS Build Plan
+# CopyCatOS Build Plan
 
 ## Step 0: Cleanup + Asset Prep
 - [x] Backup project to zipBackups
@@ -138,7 +138,7 @@
 - [x] Create aura.desktop for /usr/share/xsessions/
 - [x] Set QT_STYLE_OVERRIDE=AquaStyle in session env
 - [x] Set icon theme to AquaKDE-icons
-- [ ] Gate: log in via DM, select CopiCatOS, all components start
+- [ ] Gate: log in via DM, select CopyCatOS, all components start
 
 ## Step 9: AppImage Packaging
 - [x] Write scripts/build-appimage.sh template

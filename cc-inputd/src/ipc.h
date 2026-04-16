@@ -45,7 +45,7 @@
 // --------------------------------------------------------------------------
 typedef enum {
     // Daemon → Bridge
-    IPC_MSG_COPICATOS_ACTION = 0x01,   // Payload: action name (e.g. "spotlight")
+    IPC_MSG_COPYCATOS_ACTION = 0x01,   // Payload: action name (e.g. "spotlight")
     IPC_MSG_POWER_ACTION     = 0x02,   // Payload: action name (e.g. "suspend")
 
     // Bridge → Daemon

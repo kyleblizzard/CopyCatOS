@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// CopiCatOS Window Manager — Asset loading (real Snow Leopard PNGs)
+// CopyCatOS Window Manager — Asset loading (real Snow Leopard PNGs)
 
 #ifndef AURA_ASSETS_H
 #define AURA_ASSETS_H

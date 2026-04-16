@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// CopiCatOS Window Manager — Keyboard input handling
+// CopyCatOS Window Manager — Keyboard input handling
 
 #ifndef AURA_INPUT_H
 #define AURA_INPUT_H

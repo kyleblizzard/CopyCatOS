@@ -11,7 +11,7 @@
 //   - Size slider: Small (32) to Large (128)
 //   - Menubar height slider: 22 to 44
 //
-// Changes are written to ~/.config/copicatos/desktop.conf and applied
+// Changes are written to ~/.config/copycatos/desktop.conf and applied
 // live by sending SIGHUP to cc-dock and cc-menubar.
 // ============================================================================
 

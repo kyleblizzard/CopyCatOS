@@ -4,29 +4,29 @@
 # Unauthorized copying, forking, or distribution of this file,
 # via any medium, is strictly prohibited.
 
-# game-mode.sh — Switch from CopiCatOS desktop into Steam Big Picture via gamescope.
+# game-mode.sh — Switch from CopyCatOS desktop into Steam Big Picture via gamescope.
 #
 # Flow:
 #   1. Wait briefly so the Apple menu has time to close cleanly.
-#   2. Kill the four CopiCatOS shell components (menubar, dock, desktop, spotlight).
+#   2. Kill the four CopyCatOS shell components (menubar, dock, desktop, spotlight).
 #      cc-wm is intentionally left alive — killing it would trigger cc-session.sh's
 #      cleanup and log out the user entirely.
 #   3. Launch gamescope in embedded mode (-e) so it runs inside the existing X session,
 #      with Steam in gamepadui (Big Picture) mode as the hosted application.
 #   4. Block here until gamescope exits (user selects "Exit to Desktop" in Steam).
-#   5. Relaunch all shell components to restore the CopiCatOS desktop.
+#   5. Relaunch all shell components to restore the CopyCatOS desktop.
 
 # ── Marker file path ─────────────────────────────────────────────────
 # cc-inputd reads this file to detect game mode. When it exists, a power
 # button short press exits gamescope (returning to desktop) instead of
 # suspending the system.
-MARKER_DIR="$HOME/.local/share/copicatos"
+MARKER_DIR="$HOME/.local/share/copycatos"
 MARKER_FILE="$MARKER_DIR/gamemode.active"
 
 # ── Step 1: Let the Apple menu dismiss ───────────────────────────────
 sleep 0.5
 
-echo "[game-mode] Entering Game Mode — suspending CopiCatOS shell..."
+echo "[game-mode] Entering Game Mode — suspending CopyCatOS shell..."
 
 # ── Step 2: Kill shell components (not cc-wm) ────────────────────────
 # We use pkill -x to match the exact process name only.
@@ -81,14 +81,14 @@ gamescope \
     steam -gamepadui -pipewire-dmabuf
 
 EXIT_CODE=$?
-echo "[game-mode] gamescope exited with code $EXIT_CODE. Restoring CopiCatOS desktop..."
+echo "[game-mode] gamescope exited with code $EXIT_CODE. Restoring CopyCatOS desktop..."
 
 # Remove the game mode marker so cc-inputd resumes normal power button behavior
 # (short press = suspend) now that we're back at the desktop.
 rm -f "$MARKER_FILE"
 echo "[game-mode] Marker removed."
 
-# ── Step 5: Restore the CopiCatOS desktop ────────────────────────────
+# ── Step 5: Restore the CopyCatOS desktop ────────────────────────────
 # Restart all four shell components in the same order as cc-session.sh:
 # desktop first (it sits at the bottom of the window stack), then the
 # others in parallel since they don't depend on each other.

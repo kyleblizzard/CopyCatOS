@@ -4,12 +4,12 @@
 # Unauthorized copying, forking, or distribution of this file,
 # via any medium, is strictly prohibited.
 #
-# sync-moonrock.sh — Copy MoonRock compositor sources from CopiCatOS to the
+# sync-moonrock.sh — Copy MoonRock compositor sources from CopyCatOS to the
 # standalone MoonRock repo. No git operations — just the file copy.
 #
 # Usage: ./scripts/sync-moonrock.sh
 #
-# CopiCatOS/cc-wm/src/ is the authoritative source for all moonrock_* files.
+# CopyCatOS/cc-wm/src/ is the authoritative source for all moonrock_* files.
 # The standalone MoonRock repo at /Volumes/Development/MoonRock/ gets synced
 # from here whenever changes are ready to publish.
 

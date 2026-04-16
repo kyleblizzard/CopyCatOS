@@ -10,7 +10,7 @@
 // Provides controls for gamepad stick sensitivity, deadzone, trigger
 // assignments, and a read-only display of default button mappings.
 //
-// Changes are written to ~/.config/copicatos/input.conf and applied
+// Changes are written to ~/.config/copycatos/input.conf and applied
 // live by sending SIGHUP to the running cc-inputd process.
 // ============================================================================
 

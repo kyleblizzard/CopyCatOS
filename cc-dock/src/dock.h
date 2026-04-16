@@ -48,7 +48,7 @@
 // DockConfig — Runtime sizing values, computed from icon_size
 //
 // All dimensions scale proportionally from icon_size. The user sets icon_size
-// via ~/.config/copicatos/desktop.conf [dock] section. Everything else is
+// via ~/.config/copycatos/desktop.conf [dock] section. Everything else is
 // derived automatically. This supports sizes from 32px (tiny, handheld-dense)
 // to 128px (huge, handheld-friendly).
 // ---------------------------------------------------------------------------

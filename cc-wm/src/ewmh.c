@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// CopiCatOS Window Manager — EWMH/ICCCM compliance
+// CopyCatOS Window Manager — EWMH/ICCCM compliance
 // Aggressive early implementation per review feedback — Qt apps
 // and shell components misbehave without _NET_FRAME_EXTENTS,
 // _NET_CLIENT_LIST, _NET_ACTIVE_WINDOW, etc.
@@ -27,7 +27,7 @@ void ewmh_setup(CCWM *wm)
                     (unsigned char *)&check, 1);
 
     // Set WM name
-    const char *name = "CopiCatOS";
+    const char *name = "CopyCatOS";
     XChangeProperty(wm->dpy, check, wm->atom_net_wm_name,
                     wm->atom_utf8_string, 8, PropModeReplace,
                     (unsigned char *)name, (int)strlen(name));

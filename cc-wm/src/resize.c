@@ -3,7 +3,7 @@
 // Unauthorized copying, forking, or distribution of this file,
 // via any medium, is strictly prohibited.
 
-// CopiCatOS Window Manager — Edge and corner resize implementation
+// CopyCatOS Window Manager — Edge and corner resize implementation
 //
 // This module handles everything related to resizing windows by dragging
 // their edges or corners. The basic flow is:

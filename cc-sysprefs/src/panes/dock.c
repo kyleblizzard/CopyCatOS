@@ -10,7 +10,7 @@
 // Provides slider controls for dock icon size and menubar height.
 // Modeled after the real Snow Leopard Dock preferences pane layout.
 //
-// Changes are written to ~/.config/copicatos/desktop.conf and applied
+// Changes are written to ~/.config/copycatos/desktop.conf and applied
 // live by sending SIGHUP to the running cc-dock and cc-menubar processes.
 // ============================================================================
 
@@ -58,7 +58,7 @@ static void read_config(void)
     if (!home) return;
 
     char path[512];
-    snprintf(path, sizeof(path), "%s/.config/copicatos/desktop.conf", home);
+    snprintf(path, sizeof(path), "%s/.config/copycatos/desktop.conf", home);
 
     FILE *fp = fopen(path, "r");
     if (!fp) return;
@@ -103,12 +103,12 @@ static void apply_config(void)
 
     // Ensure directory exists
     char dir[512];
-    snprintf(dir, sizeof(dir), "%s/.config/copicatos", home);
+    snprintf(dir, sizeof(dir), "%s/.config/copycatos", home);
     mkdir(dir, 0755);
 
     // Write the config file
     char path[512];
-    snprintf(path, sizeof(path), "%s/.config/copicatos/desktop.conf", home);
+    snprintf(path, sizeof(path), "%s/.config/copycatos/desktop.conf", home);
 
     FILE *fp = fopen(path, "w");
     if (!fp) return;

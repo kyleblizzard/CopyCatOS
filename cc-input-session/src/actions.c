@@ -4,11 +4,11 @@
 // via any medium, is strictly prohibited.
 
 //
-// actions.c — CopiCatOS desktop action dispatch implementation
+// actions.c — CopyCatOS desktop action dispatch implementation
 //
 // Each action maps to a concrete system operation. Some use X11
 // ClientMessages (the standard EWMH way for programs to ask the
-// window manager to do things), some signal other CopiCatOS
+// window manager to do things), some signal other CopyCatOS
 // processes, and some shell out to command-line tools.
 //
 
@@ -26,7 +26,7 @@
 // send_signal_to_process — Look up a process by name using pgrep,
 // then send it a Unix signal.
 //
-// This is how we communicate with other CopiCatOS shell components.
+// This is how we communicate with other CopyCatOS shell components.
 // For example, cc-spotlight listens for SIGUSR1 to toggle its
 // visibility, so we pgrep for it and send that signal.
 //
@@ -128,7 +128,7 @@ static void toggle_show_desktop(Display *dpy, Window root)
 
 // actions_dispatch — Route an action name to the right handler.
 //
-// This is called whenever cc-inputd sends us a COPICATOS_ACTION message.
+// This is called whenever cc-inputd sends us a COPYCATOS_ACTION message.
 // The action_name is a simple string like "spotlight" that tells us
 // what the user wants to happen.
 void actions_dispatch(const char *action_name, Display *dpy, Window root)

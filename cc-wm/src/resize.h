@@ -3,7 +3,7 @@
 // Unauthorized copying, forking, or distribution of this file,
 // via any medium, is strictly prohibited.
 
-// CopiCatOS Window Manager — Edge and corner resize support
+// CopyCatOS Window Manager — Edge and corner resize support
 // Allows the user to grab any edge or corner of a window frame
 // and drag to resize it. Corners take priority over edges.
 

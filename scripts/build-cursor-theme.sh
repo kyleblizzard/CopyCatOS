@@ -12,7 +12,7 @@
 # generates xcursorgen config files, and creates all freedesktop symlinks.
 #
 # Usage: bash scripts/build-cursor-theme.sh
-# Run from the CopiCatOS repo root.
+# Run from the CopyCatOS repo root.
 
 set -e
 
@@ -539,7 +539,7 @@ echo "--- Step 6: Writing index.theme ---"
 cat > "$OUT_DIR/index.theme" << 'THEME'
 [Icon Theme]
 Name=SnowLeopard
-Comment=Mac OS X Snow Leopard cursors for CopiCatOS
+Comment=Mac OS X Snow Leopard cursors for CopyCatOS
 Inherits=Breeze_Light
 THEME
 

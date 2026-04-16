@@ -3,7 +3,7 @@
 # Unauthorized copying, forking, or distribution of this file,
 # via any medium, is strictly prohibited.
 
-# ─── CopiCatOS Spotlight ───
+# ─── CopyCatOS Spotlight ───
 # Meson build file for cc-spotlight — a Spotlight-style search overlay
 # activated by Ctrl+Space. Built with Xlib, Cairo, and Pango.
 

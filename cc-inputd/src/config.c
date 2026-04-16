@@ -7,7 +7,7 @@
 // config.c — INI config parser for cc-inputd
 // ============================================================================
 //
-// Reads and writes ~/.config/copicatos/input.conf using a simple INI format.
+// Reads and writes ~/.config/copycatos/input.conf using a simple INI format.
 // Follows the same line-by-line parsing pattern used in cc-sysprefs/panes/dock.c
 // for desktop.conf — track the current [section] name, then match "key=value"
 // pairs within each section.
@@ -157,7 +157,7 @@ int parse_key_name(const char *name)
 // The config file format for mappings is:
 //   BTN_SOUTH=key:KEY_RETURN
 //   BTN_EAST=mouse:BTN_RIGHT
-//   BTN_MODE=copicatos:spotlight
+//   BTN_MODE=copycatos:spotlight
 //
 // This function splits the "type:param" string and fills in the rule fields.
 // Returns true if parsing succeeded, false on error.
@@ -198,9 +198,9 @@ static bool parse_action_string(const char *str, CfgMappingRule *rule)
             fprintf(stderr, "config: unknown button name: %s\n", param);
             return false;
         }
-    } else if (strcmp(prefix, "copicatos") == 0) {
-        // Action type: trigger a CopiCatOS shell action (sent via IPC)
-        rule->action = CFG_ACTION_COPICATOS;
+    } else if (strcmp(prefix, "copycatos") == 0) {
+        // Action type: trigger a CopyCatOS shell action (sent via IPC)
+        rule->action = CFG_ACTION_COPYCATOS;
         rule->param  = 0;
         // Store the action name string (e.g. "spotlight", "mission_control")
         strncpy(rule->param_str, param, sizeof(rule->param_str) - 1);
@@ -227,7 +227,7 @@ static void strip_trailing(char *s)
 }
 
 // ============================================================================
-//  config_load_input — Load config from ~/.config/copicatos/input.conf
+//  config_load_input — Load config from ~/.config/copycatos/input.conf
 // ============================================================================
 // Sets sensible defaults first, then reads the config file line by line.
 // Each line is either:
@@ -265,7 +265,7 @@ bool config_load_input(InputConfig *cfg)
     // ------------------------------------------------------------------
     // Step 2: Build the config file path
     // ------------------------------------------------------------------
-    // The config lives at ~/.config/copicatos/input.conf, following the
+    // The config lives at ~/.config/copycatos/input.conf, following the
     // XDG Base Directory Specification (sort of — we use .config directly
     // rather than $XDG_CONFIG_HOME for simplicity).
     // ------------------------------------------------------------------
@@ -277,7 +277,7 @@ bool config_load_input(InputConfig *cfg)
     }
 
     char path[512];
-    snprintf(path, sizeof(path), "%s/.config/copicatos/input.conf", home);
+    snprintf(path, sizeof(path), "%s/.config/copycatos/input.conf", home);
 
     // ------------------------------------------------------------------
     // Step 3: Open the file (it's OK if it doesn't exist)
@@ -465,7 +465,7 @@ static const char *action_type_to_string(CfgActionType type)
     switch (type) {
         case CFG_ACTION_KEY:       return "key";
         case CFG_ACTION_MOUSE:     return "mouse";
-        case CFG_ACTION_COPICATOS: return "copicatos";
+        case CFG_ACTION_COPYCATOS: return "copycatos";
         default:                   return "none";
     }
 }
@@ -488,7 +488,7 @@ static const char *code_to_name(int code)
 }
 
 // ============================================================================
-//  config_save_input — Write config back to ~/.config/copicatos/input.conf
+//  config_save_input — Write config back to ~/.config/copycatos/input.conf
 // ============================================================================
 // Creates the config directory if it doesn't exist, then writes all sections
 // in a clean INI format. This is called by System Preferences when the user
@@ -505,12 +505,12 @@ bool config_save_input(const InputConfig *cfg)
 
     // Ensure the config directory exists (mkdir -p equivalent)
     char dir[512];
-    snprintf(dir, sizeof(dir), "%s/.config/copicatos", home);
+    snprintf(dir, sizeof(dir), "%s/.config/copycatos", home);
     mkdir(dir, 0755);
 
     // Build the full file path
     char path[512];
-    snprintf(path, sizeof(path), "%s/.config/copicatos/input.conf", home);
+    snprintf(path, sizeof(path), "%s/.config/copycatos/input.conf", home);
 
     FILE *fp = fopen(path, "w");
     if (!fp) {
@@ -519,7 +519,7 @@ bool config_save_input(const InputConfig *cfg)
     }
 
     // ── Header comment ────────────────────────────────────────────────
-    fprintf(fp, "# CopiCatOS input daemon configuration\n");
+    fprintf(fp, "# CopyCatOS input daemon configuration\n");
     fprintf(fp, "# Edit this file or use System Preferences to change settings.\n");
     fprintf(fp, "# Changes take effect on SIGHUP or daemon restart.\n\n");
 
@@ -561,8 +561,8 @@ bool config_save_input(const InputConfig *cfg)
 
             // Format depends on action type
             const char *type_str = action_type_to_string(rule->action);
-            if (rule->action == CFG_ACTION_COPICATOS) {
-                // CopiCatOS actions use the string parameter
+            if (rule->action == CFG_ACTION_COPYCATOS) {
+                // CopyCatOS actions use the string parameter
                 fprintf(fp, "%s=%s:%s\n", code_name, type_str, rule->param_str);
             } else {
                 // Key and mouse actions use the numeric parameter

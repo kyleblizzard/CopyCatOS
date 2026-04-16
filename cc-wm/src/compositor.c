@@ -3,11 +3,11 @@
 // Unauthorized copying, forking, or distribution of this file,
 // via any medium, is strictly prohibited.
 //
-// CopiCatOS Window Manager — XComposite compositor for Snow Leopard shadows
+// CopyCatOS Window Manager — XComposite compositor for Snow Leopard shadows
 
 // M_PI requires _GNU_SOURCE (provided by meson via -D_GNU_SOURCE).
 //
-// This file implements the compositing layer that gives CopiCatOS its realistic
+// This file implements the compositing layer that gives CopyCatOS its realistic
 // drop shadows. The approach is:
 //
 //   1. Use XComposite to redirect all top-level windows to off-screen pixmaps.

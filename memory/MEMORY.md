@@ -1,4 +1,4 @@
-- [Kyle Blizzard](user_kyle.md) — CopiCatOS creator, uncompromising on pixel-perfect Snow Leopard fidelity
+- [Kyle Blizzard](user_kyle.md) — CopyCatOS creator, uncompromising on pixel-perfect Snow Leopard fidelity
 - [Architecture Final](project_architecture_final.md) — Full custom DE in C on XLibre. Custom WM + shell + AquaStyle. Locked 2026-04-13.
 - [Closed Ecosystem Philosophy](project_auraos_philosophy.md) — Qt6 AppImages only, no unstyled apps, macOS-style curation
 - [AppImage Strategy](project_appimage_strategy.md) — Every app bundles breeze-aqua, fonts, assets inside the AppImage

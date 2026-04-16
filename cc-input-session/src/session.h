@@ -30,7 +30,7 @@
 #define MSG_SET_PROFILE      0x10  // Session -> Daemon: switch to "desktop" or "game" profile
 #define MSG_ACTIVE_WINDOW    0x11  // Session -> Daemon: active window changed, here's its WM_CLASS
 #define MSG_CONFIG_RELOAD    0x12  // Session -> Daemon: please reload your config files
-#define MSG_COPICATOS_ACTION 0x20  // Daemon -> Session: trigger a desktop action (spotlight, etc.)
+#define MSG_COPYCATOS_ACTION 0x20  // Daemon -> Session: trigger a desktop action (spotlight, etc.)
 
 // SessionBridge — holds all state for the session bridge process.
 //

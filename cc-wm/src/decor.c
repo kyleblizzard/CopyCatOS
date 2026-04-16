@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// CopiCatOS Window Manager — Snow Leopard decoration rendering
+// CopyCatOS Window Manager — Snow Leopard decoration rendering
 //
 // Every color value is extracted from the actual Snow Leopard reference
 // screenshots in aquaimages/finderexample.png. No approximations.

@@ -11,7 +11,7 @@
 // Legion Go. The user can adjust the timing thresholds that distinguish a
 // short press from a long press, and see what action each triggers.
 //
-// Changes are written to ~/.config/copicatos/input.conf [power] section
+// Changes are written to ~/.config/copycatos/input.conf [power] section
 // and applied live by sending SIGHUP to cc-inputd.
 // ============================================================================
 
@@ -58,14 +58,14 @@ static const char *long_press_action  = "Restart";
 //  Config reading
 // ============================================================================
 
-// Read current values from ~/.config/copicatos/input.conf [power] section
+// Read current values from ~/.config/copycatos/input.conf [power] section
 static void read_config(void)
 {
     const char *home = getenv("HOME");
     if (!home) return;
 
     char path[512];
-    snprintf(path, sizeof(path), "%s/.config/copicatos/input.conf", home);
+    snprintf(path, sizeof(path), "%s/.config/copycatos/input.conf", home);
 
     FILE *fp = fopen(path, "r");
     if (!fp) return;
@@ -118,11 +118,11 @@ static void apply_config(void)
 
     // Ensure config directory exists
     char dir[512];
-    snprintf(dir, sizeof(dir), "%s/.config/copicatos", home);
+    snprintf(dir, sizeof(dir), "%s/.config/copycatos", home);
     mkdir(dir, 0755);
 
     char path[512];
-    snprintf(path, sizeof(path), "%s/.config/copicatos/input.conf", home);
+    snprintf(path, sizeof(path), "%s/.config/copycatos/input.conf", home);
 
     // Read existing content to preserve [mouse] and [triggers] sections
     char mouse_block[1024] = "";

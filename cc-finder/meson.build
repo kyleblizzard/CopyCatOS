@@ -1,6 +1,6 @@
-# CopiCatOS Finder — Build configuration
+# CopyCatOS Finder — Build configuration
 #
-# CCFinder is the Snow Leopard-style file manager for CopiCatOS.
+# CCFinder is the Snow Leopard-style file manager for CopyCatOS.
 # It creates a normal window (framed by cc-wm) with a toolbar,
 # sidebar source list, and icon/list content view.
 #

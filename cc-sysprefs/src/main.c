@@ -7,7 +7,7 @@
 // main.c — Entry point for cc-sysprefs (System Preferences)
 // ============================================================================
 //
-// Follows the standard CopiCatOS shell component pattern:
+// Follows the standard CopyCatOS shell component pattern:
 //   1. Acquire single-instance lock
 //   2. Install signal handlers for clean shutdown
 //   3. Initialize state (window, assets, registry)

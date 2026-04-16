@@ -1,4 +1,4 @@
-# CopiCatOS
+# CopyCatOS
 
 A custom Linux desktop environment that recreates Mac OS X Snow Leopard.
 
@@ -40,7 +40,7 @@ bash scripts/install-assets.sh
 
 ## Running
 
-Select "CopiCatOS" at the display manager login screen, or:
+Select "CopyCatOS" at the display manager login screen, or:
 
 ```bash
 DISPLAY=:1 startx /usr/local/bin/cc-session.sh -- :1

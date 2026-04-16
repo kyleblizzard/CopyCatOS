@@ -20,7 +20,7 @@
 // we read the new window's WM_CLASS and send it to cc-inputd so
 // the daemon can apply the right input profile.
 //
-// When cc-inputd sends us a COPICATOS_ACTION message, we dispatch
+// When cc-inputd sends us a COPYCATOS_ACTION message, we dispatch
 // it to the actions module to perform the requested operation.
 //
 
@@ -331,7 +331,7 @@ static void handle_active_window_change(SessionBridge *sb)
 
 // handle_ipc_message — Process an incoming message from cc-inputd.
 //
-// Currently the only message we expect from the daemon is COPICATOS_ACTION,
+// Currently the only message we expect from the daemon is COPYCATOS_ACTION,
 // which tells us to perform a desktop action like opening Spotlight.
 static void handle_ipc_message(SessionBridge *sb)
 {
@@ -352,7 +352,7 @@ static void handle_ipc_message(SessionBridge *sb)
     buf[len] = '\0';
 
     switch (msg_type) {
-        case MSG_COPICATOS_ACTION:
+        case MSG_COPYCATOS_ACTION:
             // The daemon wants us to perform a desktop action.
             // The payload is the action name as a string.
             fprintf(stderr, "[cc-input-session] received action: '%s'\n", buf);

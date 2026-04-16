@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// CopiCatOS Window Manager — Asset loading
+// CopyCatOS Window Manager — Asset loading
 // Loads real Snow Leopard PNG assets from ~/.local/share/aqua-widgets/
 
 #include "assets.h"

@@ -1,4 +1,4 @@
-# CopiCatOS Desktop — Build configuration
+# CopyCatOS Desktop — Build configuration
 #
 # This component creates the wallpaper surface and desktop icon grid.
 # It runs as a standalone process, separate from the window manager.

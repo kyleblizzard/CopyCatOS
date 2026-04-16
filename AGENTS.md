@@ -120,7 +120,7 @@ Text on selection: #FFFFFF
 
 ```
 CopyCatOS/
-├── CLAUDE.md                    # This file
+├── AGENTS.md                    # This file
 ├── cc-wm/                     # Window manager (C, ~1,400 lines, EXISTING)
 │   ├── meson.build
 │   ├── src/                     # 9 source files + new compositor/struts/resize
@@ -136,7 +136,7 @@ CopyCatOS/
 ├── wallpaper/                   # 4K wallpaper JPGs
 ├── scripts/                     # install-assets.sh, build-all.sh
 ├── tasks/                       # todo.md, lessons.md
-└── memory/                      # Claude project memory
+└── memory/                      # Codex project memory
 ```
 
 ---

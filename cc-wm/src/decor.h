@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// CopiCatOS Window Manager — Snow Leopard decoration rendering
+// CopyCatOS Window Manager — Snow Leopard decoration rendering
 // Uses Cairo to paint the exact title bar gradient from the reference photos,
 // traffic light buttons from real PNG assets, and centered title text.
 

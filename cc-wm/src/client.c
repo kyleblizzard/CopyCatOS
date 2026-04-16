@@ -3,7 +3,7 @@
 // Unauthorized copying, forking, or distribution of this file,
 // via any medium, is strictly prohibited.
 //
-// CopiCatOS Window Manager — Client window tracking and app grouping
+// CopyCatOS Window Manager — Client window tracking and app grouping
 //
 // This module handles WM_CLASS reading (so we know which app owns a window)
 // and app grouping (so Super+H can hide ALL windows of the focused app).

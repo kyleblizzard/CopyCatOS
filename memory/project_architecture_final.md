@@ -1,5 +1,5 @@
 ---
-name: CopiCatOS architecture — final decision
+name: CopyCatOS architecture — final decision
 description: Full custom DE in C on XLibre. Custom WM (cc-wm) + custom shell (dock, menubar, desktop, spotlight) + AquaStyle for Qt widgets. No KDE.
 type: project
 ---

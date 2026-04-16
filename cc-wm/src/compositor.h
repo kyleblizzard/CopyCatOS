@@ -3,7 +3,7 @@
 // Unauthorized copying, forking, or distribution of this file,
 // via any medium, is strictly prohibited.
 //
-// CopiCatOS Window Manager — XComposite-based compositing for window shadows
+// CopyCatOS Window Manager — XComposite-based compositing for window shadows
 //
 // This module adds realistic Mac OS X Snow Leopard drop shadows to window
 // frames. It uses the XComposite extension to redirect windows to off-screen

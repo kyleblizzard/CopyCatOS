@@ -8,7 +8,7 @@ project('cc-sysprefs', 'c',
   default_options: ['c_std=c11', 'warning_level=2'],
 )
 
-# Dependencies — same stack as every CopiCatOS shell component
+# Dependencies — same stack as every CopyCatOS shell component
 x11_dep        = dependency('x11')
 cairo_dep      = dependency('cairo')
 cairo_xlib_dep = dependency('cairo-xlib')

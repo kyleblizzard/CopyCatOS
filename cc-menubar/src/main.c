@@ -3,7 +3,7 @@
 // Unauthorized copying, forking, or distribution of this file,
 // via any medium, is strictly prohibited.
 
-// main.c — Entry point for the CopiCatOS menu bar
+// main.c — Entry point for the CopyCatOS menu bar
 //
 // This is a very thin wrapper. It:
 //   1. Sets up signal handlers so we can shut down cleanly (e.g., on Ctrl+C)

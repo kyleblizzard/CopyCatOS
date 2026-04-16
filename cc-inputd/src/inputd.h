@@ -47,7 +47,7 @@ typedef struct InputDaemon {
     Mapper         *mapper;        // Translates physical events -> actions
     MouseEmulator  *mouse;         // Turns stick axes into pointer movement
     PowerButton    *power;         // Handles short/long press of power key
-    InputConfig    *config;        // Loaded from ~/.config/copicatos/input.conf
+    InputConfig    *config;        // Loaded from ~/.config/copycatos/input.conf
     IpcServer      *ipc;           // Unix socket for cc-wm / System Prefs
 
     // --- Event loop ---

@@ -1,5 +1,5 @@
 #!/bin/bash
-# CopiCatOS Auto-Rotation — polls iio-sensor-proxy and rotates via xrandr
+# CopyCatOS Auto-Rotation — polls iio-sensor-proxy and rotates via xrandr
 DISPLAY_OUTPUT="eDP-1"
 
 # Claim the accelerometer

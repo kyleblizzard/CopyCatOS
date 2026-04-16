@@ -1,4 +1,4 @@
-# CopiCatOS Lessons Learned
+# CopyCatOS Lessons Learned
 
 Patterns and rules to prevent repeated mistakes.
 

@@ -33,7 +33,7 @@
 #include "appmenu.h"
 #include "systray.h"
 
-// Runtime menubar height — configurable via ~/.config/copicatos/desktop.conf
+// Runtime menubar height — configurable via ~/.config/copycatos/desktop.conf
 // Default 22px (Snow Leopard standard), range 22-88 for handheld devices.
 int menubar_height = DEFAULT_MENUBAR_HEIGHT;
 
@@ -57,7 +57,7 @@ static void read_menubar_config(void)
     if (!home) return;
 
     char path[512];
-    snprintf(path, sizeof(path), "%s/.config/copicatos/desktop.conf", home);
+    snprintf(path, sizeof(path), "%s/.config/copycatos/desktop.conf", home);
 
     FILE *fp = fopen(path, "r");
     if (!fp) return;

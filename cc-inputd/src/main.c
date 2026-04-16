@@ -6,9 +6,9 @@
 //
 // main.c — Entry point for cc-inputd
 //
-// cc-inputd is the CopiCatOS input daemon. It reads raw gamepad events from
+// cc-inputd is the CopyCatOS input daemon. It reads raw gamepad events from
 // the Lenovo Legion Go's built-in controllers, translates them into mouse
-// movements, keyboard presses, and CopiCatOS shell actions, and injects
+// movements, keyboard presses, and CopyCatOS shell actions, and injects
 // the results through Linux uinput virtual devices.
 //
 // This file handles:
@@ -168,7 +168,7 @@ static int acquire_lock(void) {
 // --------------------------------------------------------------------------
 static void print_usage(void) {
     fprintf(stderr,
-        "cc-inputd — CopiCatOS input daemon\n"
+        "cc-inputd — CopyCatOS input daemon\n"
         "\n"
         "Reads Legion Go gamepad events and translates them into\n"
         "mouse, keyboard, and shell actions for the desktop environment.\n"
@@ -182,7 +182,7 @@ static void print_usage(void) {
         "  SIGINT/SIGTERM      Shut down gracefully\n"
         "  SIGHUP              Reload configuration\n"
         "\n"
-        "Config file: ~/.config/copicatos/input.conf\n"
+        "Config file: ~/.config/copycatos/input.conf\n"
         "IPC socket:  /run/cc-inputd.sock\n"
     );
 }

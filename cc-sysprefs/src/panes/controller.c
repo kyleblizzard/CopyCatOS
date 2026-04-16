@@ -11,7 +11,7 @@
 // deadzone, read-only display of trigger assignments and default button
 // mappings. Modeled after the Snow Leopard Mouse preferences layout.
 //
-// Changes are written to ~/.config/copicatos/input.conf and applied
+// Changes are written to ~/.config/copycatos/input.conf and applied
 // live by sending SIGHUP to the running cc-inputd process.
 // ============================================================================
 
@@ -62,7 +62,7 @@ static void read_config(void)
     if (!home) return;
 
     char path[512];
-    snprintf(path, sizeof(path), "%s/.config/copicatos/input.conf", home);
+    snprintf(path, sizeof(path), "%s/.config/copycatos/input.conf", home);
 
     FILE *fp = fopen(path, "r");
     if (!fp) return;
@@ -116,13 +116,13 @@ static void apply_config(void)
 
     // Ensure the config directory exists
     char dir[512];
-    snprintf(dir, sizeof(dir), "%s/.config/copicatos", home);
+    snprintf(dir, sizeof(dir), "%s/.config/copycatos", home);
     mkdir(dir, 0755);
 
     // Read the existing file to preserve sections we don't manage here.
     // We'll rewrite [mouse] but keep everything else intact.
     char path[512];
-    snprintf(path, sizeof(path), "%s/.config/copicatos/input.conf", home);
+    snprintf(path, sizeof(path), "%s/.config/copycatos/input.conf", home);
 
     // Read existing content to preserve [triggers], [power], etc.
     char existing[4096] = "";

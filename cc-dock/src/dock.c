@@ -172,7 +172,7 @@ bool dock_init(DockState *state)
                                        state->visual, AllocNone);
 
     // --- Load sizing config from shared desktop.conf ---
-    // Reads [dock] icon_size from ~/.config/copicatos/desktop.conf.
+    // Reads [dock] icon_size from ~/.config/copycatos/desktop.conf.
     // If the file doesn't exist, uses DEFAULT_ICON_SIZE (64).
     {
         int icon_size = DEFAULT_ICON_SIZE;
@@ -180,7 +180,7 @@ bool dock_init(DockState *state)
         if (home) {
             char path[512];
             snprintf(path, sizeof(path),
-                     "%s/.config/copicatos/desktop.conf", home);
+                     "%s/.config/copycatos/desktop.conf", home);
             FILE *fp = fopen(path, "r");
             if (fp) {
                 char line[256];
@@ -726,7 +726,7 @@ void dock_run(DockState *state)
                 if (home) {
                     char path[512];
                     snprintf(path, sizeof(path),
-                             "%s/.config/copicatos/desktop.conf", home);
+                             "%s/.config/copycatos/desktop.conf", home);
                     FILE *fp = fopen(path, "r");
                     if (fp) {
                         char line[256];

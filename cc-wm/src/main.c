@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// CopiCatOS Window Manager — Entry point
+// CopyCatOS Window Manager — Entry point
 //
 // A custom X11 reparenting compositing window manager that recreates
 // Mac OS X Snow Leopard pixel-perfectly using real assets.
@@ -33,7 +33,7 @@ int main(int argc, char *argv[])
     (void)argv;
 
     fprintf(stderr, "╔══════════════════════════════════════╗\n");
-    fprintf(stderr, "║         CopiCatOS Window Manager        ║\n");
+    fprintf(stderr, "║         CopyCatOS Window Manager        ║\n");
     fprintf(stderr, "║   Pixel-Perfect Snow Leopard in C    ║\n");
     fprintf(stderr, "╚══════════════════════════════════════╝\n");
 

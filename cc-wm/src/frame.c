@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// CopiCatOS Window Manager — Frame management and decoration rendering
+// CopyCatOS Window Manager — Frame management and decoration rendering
 
 #include "frame.h"
 #include "decor.h"

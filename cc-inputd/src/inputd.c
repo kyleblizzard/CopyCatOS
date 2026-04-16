@@ -174,9 +174,9 @@ static void apply_config(InputDaemon *daemon)
 }
 
 // ============================================================================
-//  Helper: Check if CopiCatOS is currently in Game Mode
+//  Helper: Check if CopyCatOS is currently in Game Mode
 // ============================================================================
-// game-mode.sh writes ~/.local/share/copicatos/gamemode.active when it
+// game-mode.sh writes ~/.local/share/copycatos/gamemode.active when it
 // enters game mode and removes it when the desktop is restored. Checking
 // for this file is cheaper than IPC and works even if the bridge is down.
 // ============================================================================
@@ -188,7 +188,7 @@ static bool game_mode_is_active(void)
 
     char path[512];
     snprintf(path, sizeof(path),
-             "%s/.local/share/copicatos/gamemode.active", home);
+             "%s/.local/share/copycatos/gamemode.active", home);
 
     // access() returns 0 if the file exists and is readable.
     // F_OK checks existence only — no permissions check needed.
@@ -209,7 +209,7 @@ static void execute_power_action(InputDaemon *daemon, PowerAction action)
 
     // ── Game Mode intercept ────────────────────────────────────────────
     // When in game mode, a short press (suspend) should instead exit
-    // gamescope and return to the CopiCatOS desktop rather than suspend.
+    // gamescope and return to the CopyCatOS desktop rather than suspend.
     // game-mode.sh is blocking on gamescope; killing gamescope causes it
     // to unblock and run the desktop-restore step automatically.
     //
@@ -257,13 +257,13 @@ static void execute_power_action(InputDaemon *daemon, PowerAction action)
 }
 
 // ============================================================================
-//  Helper: Send a CopiCatOS action via IPC
+//  Helper: Send a CopyCatOS action via IPC
 // ============================================================================
 // Called when the mapper produces a CC_ACTION_* result (e.g. open Spotlight).
 // These are desktop-level actions that cc-wm needs to handle.
 // ============================================================================
 
-static void send_copicatos_action(InputDaemon *daemon, int cc_action)
+static void send_copycatos_action(InputDaemon *daemon, int cc_action)
 {
     // Map the CcAction enum value to a string for the IPC message.
     // The session bridge and cc-wm use string-based action names for
@@ -288,7 +288,7 @@ static void send_copicatos_action(InputDaemon *daemon, int cc_action)
     const char *name = action_names[cc_action];
 
     IpcMessage msg;
-    msg.type   = IPC_MSG_COPICATOS_ACTION;
+    msg.type   = IPC_MSG_COPYCATOS_ACTION;
     msg.length = (int)strlen(name);
     memcpy(msg.payload, name, msg.length);
 
@@ -803,10 +803,10 @@ void inputd_run(InputDaemon *daemon)
                                                    daemon->vdevs,
                                                    daemon->mouse);
 
-                    // If the mapper produced a CopiCatOS action, send it
+                    // If the mapper produced a CopyCatOS action, send it
                     // to the session bridge via IPC
                     if (cc_action >= 0) {
-                        send_copicatos_action(daemon, cc_action);
+                        send_copycatos_action(daemon, cc_action);
                     }
                 }
             }

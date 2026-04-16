@@ -7,7 +7,7 @@
 // main.c — Entry point for cc-input-session
 //
 // cc-input-session is a bridge between the X11 desktop environment and
-// cc-inputd (the CopiCatOS input daemon). It watches for active window
+// cc-inputd (the CopyCatOS input daemon). It watches for active window
 // changes in X11 and reports them to the daemon, so the daemon can
 // apply per-application input profiles. It also receives action
 // requests from the daemon (like "open Spotlight") and executes them.

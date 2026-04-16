@@ -48,12 +48,12 @@ typedef enum ActionType {
     ACTION_KEY          = 1,  // Emit a keyboard keycode (e.g. KEY_RETURN)
     ACTION_MOUSE_BUTTON = 2,  // Emit a mouse button (e.g. BTN_LEFT)
     ACTION_MOUSE_MOVE   = 3,  // Feed an axis value to the mouse emulator
-    ACTION_COPICATOS    = 4,  // Trigger a CopiCatOS shell action (e.g. Spotlight)
+    ACTION_COPYCATOS    = 4,  // Trigger a CopyCatOS shell action (e.g. Spotlight)
     ACTION_GAMEPAD_FWD  = 5   // Forward event unchanged to virtual gamepad
 } ActionType;
 
 // --------------------------------------------------------------------------
-// CcAction — CopiCatOS-specific actions (ACTION_COPICATOS targets)
+// CcAction — CopyCatOS-specific actions (ACTION_COPYCATOS targets)
 // --------------------------------------------------------------------------
 // These are high-level desktop actions that cc-inputd sends to cc-wm
 // via IPC. They don't map to simple keycodes — they invoke shell features.
@@ -81,7 +81,7 @@ typedef enum CcAction {
 //   { EV_ABS, ABS_X, ACTION_MOUSE_MOVE, 0, 0 }
 //     -> "Left stick X axis drives horizontal mouse movement"
 //
-//   { EV_KEY, BTN_MODE, ACTION_COPICATOS, CC_ACTION_SPOTLIGHT, 0 }
+//   { EV_KEY, BTN_MODE, ACTION_COPYCATOS, CC_ACTION_SPOTLIGHT, 0 }
 //     -> "Legion button opens Spotlight"
 // --------------------------------------------------------------------------
 typedef struct MappingRule {
