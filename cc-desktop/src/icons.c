@@ -24,6 +24,7 @@
 
 #include "icons.h"
 #include "layout.h"
+#include "labels.h"
 
 #include <X11/Xlib.h>
 #include <cairo/cairo.h>
@@ -343,6 +344,11 @@ static void scan_desktop(void)
         // Load the appropriate icon from the theme
         icon->icon = icons_resolve_icon(icon->path, icon->is_directory);
 
+        // Read the color label from the file's xattr, if any.
+        // This is the same per-file metadata that Snow Leopard stores in
+        // com.apple.FinderInfo — we use our own key in the "user." namespace.
+        icon->label = label_get(icon->path);
+
         icon_count++;
     }
 
@@ -474,8 +480,56 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
         int img_x = icon->x + (ICON_CELL_W - ICON_SIZE) / 2;
         int img_y = icon->y + 2;  // Small top padding
 
-        // Draw selection highlight behind the icon if selected.
-        // This is a semi-transparent blue rounded rectangle.
+        // Y position for the label text (4px below the icon image)
+        int label_y = img_y + ICON_SIZE + 4;
+
+        // ── Step 1: Build the Pango layout first ─────────────────────
+        // We need the text height before drawing anything, because the
+        // label color rect goes behind the text and must be sized to fit.
+
+        PangoLayout *layout = pango_cairo_create_layout(cr);
+        pango_layout_set_text(layout, icon->name, -1);
+
+        // Set the font — real Snow Leopard uses Lucida Grande 12pt
+        PangoFontDescription *font = pango_font_description_from_string(
+            ICON_LABEL_FONT);
+        pango_layout_set_font_description(layout, font);
+        pango_font_description_free(font);
+
+        // Max width, centered, ellipsis for long names, word-char wrap
+        pango_layout_set_width(layout, ICON_CELL_W * PANGO_SCALE);
+        pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
+        pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+        pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+
+        // Measure the rendered text dimensions
+        int text_w, text_h;
+        pango_layout_get_pixel_size(layout, &text_w, &text_h);
+        int text_x = icon->x + (ICON_CELL_W - text_w) / 2;
+
+        // ── Step 2: Draw label color rect (behind text) ───────────────
+        // Snow Leopard labels color the filename background, not the icon.
+        // The colored rounded rect sits directly behind the text label.
+        // When the icon is also selected, the blue highlight overlaps on
+        // top because it's painted next (with transparency, so both show).
+        if (icon->label > LABEL_NONE && icon->label < LABEL_COUNT) {
+            const LabelColor *lc = &label_colors[icon->label];
+
+            // Pad 4px around the text on each side
+            double lrx = text_x - 4;
+            double lry = label_y - 2;
+            double lrw = text_w + 8;
+            double lrh = text_h + 4;
+
+            draw_rounded_rect(cr, lrx, lry, lrw, lrh, 4.0);
+            // Alpha 200/255 — visible but lets the wallpaper hint through
+            cairo_set_source_rgba(cr, lc->r, lc->g, lc->b, 200.0 / 255.0);
+            cairo_fill(cr);
+        }
+
+        // ── Step 3: Selection highlight ───────────────────────────────
+        // Semi-transparent blue rect over the whole icon cell.
+        // Drawn AFTER the label rect so selection overlays it (blended).
         if (icon->selected) {
             draw_rounded_rect(cr,
                 icon->x + 2, icon->y + 2,
@@ -489,44 +543,42 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
             cairo_fill(cr);
         }
 
-        // Draw subtle drop shadow behind the icon (Snow Leopard style).
-        // This creates the "floating" feel on the desktop wallpaper.
-        // Three passes from large/faint to small/stronger, offset downward.
+        // ── Step 4: Drop shadow ───────────────────────────────────────
+        // Subtle shadow behind the icon image gives the Snow Leopard
+        // "floating object" feel. Three passes: large/faint to small/solid.
         cairo_save(cr);
         for (int pass = 3; pass >= 1; pass--) {
             double alpha = 0.08 * pass;  // Stronger close to icon, fading outward
             int offset = pass + 1;
             cairo_set_source_rgba(cr, 0, 0, 0, alpha);
-            // Draw a rounded rect slightly larger than and below the icon
+            // Rounded rect slightly larger than and below the icon
             double sx = img_x - pass;
             double sy = img_y - pass + offset;
             double sw = ICON_SIZE + pass * 2;
             double sh = ICON_SIZE + pass * 2;
-            double r = 8.0 + pass;
-            // Rounded rect path
+            double r  = 8.0 + pass;
             cairo_new_sub_path(cr);
-            cairo_arc(cr, sx + sw - r, sy + r, r, -M_PI/2, 0);
-            cairo_arc(cr, sx + sw - r, sy + sh - r, r, 0, M_PI/2);
-            cairo_arc(cr, sx + r, sy + sh - r, r, M_PI/2, M_PI);
-            cairo_arc(cr, sx + r, sy + r, r, M_PI, 3*M_PI/2);
+            cairo_arc(cr, sx + sw - r, sy + r,      r, -M_PI / 2, 0);
+            cairo_arc(cr, sx + sw - r, sy + sh - r, r, 0,          M_PI / 2);
+            cairo_arc(cr, sx + r,      sy + sh - r, r, M_PI / 2,   M_PI);
+            cairo_arc(cr, sx + r,      sy + r,      r, M_PI,        3 * M_PI / 2);
             cairo_close_path(cr);
             cairo_fill(cr);
         }
         cairo_restore(cr);
 
-        // Draw the icon image (scaled to ICON_SIZE)
+        // ── Step 5: Icon image ────────────────────────────────────────
         if (icon->icon) {
             // Scale the icon to ICON_SIZE if it doesn't match
             int src_w = cairo_image_surface_get_width(icon->icon);
             int src_h = cairo_image_surface_get_height(icon->icon);
 
             if (src_w != ICON_SIZE || src_h != ICON_SIZE) {
-                // Scale the icon to fit ICON_SIZE
                 cairo_save(cr);
-                double sx = (double)ICON_SIZE / src_w;
-                double sy = (double)ICON_SIZE / src_h;
+                double scx = (double)ICON_SIZE / src_w;
+                double scy = (double)ICON_SIZE / src_h;
                 cairo_translate(cr, img_x, img_y);
-                cairo_scale(cr, sx, sy);
+                cairo_scale(cr, scx, scy);
                 cairo_set_source_surface(cr, icon->icon, 0, 0);
                 cairo_paint(cr);
                 cairo_restore(cr);
@@ -536,47 +588,19 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
             }
         }
 
-        // Draw the icon label below the icon image.
-        // Uses Pango for proper text layout, centering, and ellipsization.
-        int label_y = img_y + ICON_SIZE + 4;  // 4px gap below icon
-
-        // Create a Pango layout for the label text.
-        // Pango handles font rendering, ellipsization, and alignment.
-        PangoLayout *layout = pango_cairo_create_layout(cr);
-        pango_layout_set_text(layout, icon->name, -1);
-
-        // Set the font — real Snow Leopard uses Lucida Grande 12pt
-        PangoFontDescription *font = pango_font_description_from_string(
-            ICON_LABEL_FONT);
-        pango_layout_set_font_description(layout, font);
-        pango_font_description_free(font);
-
-        // Set max width, center alignment, ellipsis for long names,
-        // and word-char wrapping so names like "Screenshot 2026..." wrap
-        // at word boundaries but break mid-word if necessary.
-        pango_layout_set_width(layout, ICON_CELL_W * PANGO_SCALE);
-        pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
-        pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
-        pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
-
-        // Get the actual text size so we can center it horizontally
-        int text_w, text_h;
-        pango_layout_get_pixel_size(layout, &text_w, &text_h);
-        int text_x = icon->x + (ICON_CELL_W - text_w) / 2;
-
-        // Draw text shadow: multiple passes to create the dark halo
-        // effect used by real Snow Leopard. This makes white text
-        // readable against any wallpaper — light, dark, or busy.
+        // ── Step 6: Label text with drop shadow ───────────────────────
+        // Multiple passes create the dark halo that makes white text
+        // readable on any wallpaper (light, dark, or busy).
         for (int dy = -1; dy <= 2; dy++) {
             for (int dx = -1; dx <= 1; dx++) {
-                if (dx == 0 && dy == 0) continue;  // Skip center (white text goes there)
+                if (dx == 0 && dy == 0) continue;  // Center is the white text itself
                 cairo_move_to(cr, text_x + dx, label_y + dy);
                 cairo_set_source_rgba(cr, 0, 0, 0, 0.6);
                 pango_cairo_show_layout(cr, layout);
             }
         }
 
-        // Draw the actual white text on top of the shadow halo
+        // White text on top
         cairo_move_to(cr, text_x, label_y);
         cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
         pango_cairo_show_layout(cr, layout);

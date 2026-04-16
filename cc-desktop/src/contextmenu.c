@@ -25,6 +25,7 @@
 #define _GNU_SOURCE  // For M_PI in math.h under strict C11
 
 #include "contextmenu.h"
+#include "labels.h"
 
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -451,5 +452,643 @@ int contextmenu_show(Display *dpy, Window root, int root_x, int root_y,
     //   5 = Change Desktop Background...  -> caller checks for 5
     //   6 = separator
     //   7 = Open Terminal Here  -> caller checks for 7
+    return result;
+}
+
+// ── Icon context menu ────────────────────────────────────────────────
+
+// Menu items for the icon right-click menu.
+// Label ▶ is a submenu trigger — selecting it closes this menu and
+// opens the label picker popup.
+typedef struct {
+    const char *label;
+    bool is_separator;
+    bool is_submenu;
+} IconMenuItem;
+
+static const IconMenuItem icon_menu_items[] = {
+    { "Open",            false, false },  // 0  -> ICON_ACTION_OPEN
+    { NULL,              true,  false },  // 1 separator
+    { "Get Info",        false, false },  // 2  -> ICON_ACTION_INFO
+    { NULL,              true,  false },  // 3 separator
+    { "Label",           false, true  },  // 4  -> triggers label picker
+    { NULL,              true,  false },  // 5 separator
+    { "Move to Trash",   false, false },  // 6  -> ICON_ACTION_TRASH
+};
+#define ICON_MENU_ITEM_COUNT \
+    (sizeof(icon_menu_items) / sizeof(icon_menu_items[0]))
+
+// Same geometry helpers as the desktop menu, just using icon_menu_items.
+
+static int calc_icon_menu_height(void)
+{
+    int h = MENU_PAD_V * 2;
+    for (size_t i = 0; i < ICON_MENU_ITEM_COUNT; i++) {
+        h += icon_menu_items[i].is_separator ? MENU_SEP_HEIGHT : MENU_ITEM_HEIGHT;
+    }
+    return h;
+}
+
+static int icon_item_y_offset(int index)
+{
+    int y = MENU_PAD_V;
+    for (int i = 0; i < index && i < (int)ICON_MENU_ITEM_COUNT; i++) {
+        y += icon_menu_items[i].is_separator ? MENU_SEP_HEIGHT : MENU_ITEM_HEIGHT;
+    }
+    return y;
+}
+
+static int icon_hit_test(int mx, int my, int menu_h)
+{
+    (void)menu_h;
+    if (mx < 0 || mx >= MENU_WIDTH) return -1;
+
+    int y = MENU_PAD_V;
+    for (int i = 0; i < (int)ICON_MENU_ITEM_COUNT; i++) {
+        int h = icon_menu_items[i].is_separator ? MENU_SEP_HEIGHT : MENU_ITEM_HEIGHT;
+        if (my >= y && my < y + h) {
+            return icon_menu_items[i].is_separator ? -1 : i;
+        }
+        y += h;
+    }
+    return -1;
+}
+
+// Render the icon context menu.
+static void paint_icon_menu(cairo_t *cr, int menu_w, int menu_h,
+                             int highlighted_index)
+{
+    // Clear
+    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+    cairo_paint(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
+    // Drop shadow
+    for (int i = MENU_SHADOW_SIZE; i > 0; i--) {
+        double alpha = 0.2 * (1.0 - (double)i / MENU_SHADOW_SIZE);
+        draw_rounded_rect(cr,
+            MENU_SHADOW_SIZE - i,
+            MENU_SHADOW_SIZE - i + 2,
+            menu_w - 2 * (MENU_SHADOW_SIZE - i),
+            menu_h - 2 * (MENU_SHADOW_SIZE - i),
+            MENU_CORNER_RADIUS + i);
+        cairo_set_source_rgba(cr, 0, 0, 0, alpha);
+        cairo_fill(cr);
+    }
+
+    // Menu background
+    draw_rounded_rect(cr,
+        MENU_SHADOW_SIZE, MENU_SHADOW_SIZE,
+        menu_w - 2 * MENU_SHADOW_SIZE,
+        menu_h - 2 * MENU_SHADOW_SIZE,
+        MENU_CORNER_RADIUS);
+    cairo_set_source_rgba(cr, 240.0/255, 240.0/255, 240.0/255, 245.0/255);
+    cairo_fill_preserve(cr);
+    cairo_set_source_rgba(cr, 160.0/255, 160.0/255, 160.0/255, 1.0);
+    cairo_set_line_width(cr, 1.0);
+    cairo_stroke(cr);
+
+    // Items
+    int y = MENU_PAD_V + MENU_SHADOW_SIZE;
+    for (int i = 0; i < (int)ICON_MENU_ITEM_COUNT; i++) {
+        int h = icon_menu_items[i].is_separator ? MENU_SEP_HEIGHT : MENU_ITEM_HEIGHT;
+
+        if (icon_menu_items[i].is_separator) {
+            int sep_y = y + MENU_SEP_HEIGHT / 2;
+            cairo_set_source_rgba(cr, 200.0/255, 200.0/255, 200.0/255, 160.0/255);
+            cairo_set_line_width(cr, 1.0);
+            cairo_move_to(cr, MENU_SHADOW_SIZE + MENU_SEP_MARGIN, sep_y + 0.5);
+            cairo_line_to(cr, menu_w - MENU_SHADOW_SIZE - MENU_SEP_MARGIN, sep_y + 0.5);
+            cairo_stroke(cr);
+        } else {
+            bool highlighted = (i == highlighted_index);
+
+            if (highlighted) {
+                draw_rounded_rect(cr,
+                    MENU_SHADOW_SIZE + 4, y,
+                    menu_w - 2 * MENU_SHADOW_SIZE - 8, MENU_ITEM_HEIGHT,
+                    4.0);
+                cairo_set_source_rgba(cr, 0x34/255.0, 0x78/255.0, 0xF6/255.0, 1.0);
+                cairo_fill(cr);
+            }
+
+            PangoLayout *layout = pango_cairo_create_layout(cr);
+            pango_layout_set_text(layout, icon_menu_items[i].label, -1);
+            PangoFontDescription *fd = pango_font_description_from_string(MENU_FONT);
+            pango_layout_set_font_description(layout, fd);
+            pango_font_description_free(fd);
+
+            cairo_set_source_rgba(cr, highlighted ? 1.0 : 0.1,
+                                      highlighted ? 1.0 : 0.1,
+                                      highlighted ? 1.0 : 0.1, 1.0);
+            cairo_move_to(cr, MENU_SHADOW_SIZE + MENU_PAD_H + 16, y + 3);
+            pango_cairo_show_layout(cr, layout);
+
+            // Submenu arrow "▸"
+            if (icon_menu_items[i].is_submenu) {
+                pango_layout_set_text(layout, "\xe2\x96\xb8", -1);
+                int tw, th;
+                pango_layout_get_pixel_size(layout, &tw, &th);
+                cairo_move_to(cr,
+                    menu_w - MENU_SHADOW_SIZE - MENU_PAD_H - tw - 8,
+                    y + 3);
+                pango_cairo_show_layout(cr, layout);
+            }
+
+            g_object_unref(layout);
+        }
+        y += h;
+    }
+}
+
+// ── Label picker popup ───────────────────────────────────────────────
+
+// A small popup window showing 8 circles: one for each label color (1-7)
+// plus an "X" (none) circle. The user clicks a circle to set the label.
+//
+// Layout: circles arranged in a horizontal row, each PICKER_CIRCLE_D px.
+// The window is sized to fit them with padding.
+#define PICKER_CIRCLE_D   24    // Diameter of each color circle
+#define PICKER_CIRCLE_GAP  6    // Gap between circles
+#define PICKER_PAD_H      10    // Horizontal padding inside the window
+#define PICKER_PAD_V       8    // Vertical padding inside the window
+#define PICKER_SHADOW      6    // Shadow size
+
+// Total number of circles: 7 colors + 1 "none" = LABEL_COUNT (8)
+#define PICKER_CIRCLE_COUNT LABEL_COUNT
+
+// Compute the total width of the picker content (no shadow).
+static int picker_content_w(void)
+{
+    return PICKER_PAD_H * 2 +
+           PICKER_CIRCLE_COUNT * PICKER_CIRCLE_D +
+           (PICKER_CIRCLE_COUNT - 1) * PICKER_CIRCLE_GAP;
+}
+
+// X pixel position of circle center for index i (relative to content origin).
+static int picker_circle_cx(int i)
+{
+    return PICKER_PAD_H + PICKER_CIRCLE_D / 2 +
+           i * (PICKER_CIRCLE_D + PICKER_CIRCLE_GAP);
+}
+
+// Y pixel center of all circles (relative to content origin).
+static int picker_circle_cy(void)
+{
+    return PICKER_PAD_V + PICKER_CIRCLE_D / 2;
+}
+
+// Hit-test: which circle (0-7) is the mouse over? -1 if none.
+static int picker_hit_test(int mx, int my, int content_w, int content_h)
+{
+    (void)content_w; (void)content_h;
+    int cy = picker_circle_cy();
+    int r  = PICKER_CIRCLE_D / 2;
+
+    for (int i = 0; i < PICKER_CIRCLE_COUNT; i++) {
+        int cx = picker_circle_cx(i);
+        int dx = mx - cx;
+        int dy = my - cy;
+        if (dx*dx + dy*dy <= r*r) return i;
+    }
+    return -1;
+}
+
+// Paint the label picker popup.
+static void paint_picker(cairo_t *cr, int win_w, int win_h, int highlighted)
+{
+    int cw = picker_content_w();
+    int ch = PICKER_PAD_V * 2 + PICKER_CIRCLE_D;
+
+    // Clear
+    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+    cairo_paint(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
+
+    // Drop shadow
+    for (int i = PICKER_SHADOW; i > 0; i--) {
+        double alpha = 0.15 * (1.0 - (double)i / PICKER_SHADOW);
+        draw_rounded_rect(cr,
+            PICKER_SHADOW - i,
+            PICKER_SHADOW - i + 1,
+            win_w - 2*(PICKER_SHADOW - i),
+            win_h - 2*(PICKER_SHADOW - i),
+            MENU_CORNER_RADIUS + i);
+        cairo_set_source_rgba(cr, 0, 0, 0, alpha);
+        cairo_fill(cr);
+    }
+
+    // Background
+    draw_rounded_rect(cr,
+        PICKER_SHADOW, PICKER_SHADOW,
+        cw, ch,
+        MENU_CORNER_RADIUS);
+    cairo_set_source_rgba(cr, 240.0/255, 240.0/255, 240.0/255, 250.0/255);
+    cairo_fill_preserve(cr);
+    cairo_set_source_rgba(cr, 160.0/255, 160.0/255, 160.0/255, 1.0);
+    cairo_set_line_width(cr, 1.0);
+    cairo_stroke(cr);
+
+    // Draw each circle
+    int cy = PICKER_SHADOW + picker_circle_cy();
+    int r  = PICKER_CIRCLE_D / 2;
+
+    for (int i = 0; i < PICKER_CIRCLE_COUNT; i++) {
+        int cx = PICKER_SHADOW + picker_circle_cx(i);
+
+        if (i == 0) {
+            // Circle 0 = "None" — draw a grey ring with an X inside
+            if (highlighted == 0) {
+                // Blue selection ring
+                cairo_arc(cr, cx, cy, r + 2, 0, 2 * M_PI);
+                cairo_set_source_rgba(cr, 0x34/255.0, 0x78/255.0, 0xF6/255.0, 1.0);
+                cairo_fill(cr);
+            }
+            cairo_arc(cr, cx, cy, r, 0, 2 * M_PI);
+            cairo_set_source_rgba(cr, 0.85, 0.85, 0.85, 1.0);
+            cairo_fill_preserve(cr);
+            cairo_set_source_rgba(cr, 0.55, 0.55, 0.55, 1.0);
+            cairo_set_line_width(cr, 1.5);
+            cairo_stroke(cr);
+
+            // "X" inside the circle
+            double margin = r * 0.35;
+            cairo_set_source_rgba(cr, 0.4, 0.4, 0.4, 1.0);
+            cairo_set_line_width(cr, 1.5);
+            cairo_move_to(cr, cx - margin, cy - margin);
+            cairo_line_to(cr, cx + margin, cy + margin);
+            cairo_move_to(cr, cx + margin, cy - margin);
+            cairo_line_to(cr, cx - margin, cy + margin);
+            cairo_stroke(cr);
+        } else {
+            // Label color circles 1-7
+            const LabelColor *lc = &label_colors[i];
+
+            if (highlighted == i) {
+                // Slightly larger ring in the label color to show hover
+                cairo_arc(cr, cx, cy, r + 2, 0, 2 * M_PI);
+                cairo_set_source_rgba(cr, 0x34/255.0, 0x78/255.0, 0xF6/255.0, 1.0);
+                cairo_fill(cr);
+            }
+
+            // Filled circle in the label color
+            cairo_arc(cr, cx, cy, r, 0, 2 * M_PI);
+            cairo_set_source_rgba(cr, lc->r, lc->g, lc->b, 1.0);
+            cairo_fill_preserve(cr);
+
+            // Slightly darker border
+            cairo_set_source_rgba(cr, lc->r * 0.7, lc->g * 0.7, lc->b * 0.7, 1.0);
+            cairo_set_line_width(cr, 1.0);
+            cairo_stroke(cr);
+        }
+    }
+
+    (void)cw; (void)ch;
+}
+
+// Show the label picker popup adjacent to the menu position.
+// Returns the selected label index (0 = none, 1-7 = color), or -1 if dismissed.
+static int show_label_picker(Display *dpy, Window root,
+                             int menu_x, int menu_y,
+                             int label_item_y,
+                             int screen_w, int screen_h)
+{
+    int cw = picker_content_w();
+    int ch = PICKER_PAD_V * 2 + PICKER_CIRCLE_D;
+    int win_w = cw + 2 * PICKER_SHADOW;
+    int win_h = ch + 2 * PICKER_SHADOW;
+
+    // Position picker to the right of the menu, aligned with the Label item.
+    // If it would go off-screen, flip to the left.
+    int win_x = menu_x + MENU_WIDTH + 2 * MENU_SHADOW_SIZE - 4;
+    int win_y = menu_y + label_item_y;
+
+    if (win_x + win_w > screen_w) {
+        win_x = menu_x - win_w + 4;
+    }
+    if (win_y + win_h > screen_h) {
+        win_y = screen_h - win_h;
+    }
+    if (win_x < 0) win_x = 0;
+    if (win_y < 0) win_y = 0;
+
+    // Find 32-bit ARGB visual (same logic as the main menu)
+    XVisualInfo tmpl;
+    tmpl.screen = DefaultScreen(dpy);
+    tmpl.depth = 32;
+    tmpl.class = TrueColor;
+    int nvisuals = 0;
+    XVisualInfo *vis_list = XGetVisualInfo(dpy,
+        VisualScreenMask | VisualDepthMask | VisualClassMask,
+        &tmpl, &nvisuals);
+
+    Visual *visual = DefaultVisual(dpy, DefaultScreen(dpy));
+    int depth = DefaultDepth(dpy, DefaultScreen(dpy));
+    Colormap cmap = DefaultColormap(dpy, DefaultScreen(dpy));
+    bool own_cmap = false;
+
+    if (vis_list && nvisuals > 0) {
+        for (int i = 0; i < nvisuals; i++) {
+            if (vis_list[i].red_mask   == 0x00FF0000 &&
+                vis_list[i].green_mask == 0x0000FF00 &&
+                vis_list[i].blue_mask  == 0x000000FF) {
+                visual = vis_list[i].visual;
+                depth  = 32;
+                cmap   = XCreateColormap(dpy, root, visual, AllocNone);
+                own_cmap = true;
+                break;
+            }
+        }
+        XFree(vis_list);
+    }
+
+    XSetWindowAttributes attrs;
+    attrs.override_redirect = True;
+    attrs.colormap     = cmap;
+    attrs.border_pixel = 0;
+    attrs.background_pixel = 0;
+    attrs.event_mask = ExposureMask | ButtonPressMask | ButtonReleaseMask |
+                       PointerMotionMask | LeaveWindowMask;
+
+    unsigned long amask = CWOverrideRedirect | CWColormap | CWBorderPixel |
+                          CWBackPixel | CWEventMask;
+
+    Window picker_win = XCreateWindow(dpy, root,
+        win_x, win_y, win_w, win_h,
+        0, depth, InputOutput, visual, amask, &attrs);
+
+    XMapRaised(dpy, picker_win);
+    XGrabPointer(dpy, picker_win, True,
+        ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
+        GrabModeAsync, GrabModeAsync, None, None, CurrentTime);
+
+    cairo_surface_t *surface = cairo_xlib_surface_create(
+        dpy, picker_win, visual, win_w, win_h);
+    cairo_t *cr = cairo_create(surface);
+
+    paint_picker(cr, win_w, win_h, -1);
+    XFlush(dpy);
+
+    int result    = -1;
+    bool open     = true;
+    int  highlight = -1;
+
+    while (open) {
+        XEvent ev;
+        XNextEvent(dpy, &ev);
+
+        switch (ev.type) {
+        case Expose:
+            if (ev.xexpose.count == 0) {
+                paint_picker(cr, win_w, win_h, highlight);
+            }
+            break;
+
+        case MotionNotify:
+        {
+            // Adjust coordinates relative to the content area (inside shadow)
+            int mx = ev.xmotion.x - PICKER_SHADOW;
+            int my = ev.xmotion.y - PICKER_SHADOW;
+            int new_hl = picker_hit_test(mx, my, cw, ch);
+            if (new_hl != highlight) {
+                highlight = new_hl;
+                paint_picker(cr, win_w, win_h, highlight);
+                XFlush(dpy);
+            }
+            break;
+        }
+
+        case ButtonRelease:
+        {
+            int mx = ev.xbutton.x - PICKER_SHADOW;
+            int my = ev.xbutton.y - PICKER_SHADOW;
+            int hit = picker_hit_test(mx, my, cw, ch);
+            if (hit >= 0) {
+                result = hit;  // 0=none, 1-7=color
+                open   = false;
+            } else {
+                // Click outside → dismiss without selecting
+                open = false;
+            }
+            break;
+        }
+
+        case ButtonPress:
+        {
+            int mx = ev.xbutton.x - PICKER_SHADOW;
+            int my = ev.xbutton.y - PICKER_SHADOW;
+            if (picker_hit_test(mx, my, cw, ch) < 0) {
+                open = false;
+            }
+            break;
+        }
+
+        case LeaveNotify:
+            if (highlight != -1) {
+                highlight = -1;
+                paint_picker(cr, win_w, win_h, highlight);
+                XFlush(dpy);
+            }
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    XUngrabPointer(dpy, CurrentTime);
+    cairo_destroy(cr);
+    cairo_surface_destroy(surface);
+    XDestroyWindow(dpy, picker_win);
+    if (own_cmap) XFreeColormap(dpy, cmap);
+    XFlush(dpy);
+
+    return result;
+}
+
+// ── Public: contextmenu_show_icon ────────────────────────────────────
+
+int contextmenu_show_icon(Display *dpy, Window root,
+                          int root_x, int root_y,
+                          int screen_w, int screen_h,
+                          DesktopIcon *icon)
+{
+    (void)icon;  // Used by caller to apply the returned action
+
+    int menu_content_h = calc_icon_menu_height();
+    int win_w = MENU_WIDTH + 2 * MENU_SHADOW_SIZE;
+    int win_h = menu_content_h + 2 * MENU_SHADOW_SIZE;
+
+    int win_x = root_x;
+    int win_y = root_y;
+    if (win_x + win_w > screen_w) win_x = screen_w - win_w;
+    if (win_y + win_h > screen_h) win_y = screen_h - win_h;
+    if (win_x < 0) win_x = 0;
+    if (win_y < 0) win_y = 0;
+
+    // Find ARGB visual
+    XVisualInfo tmpl;
+    tmpl.screen = DefaultScreen(dpy);
+    tmpl.depth  = 32;
+    tmpl.class  = TrueColor;
+    int nvisuals = 0;
+    XVisualInfo *vis_list = XGetVisualInfo(dpy,
+        VisualScreenMask | VisualDepthMask | VisualClassMask,
+        &tmpl, &nvisuals);
+
+    Visual *visual = DefaultVisual(dpy, DefaultScreen(dpy));
+    int depth = DefaultDepth(dpy, DefaultScreen(dpy));
+    Colormap cmap = DefaultColormap(dpy, DefaultScreen(dpy));
+    bool own_cmap = false;
+
+    if (vis_list && nvisuals > 0) {
+        for (int i = 0; i < nvisuals; i++) {
+            if (vis_list[i].red_mask   == 0x00FF0000 &&
+                vis_list[i].green_mask == 0x0000FF00 &&
+                vis_list[i].blue_mask  == 0x000000FF) {
+                visual = vis_list[i].visual;
+                depth  = 32;
+                cmap   = XCreateColormap(dpy, root, visual, AllocNone);
+                own_cmap = true;
+                break;
+            }
+        }
+        XFree(vis_list);
+    }
+
+    XSetWindowAttributes attrs;
+    attrs.override_redirect = True;
+    attrs.colormap     = cmap;
+    attrs.border_pixel = 0;
+    attrs.background_pixel = 0;
+    attrs.event_mask = ExposureMask | ButtonPressMask | ButtonReleaseMask |
+                       PointerMotionMask | LeaveWindowMask;
+
+    unsigned long amask = CWOverrideRedirect | CWColormap | CWBorderPixel |
+                          CWBackPixel | CWEventMask;
+
+    Window menu_win = XCreateWindow(dpy, root,
+        win_x, win_y, win_w, win_h,
+        0, depth, InputOutput, visual, amask, &attrs);
+
+    XMapRaised(dpy, menu_win);
+    XGrabPointer(dpy, menu_win, True,
+        ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
+        GrabModeAsync, GrabModeAsync, None, None, CurrentTime);
+
+    cairo_surface_t *surface = cairo_xlib_surface_create(
+        dpy, menu_win, visual, win_w, win_h);
+    cairo_t *cr = cairo_create(surface);
+
+    paint_icon_menu(cr, win_w, win_h, -1);
+    XFlush(dpy);
+
+    int  result      = ICON_ACTION_NONE;
+    bool menu_open   = true;
+    int  highlighted = -1;
+    bool want_label  = false;  // Set when user picks "Label ▶"
+    int  label_item_screen_y = 0;  // Absolute y of the Label item (for picker placement)
+
+    while (menu_open) {
+        XEvent ev;
+        XNextEvent(dpy, &ev);
+
+        switch (ev.type) {
+        case Expose:
+            if (ev.xexpose.count == 0) {
+                paint_icon_menu(cr, win_w, win_h, highlighted);
+            }
+            break;
+
+        case MotionNotify:
+        {
+            int mx = ev.xmotion.x - MENU_SHADOW_SIZE;
+            int my = ev.xmotion.y - MENU_SHADOW_SIZE;
+            int new_hl = icon_hit_test(mx, my, menu_content_h);
+            if (new_hl != highlighted) {
+                highlighted = new_hl;
+                paint_icon_menu(cr, win_w, win_h, highlighted);
+                XFlush(dpy);
+            }
+            break;
+        }
+
+        case ButtonRelease:
+        {
+            int mx = ev.xbutton.x - MENU_SHADOW_SIZE;
+            int my = ev.xbutton.y - MENU_SHADOW_SIZE;
+            int hit = icon_hit_test(mx, my, menu_content_h);
+
+            if (hit < 0) {
+                // Outside all items — dismiss
+                if (mx < 0 || mx >= MENU_WIDTH ||
+                    my < 0 || my >= menu_content_h) {
+                    menu_open = false;
+                }
+            } else if (icon_menu_items[hit].is_submenu) {
+                // "Label ▶" — record that we want to open the picker,
+                // then close this menu first so they don't overlap.
+                want_label = true;
+                // Absolute Y of the label item's top edge in root coordinates
+                label_item_screen_y = win_y + MENU_SHADOW_SIZE +
+                                      icon_item_y_offset(hit);
+                menu_open = false;
+            } else {
+                // Map internal index to ICON_ACTION_* constant
+                switch (hit) {
+                case 0:  result = ICON_ACTION_OPEN;  break;
+                case 2:  result = ICON_ACTION_INFO;  break;
+                case 6:  result = ICON_ACTION_TRASH; break;
+                default: result = ICON_ACTION_NONE;  break;
+                }
+                menu_open = false;
+            }
+            break;
+        }
+
+        case ButtonPress:
+        {
+            int mx = ev.xbutton.x - MENU_SHADOW_SIZE;
+            int my = ev.xbutton.y - MENU_SHADOW_SIZE;
+            if (mx < 0 || mx >= MENU_WIDTH ||
+                my < 0 || my >= menu_content_h) {
+                menu_open = false;
+            }
+            break;
+        }
+
+        case LeaveNotify:
+            if (highlighted != -1) {
+                highlighted = -1;
+                paint_icon_menu(cr, win_w, win_h, highlighted);
+                XFlush(dpy);
+            }
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    // Tear down the icon menu
+    XUngrabPointer(dpy, CurrentTime);
+    cairo_destroy(cr);
+    cairo_surface_destroy(surface);
+    XDestroyWindow(dpy, menu_win);
+    if (own_cmap) XFreeColormap(dpy, cmap);
+    XFlush(dpy);
+
+    // If the user picked "Label ▶", show the label picker now that the
+    // main menu is gone. Position it where the Label item was.
+    if (want_label) {
+        int picked = show_label_picker(dpy, root,
+                                       win_x, label_item_screen_y,
+                                       0,       // label_item_y already absolute
+                                       screen_w, screen_h);
+        if (picked >= 0) {
+            result = ICON_ACTION_LABEL_BASE + picked;
+        }
+    }
+
     return result;
 }

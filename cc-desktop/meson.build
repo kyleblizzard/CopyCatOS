@@ -36,6 +36,7 @@ sources = [
   'src/wallpaper.c',
   'src/icons.c',
   'src/layout.c',
+  'src/labels.c',
   'src/contextmenu.c',
 ]
 

@@ -25,6 +25,7 @@
 #include "wallpaper.h"
 #include "icons.h"
 #include "contextmenu.h"
+#include "labels.h"
 
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
@@ -318,64 +319,112 @@ void desktop_run(Desktop *d)
                     desktop_repaint(d);
                 }
                 else if (ev.xbutton.button == Button3) {
-                    // Right click on empty space: show context menu
-                    icons_deselect_all();
-                    desktop_repaint(d);
+                    // Right-click: two cases —
+                    //   Hit an icon  → show icon context menu (Open, Label, Trash)
+                    //   Hit desktop  → show desktop context menu (New Folder, etc.)
+                    DesktopIcon *rhit = icons_handle_click(
+                        ev.xbutton.x, ev.xbutton.y);
 
-                    // contextmenu_show() runs its own mini event loop
-                    // and returns the index of the selected item.
-                    int choice = contextmenu_show(d->dpy, d->root,
-                        ev.xbutton.x_root, ev.xbutton.y_root,
-                        d->width, d->height);
-
-                    // Handle the selected menu action
-                    switch (choice) {
-                    case 0:  // "New Folder" (menu index 0)
-                    {
-                        // Create a new folder in ~/Desktop.
-                        // If "untitled folder" already exists, append a number.
-                        char folder[1024];
-                        const char *home = getenv("HOME");
-                        snprintf(folder, sizeof(folder),
-                                 "%s/Desktop/untitled folder", home);
-
-                        // Check if it already exists and increment
-                        int n = 1;
-                        while (access(folder, F_OK) == 0) {
-                            snprintf(folder, sizeof(folder),
-                                     "%s/Desktop/untitled folder %d", home, ++n);
-                        }
-                        mkdir(folder, 0755);
-                        // inotify will pick up the change automatically
-                        break;
-                    }
-                    case 3:  // "Clean Up" (menu index 3)
-                        icons_relayout(d->width, d->height);
+                    if (rhit) {
+                        // Select the right-clicked icon so the user can see
+                        // which icon the menu applies to.
+                        icons_select(rhit);
                         desktop_repaint(d);
-                        break;
-                    case 5:  // "Change Desktop Background..." (menu index 5)
-                        fprintf(stderr, "[cc-desktop] TODO: desktop background picker\n");
-                        break;
-                    case 7:  // "Open Terminal Here" (menu index 7)
-                    {
-                        // Fork and exec konsole in ~/Desktop
-                        pid_t pid = fork();
-                        if (pid == 0) {
-                            const char *home = getenv("HOME");
-                            char workdir[1024];
-                            snprintf(workdir, sizeof(workdir),
-                                     "%s/Desktop", home);
-                            execlp("konsole", "konsole",
-                                   "--workdir", workdir, NULL);
-                            _exit(127);  // exec failed
-                        }
-                        break;
-                    }
-                    default:
-                        break;  // Dismissed or unhandled item
-                    }
 
-                    desktop_repaint(d);
+                        int action = contextmenu_show_icon(d->dpy, d->root,
+                            ev.xbutton.x_root, ev.xbutton.y_root,
+                            d->width, d->height, rhit);
+
+                        switch (action) {
+                        case ICON_ACTION_OPEN:
+                            // Open file with its default application
+                            icons_handle_double_click(rhit);
+                            break;
+
+                        case ICON_ACTION_INFO:
+                            // Get Info — placeholder for now
+                            fprintf(stderr, "[cc-desktop] TODO: Get Info for '%s'\n",
+                                    rhit->name);
+                            break;
+
+                        case ICON_ACTION_TRASH:
+                            // Move to Trash — placeholder for now
+                            fprintf(stderr, "[cc-desktop] TODO: Move to Trash '%s'\n",
+                                    rhit->name);
+                            break;
+
+                        default:
+                            if (action >= ICON_ACTION_LABEL_BASE) {
+                                // Label selected (base+0 = none, base+1 = Red, etc.)
+                                int new_label = action - ICON_ACTION_LABEL_BASE;
+                                label_set(rhit->path, new_label);
+                                rhit->label = new_label;
+                                fprintf(stderr, "[cc-desktop] Label '%s' → %s\n",
+                                        rhit->name, label_names[new_label]);
+                            }
+                            break;
+                        }
+
+                        desktop_repaint(d);
+
+                    } else {
+                        // Right-click on empty desktop space
+                        icons_deselect_all();
+                        desktop_repaint(d);
+
+                        // contextmenu_show() runs its own mini event loop
+                        // and returns the index of the selected item.
+                        int choice = contextmenu_show(d->dpy, d->root,
+                            ev.xbutton.x_root, ev.xbutton.y_root,
+                            d->width, d->height);
+
+                        // Handle the selected menu action
+                        switch (choice) {
+                        case 0:  // "New Folder"
+                        {
+                            // Create a new folder in ~/Desktop.
+                            // If "untitled folder" already exists, append a number.
+                            char folder[1024];
+                            const char *home = getenv("HOME");
+                            snprintf(folder, sizeof(folder),
+                                     "%s/Desktop/untitled folder", home);
+
+                            int n = 1;
+                            while (access(folder, F_OK) == 0) {
+                                snprintf(folder, sizeof(folder),
+                                         "%s/Desktop/untitled folder %d", home, ++n);
+                            }
+                            mkdir(folder, 0755);
+                            // inotify will pick up the change automatically
+                            break;
+                        }
+                        case 3:  // "Clean Up"
+                            icons_relayout(d->width, d->height);
+                            desktop_repaint(d);
+                            break;
+                        case 5:  // "Change Desktop Background..."
+                            fprintf(stderr, "[cc-desktop] TODO: desktop background picker\n");
+                            break;
+                        case 7:  // "Open Terminal Here"
+                        {
+                            pid_t pid = fork();
+                            if (pid == 0) {
+                                const char *home = getenv("HOME");
+                                char workdir[1024];
+                                snprintf(workdir, sizeof(workdir),
+                                         "%s/Desktop", home);
+                                execlp("konsole", "konsole",
+                                       "--workdir", workdir, NULL);
+                                _exit(127);
+                            }
+                            break;
+                        }
+                        default:
+                            break;
+                        }
+
+                        desktop_repaint(d);
+                    }
                 }
                 break;
 

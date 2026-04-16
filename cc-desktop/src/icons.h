@@ -43,6 +43,7 @@ typedef struct {
     int x, y;                    // Pixel position on screen (computed from grid)
     bool selected;               // Whether this icon is currently highlighted
     bool is_directory;           // true if this is a folder
+    int label;                   // Color label index (0=none, 1-7=Red/Orange/Yellow/Green/Blue/Purple/Grey)
 } DesktopIcon;
 
 // Initialize the icon system: scan ~/Desktop, load icons, compute grid
