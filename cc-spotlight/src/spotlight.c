@@ -210,10 +210,27 @@ static void show_overlay(Display *dpy) {
     XMapRaised(dpy, overlay_win);
 
     // Grab the keyboard so all keystrokes come to us while
-    // the overlay is open.  GrabModeAsync means we don't
-    // freeze the X server while waiting for events.
-    XGrabKeyboard(dpy, overlay_win, True,
-                  GrabModeAsync, GrabModeAsync, CurrentTime);
+    // the overlay is open.
+    //
+    // IMPORTANT: owner_events must be False here.
+    // With True, keystrokes are still delivered to whatever window
+    // currently has focus (e.g., Konsole behind us) — the grab only
+    // intercepts events that would otherwise go unhandled.
+    // With False, ALL keyboard events are delivered exclusively to
+    // overlay_win regardless of which window has X input focus.
+    // That is what we need for a proper modal search overlay.
+    int grab_result = XGrabKeyboard(dpy, overlay_win, False,
+                                    GrabModeAsync, GrabModeAsync, CurrentTime);
+    if (grab_result != GrabSuccess) {
+        fprintf(stderr, "cc-spotlight: XGrabKeyboard failed (%d) — "
+                        "keyboard input may not work\n", grab_result);
+    }
+
+    // Also explicitly take input focus so that window managers and
+    // other apps know where keyboard input is going.  PointerRoot
+    // as the revert-to target means focus returns to the window
+    // under the pointer when we release the grab.
+    XSetInputFocus(dpy, overlay_win, RevertToPointerRoot, CurrentTime);
 
     repaint(dpy);
     XFlush(dpy);
@@ -523,8 +540,11 @@ int spotlight_init(Display *dpy) {
     // We want to start with a transparent background.
     attrs.background_pixel = 0;
 
-    // Request key press and exposure events.
-    attrs.event_mask = KeyPressMask | ExposureMask | StructureNotifyMask;
+    // Request key press, exposure, and focus events.
+    // ButtonPressMask lets us detect clicks outside the overlay so
+    // we can dismiss it (real Spotlight closes on outside click).
+    attrs.event_mask = KeyPressMask | ExposureMask | StructureNotifyMask |
+                       FocusChangeMask;
 
     // Don't inherit the parent's background — avoids flicker.
     attrs.border_pixel = 0;
@@ -607,6 +627,18 @@ void spotlight_run(Display *dpy) {
                 if (visible && ev.xexpose.count == 0) {
                     repaint(dpy);
                     XFlush(dpy);
+                }
+                break;
+
+            case FocusOut:
+                // The overlay lost focus — this happens when the user clicks
+                // on another window or the WM moves focus away. Dismiss the
+                // overlay so it doesn't linger invisibly in the background.
+                // NotifyGrab (detail=3) is fired when XGrabKeyboard activates,
+                // not an actual focus loss — skip those.
+                if (visible && ev.xfocus.detail != NotifyGrab
+                        && ev.xfocus.detail != NotifyPointerRoot) {
+                    hide_overlay(dpy);
                 }
                 break;
 
