@@ -29,6 +29,12 @@ if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
     export DBUS_SESSION_BUS_ADDRESS
 fi
 
+# Set the display to native resolution before anything starts.
+# XLibre / the display manager leaves the screen at 640x480 by default.
+# This must run before cc-wm starts so the WM initializes at the right size.
+xrandr --output eDP-1 --mode 1920x1200 --rate 120 --primary 2>/dev/null || \
+    xrandr --output eDP-1 --mode 1920x1200 --primary 2>/dev/null || true
+
 # Display rotation for Lenovo Legion Go (uncomment if needed)
 # xrandr --output eDP-1 --rotate right
 
