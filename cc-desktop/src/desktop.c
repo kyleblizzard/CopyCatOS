@@ -26,6 +26,7 @@
 #include "icons.h"
 #include "contextmenu.h"
 #include "labels.h"
+#include "dnd.h"
 
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
@@ -171,6 +172,9 @@ bool desktop_init(Desktop *d, const char *wallpaper_path)
     // Initialize the icon grid (scan ~/Desktop, load icons, set up inotify)
     icons_init(d->dpy, d->width, d->height);
 
+    // Initialize XDND (intern atoms, set XdndAware + XdndProxy on root/our window)
+    dnd_init(d->dpy, d->win, d->root);
+
     // Do an initial paint so the desktop isn't blank
     desktop_repaint(d);
 
@@ -232,6 +236,14 @@ void desktop_run(Desktop *d)
     DesktopIcon *dragging = NULL;   // Icon currently being dragged
     bool drag_active = false;       // True if we're in a drag operation
 
+    // XDND drag tracking.
+    // We don't start an XDND drag immediately on click — we wait until the
+    // mouse has moved at least DND_DRAG_THRESHOLD pixels from the click point.
+    // This prevents accidental drags on a sloppy click.
+    int drag_start_x = 0;       // Root-X at the moment the click registered
+    int drag_start_y = 0;       // Root-Y at the moment the click registered
+    bool xdnd_started = false;  // True after we've called dnd_source_begin()
+
     while (d->running) {
         // Set up the file descriptor set for select().
         // select() will block until one of these fds has data to read.
@@ -258,6 +270,21 @@ void desktop_run(Desktop *d)
         if (inotify_fd >= 0 && FD_ISSET(inotify_fd, &fds)) {
             if (icons_check_inotify()) {
                 // Icons were refreshed, repaint everything
+                desktop_repaint(d);
+            }
+        }
+
+        // Idle tick: check if a pending XdndDrop has gone unanswered for 3s.
+        // Some apps never send XdndFinished; we time out and snap the icon back.
+        if (ready == 0) {  // select() timed out (no events)
+            if (dnd_tick()) {
+                // Drag timed out — snap the dragged icon back to its grid position
+                if (dragging && drag_active) {
+                    icons_drag_end(d->width, d->height);
+                    dragging    = NULL;
+                    drag_active = false;
+                    xdnd_started = false;
+                }
                 desktop_repaint(d);
             }
         }
@@ -306,8 +333,12 @@ void desktop_run(Desktop *d)
 
                             // Start tracking for a potential drag.
                             // We don't actually begin the drag until
-                            // the mouse moves (in MotionNotify).
-                            dragging = hit;
+                            // the mouse moves DND_DRAG_THRESHOLD pixels
+                            // away from the click point (in MotionNotify).
+                            dragging     = hit;
+                            drag_start_x = ev.xbutton.x_root;
+                            drag_start_y = ev.xbutton.y_root;
+                            xdnd_started = false;
                             icons_drag_begin(hit, ev.xbutton.x, ev.xbutton.y);
                         }
                     } else {
@@ -432,21 +463,98 @@ void desktop_run(Desktop *d)
                 // Mouse moved while a button is held down.
                 // If we're tracking a potential drag, update the icon position.
                 if (dragging && (ev.xmotion.state & Button1Mask)) {
-                    drag_active = true;
-                    icons_drag_update(ev.xmotion.x, ev.xmotion.y);
-                    desktop_repaint(d);
+                    // Check whether we've moved past the drag threshold.
+                    // This prevents accidental drags from sloppy single-clicks.
+                    int dx = ev.xmotion.x_root - drag_start_x;
+                    int dy = ev.xmotion.y_root - drag_start_y;
+                    int dist = dx*dx + dy*dy;  // Squared distance (no sqrt needed)
+                    int thresh_sq = DND_DRAG_THRESHOLD * DND_DRAG_THRESHOLD;
+
+                    if (dist >= thresh_sq) {
+                        // Past the threshold — activate the visual drag
+                        drag_active = true;
+
+                        // Start XDND on the first frame that crosses the threshold
+                        if (!xdnd_started) {
+                            xdnd_started = true;
+                            dnd_source_begin(d->dpy, d->win, d->root,
+                                             dragging->path,
+                                             ev.xmotion.x_root,
+                                             ev.xmotion.y_root);
+                        } else {
+                            // Update XDND position every frame
+                            dnd_source_motion(d->dpy,
+                                              ev.xmotion.x_root,
+                                              ev.xmotion.y_root);
+                        }
+
+                        // Also update the visual icon position (grid-snap preview).
+                        // Only do this when the cursor is over our own desktop
+                        // window — when over an external XDND target we don't
+                        // move the icon visually (the target shows its own feedback).
+                        if (!dnd_source_active()) {
+                            icons_drag_update(ev.xmotion.x, ev.xmotion.y);
+                        }
+
+                        desktop_repaint(d);
+                    }
                 }
                 break;
 
             case ButtonRelease:
                 if (ev.xbutton.button == Button1 && dragging) {
                     if (drag_active) {
-                        // End the drag: snap icon to nearest free grid cell
-                        icons_drag_end(d->width, d->height);
+                        // Try to complete as an XDND drop onto an external window.
+                        // dnd_source_drop() returns true if XDND handled it —
+                        // in that case, don't grid-snap (the file went to another app).
+                        // It returns false when the cursor is over our own desktop,
+                        // so we do the normal grid-snap.
+                        if (!xdnd_started || !dnd_source_drop(d->dpy)) {
+                            // No XDND target — snap icon to nearest free grid cell
+                            icons_drag_end(d->width, d->height);
+                        }
+                        // else: XDND drop in progress — don't snap yet.
+                        // The icon will snap back via dnd_tick() timeout if needed.
+                        desktop_repaint(d);
+                    } else if (xdnd_started) {
+                        // Threshold was never crossed but we did call source_begin.
+                        // Cancel cleanly.
+                        dnd_source_cancel(d->dpy);
+                    }
+                    dragging     = NULL;
+                    drag_active  = false;
+                    xdnd_started = false;
+                }
+                break;
+
+            case ClientMessage:
+                // XDND uses ClientMessage events for the entire protocol handshake.
+                // This handles: XdndStatus, XdndFinished (source side) and
+                // XdndEnter, XdndPosition, XdndLeave, XdndDrop (target side).
+                dnd_handle_client_message(d->dpy, &ev.xclient);
+                break;
+
+            case SelectionRequest:
+                // A drop target called XConvertSelection to fetch the file URI
+                // from us (we're acting as the source/selection owner).
+                // We write the URI into their requested property and confirm.
+                dnd_handle_selection_request(d->dpy, &ev.xselectionrequest);
+                break;
+
+            case SelectionNotify:
+                // We called XConvertSelection (as target) and the source has
+                // written the file URI data into our requested property.
+                // Read it, decode the path, copy the file to ~/Desktop.
+                {
+                    const char *dest = dnd_handle_selection_notify(
+                        d->dpy, &ev.xselection);
+                    if (dest) {
+                        // A new file arrived on the desktop — inotify will
+                        // catch it, but trigger a repaint now for instant feedback.
+                        fprintf(stderr, "[cc-desktop] File dropped onto desktop: %s\n",
+                                dest);
                         desktop_repaint(d);
                     }
-                    dragging = NULL;
-                    drag_active = false;
                 }
                 break;
 
@@ -461,6 +569,9 @@ void desktop_run(Desktop *d)
 
 void desktop_shutdown(Desktop *d)
 {
+    // Remove XdndProxy from root so apps don't try to drop onto our dead window
+    dnd_shutdown(d->dpy, d->root);
+
     icons_shutdown();
     wallpaper_shutdown();
 

@@ -38,6 +38,7 @@ sources = [
   'src/layout.c',
   'src/labels.c',
   'src/contextmenu.c',
+  'src/dnd.c',
 ]
 
 executable('cc-desktop',
