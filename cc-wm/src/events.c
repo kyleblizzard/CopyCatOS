@@ -155,11 +155,18 @@ static void on_unmap_notify(CCWM *wm, XEvent *e)
 {
     Window w = e->xunmap.window;
 
-    // Ignore unmaps from reparenting (we caused them)
+    // Ignore unmaps we caused by reparenting (event comes from root because
+    // we selected SubstructureNotify on root when we reparented).
     if (e->xunmap.event == wm->root) return;
 
     Client *c = wm_find_client(wm, w);
     if (c) {
+        // If this window is minimized, the unmap came from us (we called
+        // XUnmapWindow on the frame when genie minimize completed, which
+        // also auto-unmaps the client). We must NOT unframe it — the frame
+        // needs to survive so the user can restore it from the dock.
+        if (c->minimized) return;
+
         unframe_window(wm, c);
     }
 }
@@ -360,14 +367,19 @@ static void on_button_release(CCWM *wm, XEvent *e)
                 break;
             case 2: // Minimize
                 if (mr_is_active()) {
+                    // Start the genie minimize animation. The completion callback
+                    // (on_genie_minimize_done in moonrock.c) will unmap the frame
+                    // and call ewmh_update_client_list once the animation finishes.
                     int dock_x = wm->root_w / 2;
                     int dock_y = wm->root_h - 48;
                     mr_animate_minimize(wm, c, dock_x, dock_y);
                 } else {
+                    // No compositor — hide immediately with no animation.
                     XUnmapWindow(wm->dpy, c->frame);
-                    c->mapped = false;
+                    c->mapped    = false;
+                    c->minimized = true;
+                    ewmh_update_client_list(wm);
                 }
-                ewmh_update_client_list(wm);
                 break;
             case 3: { // Zoom
                 extern void client_smart_zoom(CCWM *wm, Client *c);

@@ -54,6 +54,14 @@ struct Client {
     // Saved geometry for smart zoom (toggle between this and maximized)
     int saved_x, saved_y, saved_w, saved_h;
     bool zoomed;             // True if window is currently "smart zoomed" (maximized)
+
+    // Minimized state — set when the window has been minimized into the dock.
+    // Unlike 'mapped' (which is also false for hidden app windows), 'minimized'
+    // specifically means the user clicked the yellow traffic light and the
+    // window is stored in the dock waiting to be restored. We use this flag
+    // in on_unmap_notify to skip unframing — the frame must survive so the
+    // window can be restored later.
+    bool minimized;
 };
 
 // Global window manager state
