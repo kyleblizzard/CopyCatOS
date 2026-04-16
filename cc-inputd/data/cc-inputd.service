@@ -22,11 +22,5 @@ RestartSec=2
 # Run as root — needed for /dev/uinput and EVIOCGRAB on physical devices
 User=root
 
-# Harden the service — limit what the daemon can access
-ProtectHome=read-only
-ProtectSystem=strict
-ReadWritePaths=/dev/uinput /run/cc-inputd
-PrivateTmp=yes
-
 [Install]
 WantedBy=multi-user.target
