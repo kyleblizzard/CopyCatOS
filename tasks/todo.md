@@ -140,7 +140,7 @@
 - [x] Set icon theme to AquaKDE-icons
 - [ ] Gate: log in via DM, select CopyCatOS, all components start
 
-## Step 9: AppImage Packaging
+## Step 9: AppImage Packaging (interim — Qt app styling shim)
 - [x] Write scripts/build-appimage.sh template
 - [x] Bundle breeze-aqua .so at plugins/styles/breezeaqua6.so
 - [x] Bundle LucidaGrande.ttc at fonts/
@@ -176,5 +176,43 @@
 - [ ] Gate: deploy to Legion Go, verify controller works at login + desktop
 - [ ] Gate: game mode passthrough works with Steam
 - [ ] Gate: power button suspend/restart works correctly
-- [ ] Genie minimize animation (compositor captures pixmap, distorts into dock)
-- [x] Unsaved changes dot in close button (detected from title prefix * or •)
+
+## Step 12: cc-finder (Spatial File Manager)
+- [ ] Create meson.build
+- [ ] finder.c: main window, ARGB visual, toolbar (Back/Forward/View buttons)
+- [ ] sidebar.c: source list (Devices, Places, Favorites) — Snow Leopard gradient style
+- [ ] iconview.c: spatial icon grid with label editing, color label rects
+- [ ] listview.c: column headers (Name, Date Modified, Size, Kind), alternating row stripes
+- [ ] columnview.c: Miller columns (Snow Leopard's default view)
+- [ ] pathbar.c: breadcrumb path bar in toolbar area
+- [ ] preview.c: Quick Look-style preview on spacebar
+- [ ] spatial.c: per-folder window position/size/view-mode memory (xattrs or sidecar DB)
+- [ ] navigation.c: back/forward history stack, double-click descent, up-arrow to parent
+- [ ] clipboard.c: cut/copy/paste files (X selections + filesystem ops)
+- [ ] trash.c: move to ~/.local/share/Trash/files/, write .trashinfo, restore support
+- [ ] Bundle awareness: render .capp directories as single icons using Contents/Resources/ icon
+- [ ] Bundle launch: double-click .capp → exec Contents/MacOS/<binary>
+- [ ] Drag-and-drop: XDND v5 (reuse dnd.c patterns from cc-desktop)
+- [ ] Context menus: Open, Get Info, Label, Move to Trash, New Folder, etc.
+- [ ] Gate: browse filesystem spatially, open/copy/move/trash files, bundles render as apps
+
+## Step 13: .capp App Bundles (native app format)
+- [ ] Define bundle spec: MyApp.capp/Contents/{MacOS/,Resources/,Frameworks/,Info.capp}
+- [ ] Info.capp format: JSON or key-value (name, version, icon, MIME types, identifier)
+- [ ] Bundle icon resolution: Contents/Resources/app.icns → .png fallback chain
+- [ ] cc-finder integration: .capp dirs render as single app icons, double-click launches
+- [ ] Migrate breeze-aqua bundling from AppImage to Contents/Frameworks/ in .capp
+- [ ] scripts/make-bundle.sh: wrap a Qt app into .capp (binary + breeze-aqua + fonts + assets)
+- [ ] .desktop file generation: auto-create from Info.capp for freedesktop compatibility
+- [ ] Register .capp MIME type so xdg-open routes to cc-finder's launcher
+- [ ] Gate: build Kate.capp bundle, double-click in cc-finder launches with Aqua style
+
+## Step 14: .cdmg Disk Images (drag-to-install distribution)
+- [ ] Define format: squashfs image with .cdmg extension, loopback-mounted read-only
+- [ ] Mount tool: cc-dmg-mount (C, losetup + squashfuse, auto-mount on double-click)
+- [ ] cc-finder integration: mounted .cdmg shows as volume in sidebar under Devices
+- [ ] Background image: .cdmg can embed a background PNG for the mount window
+- [ ] Install UX: drag .capp bundle from mounted .cdmg to /Applications folder
+- [ ] Eject: unmount on sidebar eject click or right-click → Eject
+- [ ] scripts/make-dmg.sh: create .cdmg from a .capp bundle + background image
+- [ ] Gate: double-click .cdmg, see app + background in cc-finder, drag to install, eject

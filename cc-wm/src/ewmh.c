@@ -214,6 +214,152 @@ void ewmh_get_title(CCWM *wm, Window w, char *buf, int buflen)
     }
 }
 
+// ── _NET_WM_STATE helpers ────────────────────────────────────────
+
+bool ewmh_has_wm_state(CCWM *wm, Window w, Atom state)
+{
+    Atom type_ret;
+    int fmt;
+    unsigned long nitems, after;
+    unsigned char *data = NULL;
+
+    if (XGetWindowProperty(wm->dpy, w, wm->atom_net_wm_state,
+                           0, 32, False, XA_ATOM,
+                           &type_ret, &fmt, &nitems, &after, &data) == Success
+        && data) {
+        Atom *atoms = (Atom *)data;
+        for (unsigned long i = 0; i < nitems; i++) {
+            if (atoms[i] == state) {
+                XFree(data);
+                return true;
+            }
+        }
+        XFree(data);
+    }
+    return false;
+}
+
+void ewmh_set_wm_state(CCWM *wm, Window w, Atom state, bool set)
+{
+    Atom type_ret;
+    int fmt;
+    unsigned long nitems, after;
+    unsigned char *data = NULL;
+
+    // Read current state list
+    Atom current[32];
+    int count = 0;
+
+    if (XGetWindowProperty(wm->dpy, w, wm->atom_net_wm_state,
+                           0, 32, False, XA_ATOM,
+                           &type_ret, &fmt, &nitems, &after, &data) == Success
+        && data) {
+        Atom *atoms = (Atom *)data;
+        for (unsigned long i = 0; i < nitems && count < 32; i++) {
+            current[count++] = atoms[i];
+        }
+        XFree(data);
+    }
+
+    if (set) {
+        // Add the state atom if not already present
+        for (int i = 0; i < count; i++) {
+            if (current[i] == state) return; // Already set
+        }
+        if (count < 32) {
+            current[count++] = state;
+        }
+    } else {
+        // Remove the state atom
+        int dst = 0;
+        for (int i = 0; i < count; i++) {
+            if (current[i] != state) {
+                current[dst++] = current[i];
+            }
+        }
+        count = dst;
+    }
+
+    // Write the updated list back
+    XChangeProperty(wm->dpy, w, wm->atom_net_wm_state,
+                    XA_ATOM, 32, PropModeReplace,
+                    (unsigned char *)current, count);
+}
+
+// ── Fullscreen management ───────────────────────────────────────
+
+void wm_set_fullscreen(CCWM *wm, Client *c, bool enter)
+{
+    if (!c || !c->frame) return;
+    if (enter == c->fullscreen) return; // Already in requested state
+
+    if (enter) {
+        // Save current geometry so we can restore on exit
+        c->pre_fs_x = c->x;
+        c->pre_fs_y = c->y;
+        c->pre_fs_w = c->w;
+        c->pre_fs_h = c->h;
+        c->fullscreen = true;
+
+        // Resize frame to cover the entire screen with no decorations.
+        // The client fills the frame completely (no title bar, no border,
+        // no shadow padding).
+        c->x = 0;
+        c->y = 0;
+        c->w = wm->root_w;
+        c->h = wm->root_h;
+
+        XMoveResizeWindow(wm->dpy, c->frame, 0, 0, wm->root_w, wm->root_h);
+        XMoveResizeWindow(wm->dpy, c->client, 0, 0, wm->root_w, wm->root_h);
+        XRaiseWindow(wm->dpy, c->frame);
+
+        // Set frame extents to zero — no chrome in fullscreen
+        long extents[4] = {0, 0, 0, 0};
+        XChangeProperty(wm->dpy, c->client, wm->atom_net_frame_extents,
+                        XA_CARDINAL, 32, PropModeReplace,
+                        (unsigned char *)extents, 4);
+
+        // Update the _NET_WM_STATE property on the client
+        ewmh_set_wm_state(wm, c->client, wm->atom_net_wm_state_fullscreen, true);
+
+        fprintf(stderr, "[cc-wm] '%s' entered fullscreen %dx%d\n",
+                c->title, wm->root_w, wm->root_h);
+    } else {
+        // Exit fullscreen — restore saved geometry and decorations
+        c->fullscreen = false;
+        c->x = c->pre_fs_x;
+        c->y = c->pre_fs_y;
+        c->w = c->pre_fs_w;
+        c->h = c->pre_fs_h;
+
+        // Calculate decorated frame size (same math as frame_window)
+        int sl = compositor_active ? SHADOW_LEFT : 0;
+        int sr = compositor_active ? SHADOW_RIGHT : 0;
+        int st = compositor_active ? SHADOW_TOP : 0;
+        int sb = compositor_active ? SHADOW_BOTTOM : 0;
+
+        int frame_w = c->w + 2 * BORDER_WIDTH + sl + sr;
+        int frame_h = c->h + TITLEBAR_HEIGHT + BORDER_WIDTH + st + sb;
+
+        XMoveResizeWindow(wm->dpy, c->frame, c->x, c->y, frame_w, frame_h);
+        XMoveResizeWindow(wm->dpy, c->client,
+                          sl + BORDER_WIDTH, st + TITLEBAR_HEIGHT,
+                          c->w, c->h);
+
+        // Restore normal frame extents
+        ewmh_set_frame_extents(wm, c->client);
+
+        // Remove fullscreen from _NET_WM_STATE
+        ewmh_set_wm_state(wm, c->client, wm->atom_net_wm_state_fullscreen, false);
+
+        // Redraw decorations now that they're visible again
+        frame_redraw_decor(wm, c);
+
+        fprintf(stderr, "[cc-wm] '%s' exited fullscreen, restored %dx%d+%d+%d\n",
+                c->title, c->w, c->h, c->x, c->y);
+    }
+}
+
 // ── _NET_WM_PING implementation ──────────────────────────────────
 
 // Helper: get elapsed time in milliseconds between two timespecs

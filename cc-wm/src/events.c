@@ -201,6 +201,10 @@ static void on_configure_request(CCWM *wm, XEvent *e)
 
     Client *c = wm_find_client(wm, cr->window);
     if (c && c->frame) {
+        // Fullscreen windows ignore configure requests — they must stay
+        // covering the entire screen until explicitly exiting fullscreen.
+        if (c->fullscreen) return;
+
         // Managed window — apply the configuration to both frame and client
         if (cr->value_mask & (CWX | CWY)) {
             c->x = cr->x;
@@ -389,6 +393,9 @@ static void on_button_press(CCWM *wm, XEvent *e)
 
     // Focus on click
     wm_focus_client(wm, c);
+
+    // Fullscreen windows have no decorations — no drag, no buttons, no resize
+    if (c->fullscreen) return;
 
     int fx = e->xbutton.x;  // Click position relative to frame
     int fy = e->xbutton.y;
@@ -612,6 +619,29 @@ static void on_client_message(CCWM *wm, XEvent *e)
         }
     } else if (cm->message_type == wm->atom_net_close_window) {
         ewmh_send_delete(wm, cm->window);
+    } else if (cm->message_type == wm->atom_net_wm_state) {
+        // _NET_WM_STATE ClientMessage — apps request state changes.
+        // data.l[0] = action: 0=remove, 1=add, 2=toggle
+        // data.l[1] and data.l[2] = state atoms to change
+        // gamescope uses this to request fullscreen via _NET_WM_STATE_FULLSCREEN.
+        Client *c = wm_find_client(wm, cm->window);
+        if (!c) c = wm_find_client_by_frame(wm, cm->window);
+        if (c) {
+            int action = (int)cm->data.l[0];
+            Atom states[2] = { (Atom)cm->data.l[1], (Atom)cm->data.l[2] };
+
+            for (int i = 0; i < 2; i++) {
+                if (states[i] == wm->atom_net_wm_state_fullscreen) {
+                    bool want_fs;
+                    if (action == 0)      want_fs = false;  // _NET_WM_STATE_REMOVE
+                    else if (action == 1)  want_fs = true;   // _NET_WM_STATE_ADD
+                    else                   want_fs = !c->fullscreen; // _NET_WM_STATE_TOGGLE
+                    wm_set_fullscreen(wm, c, want_fs);
+                } else if (states[i] == wm->atom_net_wm_state_hidden) {
+                    // Hidden state is managed by minimize — ignore explicit requests
+                }
+            }
+        }
     } else if (cm->message_type == wm->atom_wm_change_state) {
         // ICCCM WM_CHANGE_STATE: apps or shell components request an iconic
         // (minimized) state transition. IconicState = 3.

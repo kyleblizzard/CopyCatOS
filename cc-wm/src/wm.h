@@ -62,6 +62,13 @@ struct Client {
     // in on_unmap_notify to skip unframing — the frame must survive so the
     // window can be restored later.
     bool minimized;
+
+    // Fullscreen state — set when a window requests _NET_WM_STATE_FULLSCREEN.
+    // Fullscreen windows lose all decorations (no title bar, no shadow, no border)
+    // and are resized to cover the entire screen, raised above everything.
+    // Pre-fullscreen geometry is saved so we can restore when leaving fullscreen.
+    bool fullscreen;
+    int pre_fs_x, pre_fs_y, pre_fs_w, pre_fs_h;  // Saved geometry before fullscreen
 };
 
 // Global window manager state

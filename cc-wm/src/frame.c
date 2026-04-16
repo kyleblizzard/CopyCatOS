@@ -140,6 +140,14 @@ void frame_window(CCWM *wm, Window client)
     // Draw the initial decoration
     frame_redraw_decor(wm, c);
 
+    // Check if the window already has _NET_WM_STATE_FULLSCREEN set before
+    // mapping — gamescope and some games set this property before the map
+    // request. If so, immediately enter fullscreen mode so the window
+    // covers the whole screen with no decorations.
+    if (ewmh_has_wm_state(wm, client, wm->atom_net_wm_state_fullscreen)) {
+        wm_set_fullscreen(wm, c, true);
+    }
+
     // Tell MoonRock Compositor about the new window so it can create a
     // texture and start compositing it. This must happen AFTER the frame
     // is fully set up (mapped, decorated, input shape configured) so
@@ -211,5 +219,8 @@ void frame_existing_windows(CCWM *wm)
 void frame_redraw_decor(CCWM *wm, Client *c)
 {
     if (!c || !c->frame) return;
+    // Fullscreen windows have no decorations — skip painting entirely.
+    // The frame covers the entire root with the client filling it edge-to-edge.
+    if (c->fullscreen) return;
     decor_paint(wm, c);
 }

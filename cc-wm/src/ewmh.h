@@ -48,6 +48,23 @@ Client *ewmh_handle_pong(CCWM *wm, XClientMessageEvent *cm);
 // event loop. Sets beach ball cursor on timed-out windows.
 void ewmh_check_ping_timeouts(CCWM *wm);
 
+// ── _NET_WM_STATE helpers ──
+// Read/write the _NET_WM_STATE atom list on a client window. Used for
+// fullscreen, hidden, and other state flags that apps set or toggle.
+
+// Check if a specific state atom is present in the window's _NET_WM_STATE
+bool ewmh_has_wm_state(CCWM *wm, Window w, Atom state);
+
+// Add or remove a state atom from the window's _NET_WM_STATE property.
+// If 'set' is true, adds the atom (no-op if already present).
+// If false, removes it (no-op if not present).
+void ewmh_set_wm_state(CCWM *wm, Window w, Atom state, bool set);
+
+// ── Fullscreen management ──
+// Enter or exit fullscreen for a client. Handles geometry save/restore,
+// frame resize to root dimensions, decoration removal, and state property.
+void wm_set_fullscreen(CCWM *wm, Client *c, bool enter);
+
 // Ping timeout in milliseconds (matches macOS's 2-4 second threshold)
 #define PING_TIMEOUT_MS 3000
 

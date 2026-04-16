@@ -125,10 +125,12 @@ CopyCatOS/
 │   ├── meson.build
 │   ├── src/                     # 9 source files + new compositor/struts/resize
 │   └── session/                 # cc-session.sh, aura.desktop
-├── cc-dock/src/               # Dock (C, TO BUILD)
-├── cc-menubar/src/            # Menu bar (C, TO BUILD)
-├── cc-desktop/src/            # Desktop + icons (C, TO BUILD)
-├── cc-spotlight/src/          # Search overlay (C, TO BUILD)
+├── cc-dock/src/               # Dock (C, BUILT)
+├── cc-menubar/src/            # Menu bar (C, BUILT)
+├── cc-desktop/src/            # Desktop + icons + XDND + labels (C, BUILT)
+├── cc-spotlight/src/          # Search overlay (C, BUILT)
+├── cc-finder/src/             # Spatial file manager (C, PLANNED)
+├── cc-inputd/src/             # Legion Go controller daemon (C, BUILT)
 ├── breeze-aqua/                 # Qt6 QStyle plugin (C++, 8,900 lines, EXISTING)
 ├── snowleopardaura/             # Asset library (511MB, DO NOT MODIFY)
 ├── icons/AquaKDE-icons/         # Production icon theme (2,157 PNGs, EXISTING)
@@ -149,10 +151,14 @@ See `tasks/todo.md` for the full checkable plan. Summary:
 1. **cc-wm compositing** — XComposite shadows (depth stack)
 2. **cc-wm struts** — reserve space for dock/menubar
 3. **cc-wm resize** — edge/corner resize handles
-4. **cc-desktop** — wallpaper + desktop icon grid
+4. **cc-desktop** — wallpaper + desktop icon grid + XDND + color labels
 5. **cc-menubar** — 22px global bar with Apple logo, clock, app menus
 6. **cc-dock** — glass shelf, magnification, bounce, reflections, indicators
 7. **cc-spotlight** — Ctrl+Space search overlay
 8. **Session integration** — all components start together
-9. **AppImage packaging** — bundle AquaStyle in every app
+9. **AppImage packaging** — interim Qt app styling shim (bundle AquaStyle)
 10. **Polish** — genie minimize, smart zoom, hover states, translucency
+11. **cc-inputd** — Legion Go controller daemon + System Preferences panes
+12. **cc-finder** — spatial file manager (icon/list/column views, Trash, bundle awareness)
+13. **.capp bundles** — native app format (directory-based, replaces AppImage long-term)
+14. **.cdmg disk images** — squashfs drag-to-install distribution format
