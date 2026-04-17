@@ -81,6 +81,7 @@ void registry_init(SysPrefsState *state)
     add_pane(state, "energy-saver",      "Energy\nSaver",          "hardware", "energy-saver");
     add_pane(state, "keyboard",          "Keyboard",               "hardware", "keyboard");
     add_pane(state, "mouse",             "Mouse",                   "hardware", "mouse");
+    add_pane(state, "controller",        "Controller",              "hardware", "controller");
     add_pane(state, "trackpad",          "Trackpad",               "hardware", "trackpad");
     add_pane(state, "print-fax",         "Print &\nFax",           "hardware", "print-fax");
     add_pane(state, "sound",             "Sound",                   "hardware", "sound");

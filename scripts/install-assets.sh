@@ -336,7 +336,23 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 9. Desktop shortcut .desktop files
+# 9. System Preferences icons
+# ---------------------------------------------------------------------------
+header "System Preferences icons"
+
+SYSPREFS_ICONS="$ASSET_SRC/cc-sysprefs/assets/icons"
+SYSPREFS_ICONS_128="$ASSET_SRC/cc-sysprefs/assets/icons-128"
+
+mkdir -p "$ASSET_DST/sysprefs/icons" "$ASSET_DST/sysprefs/icons-128"
+
+# 32x32 pane icons (shown in the main icon grid)
+copy_dir "$SYSPREFS_ICONS" "$ASSET_DST/sysprefs/icons"
+
+# 128x128 pane icons (shown in the stub "not yet available" view)
+copy_dir "$SYSPREFS_ICONS_128" "$ASSET_DST/sysprefs/icons-128"
+
+# ---------------------------------------------------------------------------
+# 10. Desktop shortcut .desktop files
 # ---------------------------------------------------------------------------
 header "Desktop shortcuts"
 
@@ -359,7 +375,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 10. Summary
+# 11. Summary
 # ---------------------------------------------------------------------------
 header "Summary"
 
