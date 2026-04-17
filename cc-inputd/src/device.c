@@ -100,22 +100,79 @@ int device_open(DeviceManager *dm, const char *path) {
 
     // --- Determine device type ---
 
-    // Gamepad check: must be Lenovo vendor AND one of the known product IDs
-    bool is_gamepad = (id.vendor == LEGION_GO_VID) &&
-                      (id.product == LEGION_GO_PID1 ||
-                       id.product == LEGION_GO_PID2);
+    // Gamepad check: requires BOTH vendor/product match AND gamepad capabilities.
+    //
+    // The Legion Go S WCH.cn chip (0x1a86:0xe310) exposes MANY interfaces:
+    //   - event11 "Legion Go S"           → real gamepad (sticks + buttons)
+    //   - event2  "wch.cn Legion Go S"    → system keys (volume)
+    //   - event3  "wch.cn Legion Go S Mouse"     → FPS mode mouse
+    //   - event4  "wch.cn Legion Go S Keyboard"  → FPS mode keyboard
+    //   - event7  "wch.cn Legion Go S Touchpad"  → touchscreen input
+    //   - event6  "wch.cn Legion Go S UNKNOWN"   → unknown
+    //
+    // In HID takeover mode (FPS mode), the Mouse/Keyboard/Touchpad interfaces
+    // are actively used by the firmware. GRABBING them kills touch input and
+    // mouse functionality. We must only grab the actual gamepad (event11)
+    // which has analog sticks (ABS_X/Y) AND face buttons (BTN_SOUTH).
+    //
+    // The capability check is REQUIRED even for VID/PID matches.
+    bool is_gamepad = false;
+    bool vid_match = false;
 
-    // Power button check: look for KEY_POWER in the device's capability bits.
-    // The kernel exposes which keys a device can generate via EVIOCGBIT.
+    if (id.vendor == LEGION_GO_VID &&
+        (id.product == LEGION_GO_PID1 || id.product == LEGION_GO_PID2)) {
+        vid_match = true;
+    } else if (id.vendor == LEGION_GO_S_VID &&
+               id.product == LEGION_GO_S_PID) {
+        vid_match = true;
+    }
+
+    // Capability-based gamepad detection: requires analog sticks + face button.
+    // This correctly identifies the real gamepad node while filtering out
+    // Mouse/Keyboard/Touchpad interfaces that share the same VID/PID.
+    {
+        unsigned long abs_bits[(ABS_CNT + sizeof(long) * 8 - 1) / (sizeof(long) * 8)];
+        unsigned long key_bits[(KEY_CNT + sizeof(long) * 8 - 1) / (sizeof(long) * 8)];
+        memset(abs_bits, 0, sizeof(abs_bits));
+        memset(key_bits, 0, sizeof(key_bits));
+
+        bool has_sticks = false;
+        bool has_face_button = false;
+
+        if (ioctl(fd, EVIOCGBIT(EV_ABS, sizeof(abs_bits)), abs_bits) >= 0) {
+            has_sticks = test_bit(ABS_X, abs_bits) && test_bit(ABS_Y, abs_bits);
+        }
+        if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(key_bits)), key_bits) >= 0) {
+            has_face_button = test_bit(BTN_SOUTH, key_bits);
+        }
+
+        if (has_sticks && has_face_button) {
+            is_gamepad = true;
+            if (!vid_match) {
+                fprintf(stderr, "[cc-inputd] detected gamepad by capabilities: %s\n", name);
+            }
+        }
+    }
+
+    // Power button and system keys check.
+    // We look for KEY_POWER (power button) and KEY_VOLUMEUP (volume/media
+    // keys device) in the device's capability bits via EVIOCGBIT.
     bool is_power = false;
+    bool is_sys_keys = false;
     if (!is_gamepad) {
-        // Allocate a bitmask large enough to hold all key bits.
-        // KEY_CNT is the total number of key codes the kernel defines.
         unsigned long key_bits[(KEY_CNT + sizeof(long) * 8 - 1) / (sizeof(long) * 8)];
         memset(key_bits, 0, sizeof(key_bits));
 
         if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof(key_bits)), key_bits) >= 0) {
             is_power = test_bit(KEY_POWER, key_bits);
+
+            // System keys device: has volume keys but is NOT a gamepad.
+            // On the Legion Go S, event2 ("wch.cn Legion Go S") has
+            // KEY_VOLUMEUP, KEY_VOLUMEDOWN, and KEY_MUTE.
+            if (test_bit(KEY_VOLUMEUP, key_bits) &&
+                test_bit(KEY_VOLUMEDOWN, key_bits)) {
+                is_sys_keys = true;
+            }
         }
 
         // Also check the name as a fallback — some devices report
@@ -125,8 +182,8 @@ int device_open(DeviceManager *dm, const char *path) {
         }
     }
 
-    // If this device isn't a gamepad or power button, we don't need it.
-    if (!is_gamepad && !is_power) {
+    // If this device isn't a gamepad, power button, or system keys, skip it.
+    if (!is_gamepad && !is_power && !is_sys_keys) {
         close(fd);
         return -1;
     }
@@ -153,16 +210,18 @@ int device_open(DeviceManager *dm, const char *path) {
     snprintf(dev->name, sizeof(dev->name), "%s", name);
     dev->vendor         = id.vendor;
     dev->product        = id.product;
-    dev->is_gamepad     = is_gamepad;
+    dev->is_gamepad      = is_gamepad;
     dev->is_power_button = is_power;
-    dev->grabbed        = grabbed;
+    dev->is_system_keys  = is_sys_keys;
+    dev->grabbed         = grabbed;
     dm->device_count++;
 
-    fprintf(stderr, "[cc-inputd] opened %s: \"%s\" [%04x:%04x] %s%s%s\n",
+    fprintf(stderr, "[cc-inputd] opened %s: \"%s\" [%04x:%04x] %s%s%s%s\n",
             path, name, id.vendor, id.product,
-            is_gamepad ? "gamepad" : "",
-            is_power   ? "power"   : "",
-            grabbed    ? " (grabbed)" : "");
+            is_gamepad  ? "gamepad " : "",
+            is_power    ? "power "   : "",
+            is_sys_keys ? "syskeys " : "",
+            grabbed     ? "(grabbed)" : "");
 
     return slot;
 }
@@ -183,6 +242,10 @@ int device_init(DeviceManager *dm) {
     // Zero out the struct so all pointers start as NULL and count is 0
     memset(dm, 0, sizeof(*dm));
     dm->mon_fd = -1;
+    dm->hidraw_config_fd = -1;
+    dm->hidraw_button_fd = -1;
+    dm->gamepad_mode_active = false;
+    dm->hid_takeover_active = false;
 
     // --- Create the udev context ---
     // udev_new() is the entry point to libudev. We need this context
@@ -337,6 +400,27 @@ void device_handle_hotplug(DeviceManager *dm) {
 void device_shutdown(DeviceManager *dm) {
     if (!dm) return;
 
+    // Restore FPS/Windows mode before closing devices.
+    // This ensures the controller is usable without cc-inputd.
+    device_restore_fps_mode(dm);
+
+    // Close the hidraw button fd if open (HID takeover mode)
+    if (dm->hidraw_button_fd >= 0) {
+        close(dm->hidraw_button_fd);
+        dm->hidraw_button_fd = -1;
+        dm->hid_takeover_active = false;
+        fprintf(stderr, "[cc-inputd] closed hidraw buttons: %s\n",
+                dm->hidraw_button_path);
+    }
+
+    // Close the hidraw config fd if open
+    if (dm->hidraw_config_fd >= 0) {
+        close(dm->hidraw_config_fd);
+        dm->hidraw_config_fd = -1;
+        fprintf(stderr, "[cc-inputd] closed hidraw config: %s\n",
+                dm->hidraw_config_path);
+    }
+
     // Close every open device
     for (int i = 0; i < dm->device_count; i++) {
         if (dm->devices[i].grabbed) {
@@ -363,4 +447,294 @@ void device_shutdown(DeviceManager *dm) {
     }
 
     fprintf(stderr, "[cc-inputd] device manager shut down\n");
+}
+
+// --------------------------------------------------------------------------
+// find_hidraw_config — Find the WCH.cn vendor-specific hidraw device
+// --------------------------------------------------------------------------
+// The Legion Go S has a configuration HID interface with usage page 0xFFA0.
+// We identify it by scanning /sys/class/hidraw/ for devices with the right
+// vendor ID and a report descriptor that starts with the vendor-specific
+// usage page bytes (06 A0 FF).
+//
+// Returns the fd on success, -1 on failure.
+// --------------------------------------------------------------------------
+static int find_hidraw_config(DeviceManager *dm) {
+    // Iterate through hidraw devices looking for our config interface
+    for (int i = 0; i < 16; i++) {
+        char sysfs_path[256];
+        char devnode[64];
+        snprintf(devnode, sizeof(devnode), "/dev/hidraw%d", i);
+
+        // Check if this hidraw belongs to our WCH.cn device by reading
+        // the HID uevent for the vendor/product ID
+        snprintf(sysfs_path, sizeof(sysfs_path),
+                 "/sys/class/hidraw/hidraw%d/device/uevent", i);
+        FILE *fp = fopen(sysfs_path, "r");
+        if (!fp) continue;
+
+        bool is_legion = false;
+        char line[256];
+        while (fgets(line, sizeof(line), fp)) {
+            // Look for HID_ID line containing our vendor:product
+            if (strstr(line, "00001A86") && strstr(line, "0000E310")) {
+                is_legion = true;
+                break;
+            }
+        }
+        fclose(fp);
+        if (!is_legion) continue;
+
+        // Check if the report descriptor starts with vendor-specific usage page
+        // 06 A0 FF = Usage Page (Vendor Defined 0xFFA0)
+        snprintf(sysfs_path, sizeof(sysfs_path),
+                 "/sys/class/hidraw/hidraw%d/device/report_descriptor", i);
+        int desc_fd = open(sysfs_path, O_RDONLY);
+        if (desc_fd < 0) continue;
+
+        unsigned char desc[8];
+        ssize_t n = read(desc_fd, desc, sizeof(desc));
+        close(desc_fd);
+
+        if (n < 3 || desc[0] != 0x06 || desc[1] != 0xA0 || desc[2] != 0xFF) {
+            continue;   // Not the vendor-specific interface
+        }
+
+        // This is a vendor-specific Legion Go S hidraw device.
+        // Open it for read+write (we need to send commands).
+        int fd = open(devnode, O_RDWR);
+        if (fd < 0) {
+            fprintf(stderr, "[cc-inputd] failed to open %s for config: %s\n",
+                    devnode, strerror(errno));
+            continue;
+        }
+
+        snprintf(dm->hidraw_config_path, sizeof(dm->hidraw_config_path),
+                 "%s", devnode);
+        fprintf(stderr, "[cc-inputd] found hidraw config interface: %s\n", devnode);
+        return fd;
+    }
+
+    return -1;
+}
+
+// --------------------------------------------------------------------------
+// find_hidraw_buttons — Find the button-reading vendor hidraw device
+// --------------------------------------------------------------------------
+// The Legion Go S has TWO vendor-specific hidraw devices with 21-byte
+// descriptors (both start with 06 A0 FF). They differ by HID interface:
+//   - Interface 0004 (hidraw3): silent — produces no reports
+//   - Interface 0006 (hidraw5): streams 32-byte reports with buttons + IMU
+//
+// We need the LAST (highest-numbered) 21-byte vendor hidraw, which is
+// consistently the button-streaming interface 0006.
+//
+// Returns the fd on success, -1 on failure.
+// --------------------------------------------------------------------------
+static int find_hidraw_buttons(DeviceManager *dm)
+{
+    // Track the best candidate — we want the highest-numbered match
+    int best_index = -1;
+
+    for (int i = 0; i < 16; i++) {
+        char sysfs_path[256];
+        char devnode[64];
+        snprintf(devnode, sizeof(devnode), "/dev/hidraw%d", i);
+
+        // Skip the config interface — we already have that one
+        if (dm->hidraw_config_fd >= 0 &&
+            strcmp(devnode, dm->hidraw_config_path) == 0) {
+            continue;
+        }
+
+        // Check if this hidraw belongs to our WCH.cn device
+        snprintf(sysfs_path, sizeof(sysfs_path),
+                 "/sys/class/hidraw/hidraw%d/device/uevent", i);
+        FILE *fp = fopen(sysfs_path, "r");
+        if (!fp) continue;
+
+        bool is_legion = false;
+        char line[256];
+        while (fgets(line, sizeof(line), fp)) {
+            if (strstr(line, "00001A86") && strstr(line, "0000E310")) {
+                is_legion = true;
+                break;
+            }
+        }
+        fclose(fp);
+        if (!is_legion) continue;
+
+        // Check for vendor-specific descriptor prefix (06 A0 FF)
+        snprintf(sysfs_path, sizeof(sysfs_path),
+                 "/sys/class/hidraw/hidraw%d/device/report_descriptor", i);
+        int desc_fd = open(sysfs_path, O_RDONLY);
+        if (desc_fd < 0) continue;
+
+        unsigned char desc[64];
+        ssize_t desc_len = read(desc_fd, desc, sizeof(desc));
+        close(desc_fd);
+
+        if (desc_len < 3 || desc[0] != 0x06 || desc[1] != 0xA0 || desc[2] != 0xFF) {
+            continue;
+        }
+
+        // Must be the 21-byte descriptor (not the 29-byte config)
+        if (desc_len != 21) {
+            continue;
+        }
+
+        // Don't open yet — just record as the best candidate.
+        // The highest-numbered 21-byte match is the button interface.
+        best_index = i;
+        fprintf(stderr, "[cc-inputd] hidraw candidate for buttons: "
+                "/dev/hidraw%d (desc=%zd bytes)\n", i, desc_len);
+    }
+
+    if (best_index < 0) {
+        return -1;
+    }
+
+    // Open the winning candidate read-only with non-blocking for epoll
+    char devnode[64];
+    snprintf(devnode, sizeof(devnode), "/dev/hidraw%d", best_index);
+
+    int fd = open(devnode, O_RDONLY | O_NONBLOCK);
+    if (fd < 0) {
+        fprintf(stderr, "[cc-inputd] failed to open %s for buttons: %s\n",
+                devnode, strerror(errno));
+        return -1;
+    }
+
+    snprintf(dm->hidraw_button_path, sizeof(dm->hidraw_button_path),
+             "%s", devnode);
+    fprintf(stderr, "[cc-inputd] found hidraw button interface: %s\n", devnode);
+    return fd;
+}
+
+// --------------------------------------------------------------------------
+// device_init_hid_takeover — Set up HID takeover for desktop mode
+// --------------------------------------------------------------------------
+// Opens the button-reading hidraw interface. Does NOT switch the firmware
+// to SteamOS mode — we stay in FPS mode so the vendor hidraw streams data.
+// The XInput evdev interface (event11) provides sticks and analog triggers.
+//
+// Returns 0 on success, -1 if the button hidraw wasn't found.
+// --------------------------------------------------------------------------
+int device_init_hid_takeover(DeviceManager *dm)
+{
+    // First ensure the config hidraw is available (we need it for mode
+    // commands even in HID takeover mode — e.g. switching to Steam mode)
+    if (dm->hidraw_config_fd < 0) {
+        dm->hidraw_config_fd = find_hidraw_config(dm);
+    }
+
+    // Ensure the firmware is in FPS/Windows mode. If a previous cc-inputd
+    // session was killed with SIGKILL (no cleanup), the controller may still
+    // be stuck in SteamOS mode where the vendor hidraw produces no data.
+    // We explicitly send the FPS mode command to guarantee the right state.
+    if (dm->hidraw_config_fd >= 0) {
+        unsigned char cmd_fps[] = { 0x04, 0x0a, 0x00 };
+        if (write(dm->hidraw_config_fd, cmd_fps, sizeof(cmd_fps)) < 0) {
+            fprintf(stderr, "[cc-inputd] HID takeover: FPS mode cmd failed: %s\n",
+                    strerror(errno));
+        }
+        usleep(100000);  // 100ms for firmware to process
+
+        // Re-enable OS auto-detection so the firmware stays cooperative
+        unsigned char cmd_auto[] = { 0x04, 0x09, 0x01 };
+        write(dm->hidraw_config_fd, cmd_auto, sizeof(cmd_auto));
+        usleep(200000);  // 200ms settle time
+
+        fprintf(stderr, "[cc-inputd] HID takeover: FPS mode restored\n");
+    }
+
+    // Find and open the button-reading hidraw
+    dm->hidraw_button_fd = find_hidraw_buttons(dm);
+    if (dm->hidraw_button_fd < 0) {
+        fprintf(stderr, "[cc-inputd] HID takeover: button hidraw not found\n");
+        return -1;
+    }
+
+    dm->hid_takeover_active = true;
+    fprintf(stderr, "[cc-inputd] HID takeover mode initialized: "
+            "config=%s, buttons=%s\n",
+            dm->hidraw_config_path, dm->hidraw_button_path);
+    return 0;
+}
+
+// --------------------------------------------------------------------------
+// device_activate_gamepad_mode — Switch Legion Go S to SteamOS/gamepad mode
+// --------------------------------------------------------------------------
+// Sends two HID commands to the config interface:
+//   1. Disable OS auto-detection (0x04 0x09 0x00)
+//   2. Set SteamOS mode (0x04 0x0a 0x01)
+//
+// After these commands, the gamepad's evdev node (event11) starts producing
+// proper button and axis events instead of routing through keyboard/mouse.
+//
+// Must be called AFTER device_init() so the hidraw interface is available.
+// Returns 0 on success, -1 if no config interface found.
+// --------------------------------------------------------------------------
+int device_activate_gamepad_mode(DeviceManager *dm) {
+    // Find the config hidraw if we haven't already
+    if (dm->hidraw_config_fd < 0) {
+        dm->hidraw_config_fd = find_hidraw_config(dm);
+    }
+
+    if (dm->hidraw_config_fd < 0) {
+        fprintf(stderr, "[cc-inputd] no Legion Go S hidraw config found "
+                "— gamepad mode not available\n");
+        return -1;
+    }
+
+    // Command 1: Disable OS auto-detection
+    // Without this, the firmware may switch back to FPS mode on its own
+    unsigned char cmd_no_autodetect[] = { 0x04, 0x09, 0x00 };
+    if (write(dm->hidraw_config_fd, cmd_no_autodetect, sizeof(cmd_no_autodetect)) < 0) {
+        fprintf(stderr, "[cc-inputd] failed to disable autodetect: %s\n",
+                strerror(errno));
+    }
+
+    // Small delay for the firmware to process
+    usleep(100000);  // 100ms
+
+    // Command 2: Switch to SteamOS/gamepad mode
+    // This makes button and stick data flow through the gamepad HID interface
+    // instead of the keyboard/mouse interfaces
+    unsigned char cmd_steamos[] = { 0x04, 0x0a, 0x01 };
+    if (write(dm->hidraw_config_fd, cmd_steamos, sizeof(cmd_steamos)) < 0) {
+        fprintf(stderr, "[cc-inputd] failed to set SteamOS mode: %s\n",
+                strerror(errno));
+        return -1;
+    }
+
+    dm->gamepad_mode_active = true;
+    fprintf(stderr, "[cc-inputd] Legion Go S switched to gamepad mode\n");
+
+    // Give the firmware time to apply the mode switch before we try
+    // reading from the gamepad evdev node
+    usleep(500000);  // 500ms
+
+    return 0;
+}
+
+// --------------------------------------------------------------------------
+// device_restore_fps_mode — Switch back to FPS/Windows mode on shutdown
+// --------------------------------------------------------------------------
+// Restores the default mode so the controller works normally without cc-inputd.
+// --------------------------------------------------------------------------
+void device_restore_fps_mode(DeviceManager *dm) {
+    if (!dm->gamepad_mode_active || dm->hidraw_config_fd < 0) return;
+
+    // Switch back to Windows/FPS mode
+    unsigned char cmd_windows[] = { 0x04, 0x0a, 0x00 };
+    if (write(dm->hidraw_config_fd, cmd_windows, sizeof(cmd_windows)) >= 0) {
+        fprintf(stderr, "[cc-inputd] Legion Go S restored to FPS mode\n");
+    }
+
+    // Re-enable OS auto-detection
+    unsigned char cmd_autodetect[] = { 0x04, 0x09, 0x01 };
+    write(dm->hidraw_config_fd, cmd_autodetect, sizeof(cmd_autodetect));
+
+    dm->gamepad_mode_active = false;
 }

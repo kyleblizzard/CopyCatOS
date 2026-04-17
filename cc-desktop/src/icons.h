@@ -60,8 +60,9 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h);
 // clicked icon, or NULL if the click was on empty space.
 DesktopIcon *icons_handle_click(int x, int y);
 
-// Open the given icon's file using xdg-open (fork + exec).
-// Called when a double-click is detected.
+// Open the given icon's file (fork + exec).
+// For .desktop files, parses and executes the Exec= line directly.
+// For all other files, launches xdg-open. Called on double-click.
 void icons_handle_double_click(DesktopIcon *icon);
 
 // Select a single icon (deselects all others first).

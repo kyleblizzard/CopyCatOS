@@ -20,6 +20,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <signal.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -68,8 +69,16 @@ static int acquire_instance_lock(void)
 // ============================================================================
 int main(int argc, char *argv[])
 {
-    (void)argc;
-    (void)argv;
+    // Parse --pane flag so external scripts can open directly to a pane.
+    // Usage: cc-sysprefs --pane controller
+    // If no --pane is given, the icon grid is shown (default behavior).
+    const char *open_pane = NULL;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--pane") == 0 && i + 1 < argc) {
+            open_pane = argv[i + 1];
+            i++;  // Skip the pane name argument
+        }
+    }
 
     fprintf(stderr, "[cc-sysprefs] Starting System Preferences...\n");
 
@@ -101,6 +110,34 @@ int main(int argc, char *argv[])
 
     fprintf(stderr, "[cc-sysprefs] Registered %d panes in %d categories\n",
             state.pane_count, state.category_count);
+
+    // If --pane was specified, open directly to that pane instead of the grid.
+    // We search by pane ID (e.g. "mouse", "controller", "dock").
+    if (open_pane) {
+        bool found = false;
+        for (int i = 0; i < state.pane_count; i++) {
+            if (strcmp(state.panes[i].id, open_pane) == 0) {
+                sysprefs_open_pane(&state, i);
+                found = true;
+                break;
+            }
+        }
+        // Alias: "controller" maps to the "mouse" pane ID in the registry.
+        // This lets desktop shortcuts use the intuitive name while the
+        // registry keeps the macOS-style "Mouse & Keyboard" icon slot.
+        if (!found && strcmp(open_pane, "controller") == 0) {
+            for (int i = 0; i < state.pane_count; i++) {
+                if (strcmp(state.panes[i].id, "mouse") == 0) {
+                    sysprefs_open_pane(&state, i);
+                    found = true;
+                    break;
+                }
+            }
+        }
+        if (!found) {
+            fprintf(stderr, "[cc-sysprefs] Unknown pane: %s\n", open_pane);
+        }
+    }
 
     // Run the event loop (blocks until quit)
     sysprefs_run(&state);

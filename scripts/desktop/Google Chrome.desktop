@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Google Chrome
+Comment=Access the Internet
+Exec=google-chrome-stable
+Icon=com.google.Chrome
+Terminal=false
+Categories=Network;WebBrowser;

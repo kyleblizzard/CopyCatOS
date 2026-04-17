@@ -78,6 +78,19 @@ bool mouse_init(MouseEmulator *mouse)
     // a 1280-wide screen in about half a second.
     mouse->max_speed = 20.0;
 
+    // --- Left stick scroll tuning ---
+
+    // Scroll deadzone: larger than the pointer deadzone because accidental
+    // scroll input is more disruptive than accidental cursor nudges.
+    // 6000 out of 32767 is about 18%.
+    mouse->scroll_deadzone = 6000;
+
+    // Scroll speed: how many scroll notches per tick at full deflection.
+    // At 120Hz, 0.15 notches/tick = ~18 notches/second, which scrolls
+    // at a comfortable reading pace. Much higher feels out of control;
+    // much lower feels sluggish.
+    mouse->scroll_speed = 0.15;
+
     // --- Create the 120Hz timer ---
     // timerfd gives us a file descriptor that becomes readable at a fixed
     // interval. We use CLOCK_MONOTONIC (unaffected by system time changes)
@@ -130,6 +143,22 @@ void mouse_update_axis(MouseEmulator *mouse, int axis, int value)
         mouse->raw_y = value;
     }
     // Silently ignore any other axis (ABS_X, ABS_Y, etc. are not our concern)
+}
+
+// --------------------------------------------------------------------------
+// mouse_update_scroll_axis — Store a new left stick axis reading
+// --------------------------------------------------------------------------
+// Called by the main loop whenever an ABS_X or ABS_Y event arrives from
+// the left stick. We store the value here; the actual scroll math happens
+// in mouse_scroll_tick() on the 120Hz timer.
+// --------------------------------------------------------------------------
+void mouse_update_scroll_axis(MouseEmulator *mouse, int axis, int value)
+{
+    if (axis == ABS_X) {
+        mouse->raw_lx = value;
+    } else if (axis == ABS_Y) {
+        mouse->raw_ly = value;
+    }
 }
 
 // --------------------------------------------------------------------------
@@ -230,6 +259,79 @@ bool mouse_tick(MouseEmulator *mouse, int *dx, int *dy)
 
     // Return true only if we have actual pixel movement to report
     return (*dx != 0 || *dy != 0);
+}
+
+// --------------------------------------------------------------------------
+// mouse_scroll_tick — Compute scroll wheel deltas for one 120Hz frame
+// --------------------------------------------------------------------------
+// Converts the left stick position into scroll wheel events. Uses a linear
+// response (no power curve) because scrolling should feel directly
+// proportional to how far you push the stick.
+//
+// The vertical axis is inverted: pushing the stick DOWN (positive raw_ly)
+// produces a NEGATIVE REL_WHEEL value (scroll down), matching the natural
+// scrolling convention where content moves with your push direction.
+//
+// Parameters:
+//   sx, sy — output: integer scroll notch deltas for uinput
+//            sx: positive = scroll right, negative = scroll left
+//            sy: positive = scroll up, negative = scroll down
+//
+// Returns:
+//   true if there is scroll movement to inject (sx or sy != 0)
+// --------------------------------------------------------------------------
+bool mouse_scroll_tick(MouseEmulator *mouse, int *sx, int *sy)
+{
+    // Compute offset from center (same as pointer emulation)
+    double ox = (double)(mouse->raw_lx - mouse->center_x);
+    double oy = (double)(mouse->raw_ly - mouse->center_y);
+
+    // Compute magnitude
+    double mag = sqrt(ox * ox + oy * oy);
+
+    // Deadzone check — left stick deadzone is typically larger than right
+    // stick because scroll requires more intentional input
+    if (mag <= (double)mouse->scroll_deadzone) {
+        mouse->scroll_accum_x = 0.0;
+        mouse->scroll_accum_y = 0.0;
+        *sx = 0;
+        *sy = 0;
+        return false;
+    }
+
+    // Normalize direction
+    double nx = ox / mag;
+    double ny = oy / mag;
+
+    // Linear active range (no exponent — scroll speed is proportional
+    // to deflection, which feels more natural for scrolling than the
+    // quadratic curve used for pointer movement)
+    double active = (mag - (double)mouse->scroll_deadzone) /
+                    (32767.0 - (double)mouse->scroll_deadzone);
+    if (active < 0.0) active = 0.0;
+    if (active > 1.0) active = 1.0;
+
+    // Speed = linear deflection * scroll_speed.
+    // At 120Hz with scroll_speed=0.15, full stick deflection produces
+    // about 18 scroll notches per second — comfortable for browsing.
+    double speed = active * mouse->scroll_speed;
+
+    // Accumulate fractional scroll movement.
+    // Horizontal: positive stick = positive HWHEEL (scroll right)
+    mouse->scroll_accum_x += nx * speed;
+    // Vertical: INVERT because stick down (positive Y) should scroll
+    // content down, which is NEGATIVE REL_WHEEL in Linux evdev.
+    mouse->scroll_accum_y += -ny * speed;
+
+    // Extract integer scroll notches
+    *sx = (int)mouse->scroll_accum_x;
+    *sy = (int)mouse->scroll_accum_y;
+
+    // Preserve fractional remainder for next tick
+    mouse->scroll_accum_x -= (double)*sx;
+    mouse->scroll_accum_y -= (double)*sy;
+
+    return (*sx != 0 || *sy != 0);
 }
 
 // --------------------------------------------------------------------------

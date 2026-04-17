@@ -33,6 +33,7 @@ typedef struct MouseEmulator  MouseEmulator;
 typedef struct PowerButton    PowerButton;
 typedef struct InputConfig    InputConfig;
 typedef struct IpcServer      IpcServer;
+typedef struct HidParser      HidParser;
 
 // --------------------------------------------------------------------------
 // InputDaemon — The root struct that owns the entire daemon's state
@@ -49,6 +50,7 @@ typedef struct InputDaemon {
     PowerButton    *power;         // Handles short/long press of power key
     InputConfig    *config;        // Loaded from ~/.config/copycatos/input.conf
     IpcServer      *ipc;           // Unix socket for cc-wm / System Prefs
+    HidParser      *hid;           // Parses raw vendor HID reports for buttons
 
     // --- Event loop ---
     int epoll_fd;                  // epoll(7) file descriptor; watches all

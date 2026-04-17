@@ -50,7 +50,8 @@ typedef enum ActionType {
     ACTION_MOUSE_BUTTON = 2,  // Emit a mouse button (e.g. BTN_LEFT)
     ACTION_MOUSE_MOVE   = 3,  // Feed an axis value to the mouse emulator
     ACTION_COPYCATOS    = 4,  // Trigger a CopyCatOS shell action (e.g. Spotlight)
-    ACTION_GAMEPAD_FWD  = 5   // Forward event unchanged to virtual gamepad
+    ACTION_GAMEPAD_FWD  = 5,  // Forward event unchanged to virtual gamepad
+    ACTION_SCROLL       = 6   // Feed an axis value to the scroll emulator (left stick)
 } ActionType;
 
 // --------------------------------------------------------------------------
@@ -66,7 +67,8 @@ typedef enum CcAction {
     CC_ACTION_VOLUME_UP       = 3,  // Increase system volume
     CC_ACTION_VOLUME_DOWN     = 4,  // Decrease system volume
     CC_ACTION_BRIGHTNESS_UP   = 5,  // Increase screen brightness
-    CC_ACTION_BRIGHTNESS_DOWN = 6   // Decrease screen brightness
+    CC_ACTION_BRIGHTNESS_DOWN = 6,  // Decrease screen brightness
+    CC_ACTION_OSK_TOGGLE      = 7   // Toggle on-screen keyboard (xvkbd)
 } CcAction;
 
 // --------------------------------------------------------------------------

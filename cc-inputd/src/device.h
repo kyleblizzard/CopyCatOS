@@ -26,14 +26,20 @@ struct udev_monitor;
 // --------------------------------------------------------------------------
 // Legion Go USB vendor/product IDs
 // --------------------------------------------------------------------------
-// The Lenovo Legion Go exposes its gamepad controls through two USB HID
-// devices. We match on these IDs to distinguish the Legion Go controllers
-// from any other input devices connected to the system (keyboards, mice,
-// external gamepads, touchscreens, etc.).
+// The Lenovo Legion Go family exposes gamepad controls through USB HID.
+// Different hardware revisions use different USB chips:
+//
+//   Original Legion Go: Lenovo vendor (0x17ef), products 0x6182 / 0x61eb
+//   Legion Go S:        WCH.cn USB chip (0x1a86), product 0xe310
+//
+// We match on ALL known combinations so both models are detected.
 // --------------------------------------------------------------------------
-#define LEGION_GO_VID   0x17ef   // Lenovo USB vendor ID
-#define LEGION_GO_PID1  0x6182   // Legion Go controller — primary
-#define LEGION_GO_PID2  0x61eb   // Legion Go controller — secondary
+#define LEGION_GO_VID       0x17ef   // Lenovo USB vendor ID (original)
+#define LEGION_GO_PID1      0x6182   // Legion Go controller — primary
+#define LEGION_GO_PID2      0x61eb   // Legion Go controller — secondary
+
+#define LEGION_GO_S_VID     0x1a86   // WCH.cn USB vendor ID (Legion Go S)
+#define LEGION_GO_S_PID     0xe310   // Legion Go S controller
 
 // --------------------------------------------------------------------------
 // InputDevice — Represents one opened /dev/input/event* node
@@ -48,14 +54,17 @@ typedef struct InputDevice {
 
     bool is_gamepad;              // True if this is one of the Legion Go pads
     bool is_power_button;         // True if this is the system power key device
+    bool is_system_keys;          // True if this has volume/media keys (not gamepad)
 
     bool grabbed;                 // True if we successfully called EVIOCGRAB
                                   // (exclusive access — X11 won't see events)
 } InputDevice;
 
 // Maximum number of physical devices we track at once.
-// 8 is plenty: two Legion Go controllers + power button + a few extras.
-#define MAX_DEVICES 8
+// 16 is generous: gamepad + power button + system keys + extras.
+// We raised this from 8 because the Legion Go S exposes many HID
+// interfaces that all get detected as system keys devices.
+#define MAX_DEVICES 16
 
 // --------------------------------------------------------------------------
 // DeviceManager — Owns udev context, monitor, and the device list
@@ -67,6 +76,31 @@ typedef struct DeviceManager {
 
     InputDevice devices[MAX_DEVICES]; // Fixed-size array of opened devices
     int         device_count;         // How many slots are currently in use
+
+    // ---------- Legion Go S HID interfaces ----------
+    // The Legion Go S WCH.cn controller exposes multiple vendor-specific
+    // HID interfaces (usage page 0xFFA0). We use two of them:
+    //
+    // 1. Config interface (hidraw2, 29-byte descriptor):
+    //    Write-only — used to send firmware mode commands (SteamOS mode,
+    //    FPS mode, autodetect on/off). Not polled by epoll.
+    //
+    // 2. Button interface (hidraw5, 21-byte descriptor):
+    //    Read-only — streams 64-byte reports at ~100Hz containing button
+    //    state (bytes 0-2) and IMU data (bytes 14-25). Only produces data
+    //    in FPS mode; goes silent in SteamOS mode.
+    //
+    // In desktop mode (HID takeover), we stay in FPS mode and read buttons
+    // from the button hidraw while getting sticks/triggers from XInput evdev.
+    // In Steam mode, we send the SteamOS command and let Steam handle input.
+    int  hidraw_config_fd;           // fd to the config hidraw (write cmds), or -1
+    char hidraw_config_path[256];    // e.g. "/dev/hidraw2"
+
+    int  hidraw_button_fd;           // fd to the button hidraw (read reports), or -1
+    char hidraw_button_path[256];    // e.g. "/dev/hidraw5"
+
+    bool gamepad_mode_active;        // true if we sent the SteamOS mode cmd
+    bool hid_takeover_active;        // true if reading buttons from hidraw
 } DeviceManager;
 
 // --------------------------------------------------------------------------
@@ -89,6 +123,25 @@ void device_handle_hotplug(DeviceManager *dm);
 
 // device_shutdown — Close all device fds, ungrab grabbed devices, destroy
 // the udev monitor and context. Safe to call with partially initialized state.
+// Also restores the Legion Go S to FPS/Windows mode if we switched it.
 void device_shutdown(DeviceManager *dm);
+
+// device_activate_gamepad_mode — Send the HID command to switch a Legion Go S
+// from FPS/Windows mode to SteamOS/gamepad mode. Must be called AFTER
+// device_init() so the hidraw config interface has been discovered.
+// Returns 0 on success, -1 if no config interface found.
+int device_activate_gamepad_mode(DeviceManager *dm);
+
+// device_restore_fps_mode — Send the HID command to switch back to FPS/Windows
+// mode. Called during shutdown so the controller is usable without cc-inputd.
+void device_restore_fps_mode(DeviceManager *dm);
+
+// device_init_hid_takeover — Set up HID takeover mode for desktop use.
+// Finds the button-reading hidraw interface (hidraw5), opens it read-only
+// with O_NONBLOCK, and stores the fd in dm->hidraw_button_fd.
+// Does NOT send the SteamOS mode command — stays in FPS mode so the
+// vendor hidraw streams button data.
+// Returns 0 on success, -1 if the button hidraw wasn't found.
+int device_init_hid_takeover(DeviceManager *dm);
 
 #endif // DEVICE_H

@@ -152,7 +152,7 @@ static void build_game_profile(Mapper *m)
 //
 //   Center buttons:
 //     Select (BTN_SELECT) → Show Desktop
-//     Start  (BTN_START)  → Space    (general-purpose action)
+//     Start  (BTN_START)  → On-screen keyboard toggle (xvkbd)
 //
 //   D-pad (via ABS_HAT0X / ABS_HAT0Y axes):
 //     Left/Right → Arrow keys
@@ -197,7 +197,31 @@ void mapper_init(Mapper *m, int threshold)
 
     // Center buttons → desktop actions
     add_rule(desktop, EV_KEY, BTN_SELECT, ACTION_COPYCATOS, CC_ACTION_SHOW_DESKTOP, 0);
-    add_rule(desktop, EV_KEY, BTN_START,  ACTION_KEY,       KEY_SPACE,  0);
+    add_rule(desktop, EV_KEY, BTN_START,  ACTION_COPYCATOS, CC_ACTION_OSK_TOGGLE, 0);
+
+    // Legion / Mode button → Spotlight (same as X/West button, giving two
+    // ways to launch search since Mode is the most prominent center button)
+    add_rule(desktop, EV_KEY, BTN_MODE, ACTION_COPYCATOS, CC_ACTION_SPOTLIGHT, 0);
+
+    // Stick clicks (L3/R3) → useful desktop shortcuts
+    // L3 (left stick click) → Tab (cycle focus between UI elements)
+    // R3 (right stick click) → middle mouse button (open link in new tab, etc.)
+    add_rule(desktop, EV_KEY, BTN_THUMBL, ACTION_KEY,          KEY_TAB,    0);
+    add_rule(desktop, EV_KEY, BTN_THUMBR, ACTION_MOUSE_BUTTON, BTN_MIDDLE, 0);
+
+    // --- Legion Go specific buttons (from HID takeover) ---
+    // These buttons exist only on the Legion Go and are read from the
+    // vendor-specific hidraw interface. They don't have standard evdev
+    // codes, so we use BTN_Z (Legion R), BTN_TL2 (Y1), BTN_TR2 (Y2).
+
+    // Legion R → Volume mute toggle (quick audio control)
+    add_rule(desktop, EV_KEY, BTN_Z,   ACTION_COPYCATOS, CC_ACTION_VOLUME_DOWN, 0);
+
+    // Y1 back paddle (left) → Volume down
+    add_rule(desktop, EV_KEY, BTN_TL2, ACTION_COPYCATOS, CC_ACTION_VOLUME_DOWN, 0);
+
+    // Y2 back paddle (right) → Volume up
+    add_rule(desktop, EV_KEY, BTN_TR2, ACTION_COPYCATOS, CC_ACTION_VOLUME_UP, 0);
 
     // D-pad axes → arrow keys
     // The d-pad reports as ABS_HAT0X (-1=left, +1=right) and
@@ -353,8 +377,9 @@ int mapper_process(Mapper *m, const struct input_event *ev,
 
         case ACTION_NONE:
         case ACTION_MOUSE_MOVE:
+        case ACTION_SCROLL:
             // ACTION_NONE: intentionally disabled mapping
-            // ACTION_MOUSE_MOVE: doesn't apply to EV_KEY events
+            // ACTION_MOUSE_MOVE / ACTION_SCROLL: don't apply to EV_KEY events
             break;
         }
 

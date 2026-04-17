@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Steam Mode
+Comment=Switch to Steam Big Picture with full controller support
+Exec=cc-game-mode
+Icon=multimedia-player
+Terminal=false
+Categories=Game;

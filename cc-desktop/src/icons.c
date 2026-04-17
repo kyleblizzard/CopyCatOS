@@ -78,6 +78,82 @@ static Display *cached_dpy = NULL;
 static int cached_screen_w = 0;
 static int cached_screen_h = 0;
 
+// ── .desktop file support ───────────────────────────────────────────
+
+// Parsed fields from a freedesktop .desktop file.
+// We only care about three keys from the [Desktop Entry] section:
+//   Name= display name shown under the icon
+//   Icon= theme icon name for icon resolution
+//   Exec= command to run on double-click
+typedef struct {
+    char name[256];    // From Name= (empty string if not found)
+    char icon[256];    // From Icon= (empty string if not found)
+    char exec[1024];   // From Exec= with %f/%u/%F/%U stripped
+} DesktopEntry;
+
+// Parse a .desktop file and extract Name, Icon, and Exec fields.
+// Only reads keys from the [Desktop Entry] section — stops if it hits
+// another [section] header.  Returns true if at least one field was found.
+static bool parse_desktop_file(const char *path, DesktopEntry *entry)
+{
+    memset(entry, 0, sizeof(*entry));
+
+    FILE *fp = fopen(path, "r");
+    if (!fp) return false;
+
+    char line[1024];
+    bool in_section = false;  // true once we've seen [Desktop Entry]
+
+    while (fgets(line, sizeof(line), fp)) {
+        // Strip trailing newline/carriage return
+        size_t len = strlen(line);
+        while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r'))
+            line[--len] = '\0';
+
+        // Check for section headers
+        if (line[0] == '[') {
+            if (strncmp(line, "[Desktop Entry]", 15) == 0) {
+                in_section = true;
+            } else if (in_section) {
+                // Hit a different section — stop parsing
+                break;
+            }
+            continue;
+        }
+
+        if (!in_section) continue;
+
+        // Parse key=value pairs
+        if (strncmp(line, "Name=", 5) == 0 && entry->name[0] == '\0') {
+            strncpy(entry->name, line + 5, sizeof(entry->name) - 1);
+        } else if (strncmp(line, "Icon=", 5) == 0 && entry->icon[0] == '\0') {
+            strncpy(entry->icon, line + 5, sizeof(entry->icon) - 1);
+        } else if (strncmp(line, "Exec=", 5) == 0 && entry->exec[0] == '\0') {
+            // Copy the command, stripping freedesktop field codes (%f %u %F %U etc.)
+            // These are placeholders for file arguments we don't pass.
+            const char *src = line + 5;
+            char *dst = entry->exec;
+            char *end = entry->exec + sizeof(entry->exec) - 1;
+            while (*src && dst < end) {
+                if (*src == '%' && src[1] && strchr("fFuUdDnNickvm", src[1])) {
+                    src += 2;  // Skip the %X code
+                    // Also skip trailing space after the code
+                    if (*src == ' ') src++;
+                } else {
+                    *dst++ = *src++;
+                }
+            }
+            *dst = '\0';
+            // Trim trailing whitespace
+            while (dst > entry->exec && (dst[-1] == ' ' || dst[-1] == '\t'))
+                *--dst = '\0';
+        }
+    }
+
+    fclose(fp);
+    return (entry->name[0] || entry->icon[0] || entry->exec[0]);
+}
+
 // ── Icon resolution ─────────────────────────────────────────────────
 
 // Maps file extensions to icon names in the theme.
@@ -257,8 +333,9 @@ static cairo_surface_t *load_theme_icon(const char *icon_name,
 }
 
 // Resolve the appropriate icon for a given file.
-// Checks if it's a directory (uses folder icon), then matches by
-// file extension, and falls back to a generic document icon.
+// Checks if it's a directory (uses folder icon), then .desktop files
+// (uses Icon= field), then matches by file extension, and falls back
+// to a generic document icon.
 static cairo_surface_t *icons_resolve_icon(const char *path, bool is_dir)
 {
     cairo_surface_t *icon = NULL;
@@ -271,8 +348,25 @@ static cairo_surface_t *icons_resolve_icon(const char *path, bool is_dir)
         return icon;
     }
 
-    // Try to match by file extension
+    // .desktop files get special treatment: use the Icon= field to find
+    // the right theme icon instead of showing a generic script icon.
     const char *ext = strrchr(path, '.');
+    if (ext && strcasecmp(ext, ".desktop") == 0) {
+        DesktopEntry entry;
+        if (parse_desktop_file(path, &entry) && entry.icon[0]) {
+            // The Icon= value is a theme icon name — search all subdirs
+            // since it could be in apps/, devices/, categories/, etc.
+            const char *subdirs[] = { "apps", "devices", "categories",
+                                      "mimetypes", "places", NULL };
+            for (int i = 0; subdirs[i]; i++) {
+                icon = load_theme_icon(entry.icon, subdirs[i]);
+                if (icon) return icon;
+            }
+        }
+        // If Icon= lookup failed, fall through to extension matching
+    }
+
+    // Try to match by file extension
     if (ext) {
         for (int i = 0; ext_icon_map[i].extension; i++) {
             if (strcasecmp(ext, ext_icon_map[i].extension) == 0) {
@@ -328,12 +422,29 @@ static void scan_desktop(void)
         DesktopIcon *icon = &icons[icon_count];
         memset(icon, 0, sizeof(DesktopIcon));
 
-        // Copy the display name (filename as-is)
-        strncpy(icon->name, entry->d_name, sizeof(icon->name) - 1);
-
-        // Build the full path
+        // Build the full path first (needed for .desktop parsing below)
         snprintf(icon->path, sizeof(icon->path),
                  "%s/%s", desktop_path, entry->d_name);
+
+        // For .desktop files, use the Name= field as the display name.
+        // This hides the ".desktop" extension and shows a human-readable
+        // label (e.g., "Controller Settings" instead of "Controller Settings.desktop").
+        const char *dot = strrchr(entry->d_name, '.');
+        if (dot && strcasecmp(dot, ".desktop") == 0) {
+            DesktopEntry de;
+            if (parse_desktop_file(icon->path, &de) && de.name[0]) {
+                strncpy(icon->name, de.name, sizeof(icon->name) - 1);
+            } else {
+                // Fallback: filename without the .desktop extension
+                size_t base_len = (size_t)(dot - entry->d_name);
+                if (base_len >= sizeof(icon->name)) base_len = sizeof(icon->name) - 1;
+                memcpy(icon->name, entry->d_name, base_len);
+                icon->name[base_len] = '\0';
+            }
+        } else {
+            // Regular file: use filename as-is
+            strncpy(icon->name, entry->d_name, sizeof(icon->name) - 1);
+        }
 
         // Check if it's a directory using stat()
         struct stat st;
@@ -629,7 +740,28 @@ void icons_handle_double_click(DesktopIcon *icon)
 
     fprintf(stderr, "[icons] Opening: %s\n", icon->path);
 
-    // Fork a child process to run xdg-open.
+    // .desktop files need special handling — xdg-open doesn't reliably
+    // execute them on a custom DE (no GNOME/KDE session to dispatch).
+    // Parse the Exec= line and run the command directly.
+    const char *ext = strrchr(icon->path, '.');
+    if (ext && strcasecmp(ext, ".desktop") == 0) {
+        DesktopEntry entry;
+        if (parse_desktop_file(icon->path, &entry) && entry.exec[0]) {
+            fprintf(stderr, "[icons] Exec from .desktop: %s\n", entry.exec);
+            pid_t pid = fork();
+            if (pid == 0) {
+                setsid();
+                // Use /bin/sh -c to handle commands with arguments.
+                // execlp("sh") is safer than trying to tokenize Exec= ourselves.
+                execl("/bin/sh", "sh", "-c", entry.exec, (char *)NULL);
+                _exit(127);
+            }
+            return;
+        }
+        // If parsing failed, fall through to xdg-open
+    }
+
+    // For regular files: fork a child process to run xdg-open.
     // xdg-open is the standard Linux command to open a file with
     // its default application (like "open" on macOS).
     pid_t pid = fork();

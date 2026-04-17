@@ -36,8 +36,8 @@ void paneview_paint(SysPrefsState *state)
         // Both Dock and Appearance settings are in the Dock pane
         // (dock size + menubar height are the core display controls)
         dock_pane_paint(state);
-    } else if (strcmp(id, "mouse") == 0) {
-        // Mouse pane shows controller/gamepad input settings
+    } else if (strcmp(id, "mouse") == 0 || strcmp(id, "controller") == 0) {
+        // Mouse / Controller pane shows gamepad input settings
         controller_pane_paint(state);
     } else if (strcmp(id, "energy-saver") == 0) {
         // Energy Saver pane shows power button timing settings
@@ -61,7 +61,7 @@ bool paneview_handle_click(SysPrefsState *state, int x, int y)
 
     if (strcmp(id, "dock") == 0 || strcmp(id, "appearance") == 0) {
         return dock_pane_click(state, x, y);
-    } else if (strcmp(id, "mouse") == 0) {
+    } else if (strcmp(id, "mouse") == 0 || strcmp(id, "controller") == 0) {
         return controller_pane_click(state, x, y);
     } else if (strcmp(id, "energy-saver") == 0) {
         return power_pane_click(state, x, y);
@@ -83,7 +83,7 @@ bool paneview_handle_motion(SysPrefsState *state, int x, int y)
 
     if (strcmp(id, "dock") == 0 || strcmp(id, "appearance") == 0) {
         return dock_pane_motion(state, x, y);
-    } else if (strcmp(id, "mouse") == 0) {
+    } else if (strcmp(id, "mouse") == 0 || strcmp(id, "controller") == 0) {
         return controller_pane_motion(state, x, y);
     } else if (strcmp(id, "energy-saver") == 0) {
         return power_pane_motion(state, x, y);
@@ -105,7 +105,7 @@ void paneview_handle_release(SysPrefsState *state)
 
     if (strcmp(id, "dock") == 0 || strcmp(id, "appearance") == 0) {
         dock_pane_release(state);
-    } else if (strcmp(id, "mouse") == 0) {
+    } else if (strcmp(id, "mouse") == 0 || strcmp(id, "controller") == 0) {
         controller_pane_release(state);
     } else if (strcmp(id, "energy-saver") == 0) {
         power_pane_release(state);

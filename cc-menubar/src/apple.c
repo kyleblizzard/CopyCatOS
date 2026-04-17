@@ -63,12 +63,13 @@ static int apple_hover = -1;
 // Dynamic "Log Out" label with the actual username
 static char logout_label[128] = "Log Out...";
 
-static const char *apple_items[17] = {
+static const char *apple_items[18] = {
     "About This Mac",
     "---",
     "Software Update...",
     "---",
     "System Preferences...",
+    "Controller Settings...",  // Opens cc-sysprefs directly to the Controller pane
     "Dock",
     "Recent Items",
     "---",
@@ -81,7 +82,7 @@ static const char *apple_items[17] = {
     "---",
     NULL  // Placeholder for logout_label (set dynamically in apple_init)
 };
-static const int apple_item_count = 16;
+static const int apple_item_count = 17;
 
 // Keyboard shortcuts displayed right-aligned next to menu items.
 // NULL means no shortcut. Uses Mac-style symbols (⌘ ⌥ ⇧).
@@ -91,6 +92,7 @@ static const char *apple_shortcuts[] = {
     NULL,           // Software Update...
     NULL,           // ---
     NULL,           // System Preferences...
+    NULL,           // Controller Settings...
     NULL,           // Dock
     NULL,           // Recent Items
     NULL,           // ---
@@ -107,8 +109,9 @@ static const char *apple_shortcuts[] = {
 // Which items are disabled (grayed out, non-clickable)?
 static bool is_disabled(int index)
 {
-    // About, Software Update, Dock submenu, Recent Items — disabled stubs
-    return (index == 0 || index == 2 || index == 5 || index == 6);
+    // About, Software Update, Dock submenu, Recent Items — disabled stubs.
+    // Indices shifted by +1 from the "Controller Settings..." insertion.
+    return (index == 0 || index == 2 || index == 6 || index == 7);
 }
 
 // ── Internal: load a PNG, scale it, and extract an alpha mask ───────
@@ -517,6 +520,13 @@ static void apple_execute(MenuBar *mb, int index)
         if (fork() == 0) {
             setsid();
             execlp("cc-sysprefs", "cc-sysprefs", NULL);
+            _exit(1);
+        }
+    } else if (strcmp(label, "Controller Settings...") == 0) {
+        // Launch System Preferences directly to the Controller pane
+        if (fork() == 0) {
+            setsid();
+            execlp("cc-sysprefs", "cc-sysprefs", "--pane", "controller", NULL);
             _exit(1);
         }
     } else if (strcmp(label, "Force Quit...") == 0) {

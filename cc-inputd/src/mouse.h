@@ -49,10 +49,21 @@ typedef struct MouseEmulator {
     double accum_x;          // Accumulated fractional X movement
     double accum_y;          // Accumulated fractional Y movement
 
+    // --- Left stick scroll emulation ---
+    // The left stick (ABS_X / ABS_Y) drives smooth scrolling instead of
+    // cursor movement. Uses a linear response (no exponent) because scroll
+    // speed should feel proportional to stick deflection.
+    int raw_lx;              // Most recent ABS_X value (left stick horizontal)
+    int raw_ly;              // Most recent ABS_Y value (left stick vertical)
+    double scroll_accum_x;   // Accumulated fractional horizontal scroll
+    double scroll_accum_y;   // Accumulated fractional vertical scroll
+    double scroll_speed;     // Scroll events per tick at full deflection (default 0.15)
+    int    scroll_deadzone;  // Left stick deadzone for scroll (default 6000)
+
     // --- Timer ---
     int timer_fd;            // timerfd file descriptor, fires at 120Hz
                              // The main epoll loop watches this fd and calls
-                             // mouse_tick() each time it fires.
+                             // mouse_tick() and mouse_scroll_tick() each time.
 } MouseEmulator;
 
 // --------------------------------------------------------------------------
@@ -73,6 +84,17 @@ void mouse_update_axis(MouseEmulator *mouse, int axis, int value);
 // and writes the integer pixel deltas into *dx and *dy.
 // Returns true if there is movement to inject (dx or dy != 0).
 bool mouse_tick(MouseEmulator *mouse, int *dx, int *dy);
+
+// mouse_update_scroll_axis — Store a new left stick axis reading.
+// Called by the main loop whenever an ABS_X or ABS_Y event arrives.
+// `axis` should be ABS_X or ABS_Y; `value` is the raw axis value.
+void mouse_update_scroll_axis(MouseEmulator *mouse, int axis, int value);
+
+// mouse_scroll_tick — Compute scroll wheel deltas for one 120Hz frame.
+// Uses the left stick position to produce smooth scrolling. Writes integer
+// scroll notch deltas into *sx (horizontal) and *sy (vertical).
+// Returns true if there is scroll movement to inject.
+bool mouse_scroll_tick(MouseEmulator *mouse, int *sx, int *sy);
 
 // mouse_shutdown — Close the timer fd and clean up.
 void mouse_shutdown(MouseEmulator *mouse);

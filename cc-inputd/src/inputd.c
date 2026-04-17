@@ -40,6 +40,7 @@
 #include "mouse.h"
 #include "power.h"
 #include "ipc.h"
+#include "hid.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -275,7 +276,8 @@ static void send_copycatos_action(InputDaemon *daemon, int cc_action)
         "volume_up",           // CC_ACTION_VOLUME_UP
         "volume_down",         // CC_ACTION_VOLUME_DOWN
         "brightness_up",       // CC_ACTION_BRIGHTNESS_UP
-        "brightness_down"      // CC_ACTION_BRIGHTNESS_DOWN
+        "brightness_down",     // CC_ACTION_BRIGHTNESS_DOWN
+        "osk_toggle"           // CC_ACTION_OSK_TOGGLE
     };
 
     // Bounds check — make sure the action is a valid enum value
@@ -283,6 +285,32 @@ static void send_copycatos_action(InputDaemon *daemon, int cc_action)
     if (cc_action < 0 || cc_action >= max_action) {
         fprintf(stderr, "inputd: unknown CC action %d\n", cc_action);
         return;
+    }
+
+    // ── On-screen keyboard toggle ────────────────────────────────────
+    // Handled directly by the daemon (no bridge needed) because it's a
+    // simple process toggle: if xvkbd is running, kill it; otherwise
+    // launch it. This works even on the login screen before the session
+    // bridge connects.
+    if (cc_action == CC_ACTION_OSK_TOGGLE) {
+        // pgrep returns 0 if the process exists. If running, kill it
+        // to hide the keyboard. If not running, launch it.
+        // -compact flag reduces xvkbd to a smaller layout suitable for
+        // the Legion Go's 8-inch screen.
+        int running = system("pgrep -x xvkbd > /dev/null 2>&1");
+        if (running == 0) {
+            // xvkbd is running — kill it to hide the keyboard
+            system("pkill -x xvkbd");
+            fprintf(stderr, "inputd: OSK toggle — hiding xvkbd\n");
+        } else {
+            // xvkbd not running — launch it in the background.
+            // Fork to avoid blocking the event loop on system().
+            // -compact gives a smaller layout, -geometry positions it
+            // centered near the bottom of the 1280x800 screen.
+            system("xvkbd -compact -geometry 800x200+240+580 &");
+            fprintf(stderr, "inputd: OSK toggle — launching xvkbd\n");
+        }
+        return;   // Don't send via IPC — we handled it directly
     }
 
     const char *name = action_names[cc_action];
@@ -492,12 +520,42 @@ int inputd_init(InputDaemon *daemon)
         return -1;
     }
 
+    // --- HID Takeover Mode ---
+    // Instead of switching the firmware to SteamOS/gamepad mode (which
+    // kills the vendor hidraw stream), we stay in FPS mode and read
+    // buttons directly from the vendor-specific HID interface.
+    //
+    // This gives us access to ALL buttons including Legion L/R and Y1/Y2
+    // back paddles that don't exist in the standard XInput evdev interface.
+    // Analog sticks and triggers still come from the XInput evdev node.
+    //
+    // For Steam Mode, we'll send the SteamOS command later when needed.
+    if (device_init_hid_takeover(daemon->devices) == 0) {
+        fprintf(stderr, "inputd: HID takeover mode active — "
+                "reading buttons from %s\n",
+                daemon->devices->hidraw_button_path);
+    } else {
+        // Fallback: if hidraw not available, try the old SteamOS mode.
+        // This handles non-Legion-Go hardware or permission issues.
+        fprintf(stderr, "inputd: HID takeover failed, "
+                "falling back to gamepad mode\n");
+        if (device_activate_gamepad_mode(daemon->devices) == 0) {
+            fprintf(stderr, "inputd: gamepad mode activated\n");
+        }
+    }
+
     // Add each discovered device's fd to epoll so we wake up on input events
     for (int i = 0; i < daemon->devices->device_count; i++) {
         int fd = daemon->devices->devices[i].fd;
         if (fd >= 0) {
             epoll_add_fd(daemon->epoll_fd, fd);
         }
+    }
+
+    // Add the hidraw button fd to epoll (HID takeover mode).
+    // This wakes us up every ~10ms when a new 64-byte vendor report arrives.
+    if (daemon->devices->hidraw_button_fd >= 0) {
+        epoll_add_fd(daemon->epoll_fd, daemon->devices->hidraw_button_fd);
     }
 
     // Add the udev monitor fd to epoll so we detect hotplug events
@@ -536,6 +594,22 @@ int inputd_init(InputDaemon *daemon)
     // proper conversion would be needed here. For now, the mapper's defaults
     // are used and config mappings are applied through mapper_load_config
     // in a future integration step.
+
+    // ------------------------------------------------------------------
+    // Step 7b: Initialize HID parser (for HID takeover mode)
+    // ------------------------------------------------------------------
+    // The HID parser converts raw vendor hidraw reports into synthetic
+    // input_event structs that the mapper can process. It only does useful
+    // work when the button hidraw fd is open (HID takeover mode).
+    // ------------------------------------------------------------------
+    if (daemon->devices->hid_takeover_active) {
+        daemon->hid = calloc(1, sizeof(HidParser));
+        if (!daemon->hid) {
+            fprintf(stderr, "inputd: failed to allocate HID parser\n");
+            return -1;
+        }
+        hid_init(daemon->hid);
+    }
 
     // ------------------------------------------------------------------
     // Step 8: Initialize mouse emulator
@@ -686,6 +760,13 @@ void inputd_run(InputDaemon *daemon)
                     // Inject the mouse movement into the virtual mouse device
                     uinput_mouse_move(daemon->vdevs, dx, dy);
                 }
+
+                // Compute scroll wheel movement from left stick
+                int scroll_x = 0, scroll_y = 0;
+                if (mouse_scroll_tick(daemon->mouse, &scroll_x, &scroll_y)) {
+                    // Inject scroll events into the virtual mouse device
+                    uinput_mouse_scroll(daemon->vdevs, scroll_x, scroll_y);
+                }
                 continue;
             }
 
@@ -704,6 +785,63 @@ void inputd_run(InputDaemon *daemon)
                         epoll_add_fd(daemon->epoll_fd, dev_fd);
                         fprintf(stderr, "inputd: added hotplugged device to epoll: %s\n",
                                 daemon->devices->devices[j].name);
+                    }
+                }
+                continue;
+            }
+
+            // ── Hidraw button interface: raw HID report ──────────────
+            // In HID takeover mode, the vendor hidraw streams 64-byte
+            // reports at ~100Hz. We parse each report for button changes
+            // and feed synthetic events into the mapper, exactly like
+            // real evdev events. This gives us access to Legion L/R and
+            // Y1/Y2 back paddles that don't exist in standard evdev.
+            if (daemon->devices && daemon->hid &&
+                fd == daemon->devices->hidraw_button_fd) {
+
+                uint8_t report[HID_REPORT_SIZE];
+                ssize_t n = read(fd, report, sizeof(report));
+
+                if (n < 0) {
+                    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                        continue;   // No data yet — spurious wakeup
+                    }
+                    fprintf(stderr, "inputd: hidraw read error: %s\n",
+                            strerror(errno));
+                    // Don't remove from epoll — transient errors happen
+                    continue;
+                }
+
+                if (n < HID_BUTTON_BYTES) {
+                    continue;   // Runt report — skip it
+                }
+
+                // Parse the report and get synthetic input events for
+                // any buttons that changed state
+                struct input_event hid_events[HID_NUM_BUTTONS];
+                int hid_count = hid_parse(daemon->hid, report, (int)n,
+                                          hid_events, HID_NUM_BUTTONS);
+
+                // Feed each synthetic event through the mapper, exactly
+                // like we do for real evdev events below. The mapper
+                // doesn't know or care that these came from hidraw.
+                for (int j = 0; j < hid_count; j++) {
+                    struct input_event *ev = &hid_events[j];
+
+                    // Right stick from HID goes to mouse emulator
+                    // (but sticks aren't on hidraw — this is just for safety)
+                    if (ev->type == EV_ABS &&
+                        (ev->code == ABS_RX || ev->code == ABS_RY) &&
+                        daemon->mapper->active_profile != PROFILE_GAME) {
+                        mouse_update_axis(daemon->mouse, ev->code, ev->value);
+                        continue;
+                    }
+
+                    int cc_action = mapper_process(daemon->mapper, ev,
+                                                    daemon->vdevs,
+                                                    daemon->mouse);
+                    if (cc_action >= 0) {
+                        send_copycatos_action(daemon, cc_action);
                     }
                 }
                 continue;
@@ -785,15 +923,46 @@ void inputd_run(InputDaemon *daemon)
                     continue;
                 }
 
+                // System keys device: handle volume up/down/mute.
+                // On the Legion Go S, these come from event2 ("wch.cn Legion
+                // Go S") which is a separate device from the gamepad.
+                // We execute wpctl to adjust PipeWire volume directly.
+                if (dev->is_system_keys && ev.type == EV_KEY && ev.value == 1) {
+                    if (ev.code == KEY_VOLUMEUP) {
+                        system("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+");
+                        continue;
+                    } else if (ev.code == KEY_VOLUMEDOWN) {
+                        system("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-");
+                        continue;
+                    } else if (ev.code == KEY_MUTE) {
+                        system("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle");
+                        continue;
+                    }
+                }
+
                 // Gamepad events: in desktop/login mode, right stick axes go to
                 // the mouse emulator for pointer control. In game mode, they
                 // fall through to the mapper so they get forwarded to the
                 // virtual gamepad for games to use as camera/aim input.
                 if (dev->is_gamepad) {
+                    // Right stick (ABS_RX/ABS_RY) → pointer movement.
+                    // Intercepted before the mapper so the mouse emulator
+                    // gets raw axis values at full resolution.
                     if (ev.type == EV_ABS &&
                         (ev.code == ABS_RX || ev.code == ABS_RY) &&
                         daemon->mapper->active_profile != PROFILE_GAME) {
                         mouse_update_axis(daemon->mouse, ev.code, ev.value);
+                        continue;
+                    }
+
+                    // Left stick (ABS_X/ABS_Y) → scroll wheel.
+                    // Same interception pattern as the right stick: in desktop
+                    // mode we route to the scroll emulator; in game mode the
+                    // event falls through to the mapper for gamepad forwarding.
+                    if (ev.type == EV_ABS &&
+                        (ev.code == ABS_X || ev.code == ABS_Y) &&
+                        daemon->mapper->active_profile != PROFILE_GAME) {
+                        mouse_update_scroll_axis(daemon->mouse, ev.code, ev.value);
                         continue;
                     }
 
@@ -845,12 +1014,13 @@ void inputd_run(InputDaemon *daemon)
                 fprintf(stderr, "inputd: game mode activated, switching to PROFILE_GAME\n");
                 mapper_set_profile(daemon->mapper, PROFILE_GAME);
 
-                // Zero the mouse emulator's stored right-stick axes so the
-                // cursor doesn't drift at whatever velocity was held when
-                // game mode kicked in. The 120Hz mouse timer would keep
-                // moving the cursor using stale axis values otherwise.
+                // Zero the mouse emulator's stored stick axes so the cursor
+                // doesn't drift and scroll doesn't continue at whatever
+                // velocity was held when game mode kicked in.
                 mouse_update_axis(daemon->mouse, ABS_RX, 0);
                 mouse_update_axis(daemon->mouse, ABS_RY, 0);
+                mouse_update_scroll_axis(daemon->mouse, ABS_X, 0);
+                mouse_update_scroll_axis(daemon->mouse, ABS_Y, 0);
             } else if (!in_game && daemon->was_game_mode) {
                 // Transition: game mode → desktop
                 fprintf(stderr, "inputd: game mode deactivated, switching to PROFILE_DESKTOP\n");
@@ -902,6 +1072,12 @@ void inputd_shutdown(InputDaemon *daemon)
         device_shutdown(daemon->devices);
         free(daemon->devices);
         daemon->devices = NULL;
+    }
+
+    // Free HID parser (no fds to close, just free memory)
+    if (daemon->hid) {
+        free(daemon->hid);
+        daemon->hid = NULL;
     }
 
     // Free mapper (no special cleanup needed, just free memory)

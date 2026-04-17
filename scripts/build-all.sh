@@ -52,6 +52,7 @@ COMPONENTS=(
     "cc-dock"
     "cc-spotlight"
     "cc-inputd"
+    "cc-inputmap"
     "cc-input-session"
     "cc-sysprefs"
 )

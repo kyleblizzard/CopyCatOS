@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Controller Settings
+Comment=Open System Preferences to the Controller pane
+Exec=cc-sysprefs --pane controller
+Icon=input-mouse
+Terminal=false
+Categories=Settings;HardwareSettings;

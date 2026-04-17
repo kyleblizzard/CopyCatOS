@@ -336,7 +336,30 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 9. Summary
+# 9. Desktop shortcut .desktop files
+# ---------------------------------------------------------------------------
+header "Desktop shortcuts"
+
+DESKTOP_DIR="$HOME/Desktop"
+DESKTOP_SRC="$ASSET_SRC/scripts/desktop"
+
+if [[ -d "$DESKTOP_SRC" ]]; then
+    mkdir -p "$DESKTOP_DIR"
+    for f in "$DESKTOP_SRC"/*.desktop; do
+        [[ -f "$f" ]] || continue
+        local_name="$(basename "$f")"
+        copy_file "$f" "$DESKTOP_DIR/$local_name"
+        # .desktop files must be executable for some launchers
+        chmod +x "$DESKTOP_DIR/$local_name" 2>/dev/null || true
+    done
+else
+    warn "Desktop shortcuts source not found: $DESKTOP_SRC"
+    WARN_MSGS+=("Missing: scripts/desktop/ directory")
+    (( WARNINGS++ )) || true
+fi
+
+# ---------------------------------------------------------------------------
+# 10. Summary
 # ---------------------------------------------------------------------------
 header "Summary"
 

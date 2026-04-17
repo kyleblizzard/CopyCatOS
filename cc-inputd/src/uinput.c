@@ -123,6 +123,9 @@ static int create_virtual_mouse(void) {
     // REL_WHEEL — vertical scroll wheel
     if (ioctl(fd, UI_SET_RELBIT, REL_WHEEL) < 0) goto fail;
 
+    // REL_HWHEEL — horizontal scroll wheel (for left stick horizontal scrolling)
+    if (ioctl(fd, UI_SET_RELBIT, REL_HWHEEL) < 0) goto fail;
+
     // --- Specify which buttons we support ---
 
     // Standard three mouse buttons
@@ -458,6 +461,30 @@ void uinput_mouse_button(VirtualDevices *vdev, int button, int value) {
     if (vdev->mouse_fd < 0) return;
 
     emit_event(vdev->mouse_fd, EV_KEY, button, value);
+    emit_syn(vdev->mouse_fd);
+}
+
+// --------------------------------------------------------------------------
+// uinput_mouse_scroll — Emit scroll wheel events
+// --------------------------------------------------------------------------
+// Injects horizontal and/or vertical scroll wheel events through the virtual
+// mouse. Used by the left stick scroll emulator to produce smooth scrolling.
+//
+// Parameters:
+//   vdev — the virtual devices struct
+//   sx   — horizontal scroll (positive = scroll right, negative = scroll left)
+//   sy   — vertical scroll (positive = scroll up/away, negative = scroll down)
+// --------------------------------------------------------------------------
+void uinput_mouse_scroll(VirtualDevices *vdev, int sx, int sy) {
+    if (vdev->mouse_fd < 0) return;
+
+    // Emit horizontal scroll if non-zero
+    if (sx != 0) emit_event(vdev->mouse_fd, EV_REL, REL_HWHEEL, sx);
+
+    // Emit vertical scroll if non-zero
+    if (sy != 0) emit_event(vdev->mouse_fd, EV_REL, REL_WHEEL, sy);
+
+    // Send SYN_REPORT to finalize the scroll event batch
     emit_syn(vdev->mouse_fd);
 }
 

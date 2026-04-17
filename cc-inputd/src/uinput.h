@@ -60,6 +60,12 @@ void uinput_mouse_button(VirtualDevices *vd, int button, int pressed);
 // `pressed` is 1 for press, 0 for release.
 void uinput_key(VirtualDevices *vd, int keycode, int pressed);
 
+// uinput_mouse_scroll — Inject scroll wheel events.
+// `sx` is horizontal scroll (positive = right, negative = left).
+// `sy` is vertical scroll (positive = up/away from user, negative = down).
+// Maps to REL_HWHEEL and REL_WHEEL on the virtual mouse.
+void uinput_mouse_scroll(VirtualDevices *vd, int sx, int sy);
+
 // uinput_gamepad_forward — Forward a raw input event unchanged to the
 // virtual gamepad. Used in game mode where we want the real controller
 // events to pass through without remapping.
