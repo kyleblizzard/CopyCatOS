@@ -24,6 +24,16 @@ void mb_internal_set_last_error(mb_error_t err);
 // silently dropped rather than surfaced to the app.
 mb_window_t *mb_internal_window_find(uint32_t window_id);
 
+// Apply a new backing scale to a window handle. Called by the event
+// pump when MB_IPC_BACKING_SCALE_CHANGED arrives. Retires any pending
+// (uncommitted) Cairo frame so the next moonbase_window_cairo()
+// allocation honors the new scale. Also updates the cached output_id
+// the handle reports. Does nothing if new_scale matches the current
+// value.
+void mb_internal_window_apply_backing_scale(mb_window_t *w,
+                                            float new_scale,
+                                            uint32_t new_output_id);
+
 // Event-loop hooks called by init / quit. `shutdown` flushes the queue
 // and resets the quit latch so the next process (or embedded re-init)
 // starts with an empty slate.

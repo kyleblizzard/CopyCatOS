@@ -227,6 +227,59 @@ static void translate_key(uint16_t kind,
     ring_push(&ev);
 }
 
+// BACKING_SCALE_CHANGED body:
+//   { 1: window_id, 2: float old_scale, 3: float new_scale, 4: uint output_id }
+// Updates the local window handle's cached scale + output_id (so
+// moonbase_window_backing_scale reflects the new value immediately,
+// and the next moonbase_window_cairo() allocates at the new physical
+// pixel size), then pushes MB_EV_BACKING_SCALE_CHANGED for the app.
+static void translate_backing_scale_changed(const uint8_t *body, size_t body_len) {
+    mb_cbor_r_t r;
+    mb_cbor_r_init(&r, body, body_len);
+    uint64_t pairs = 0;
+    if (!mb_cbor_r_map_begin(&r, &pairs)) return;
+
+    uint32_t window_id = 0;
+    double   old_scale = 0.0, new_scale = 0.0;
+    uint32_t output_id = 0;
+    bool     have_id = false, have_old = false, have_new = false;
+    for (uint64_t i = 0; i < pairs; i++) {
+        uint64_t key = 0;
+        if (!mb_cbor_r_uint(&r, &key)) return;
+        switch (key) {
+            case 1: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                window_id = (uint32_t)v; have_id = true; break; }
+            case 2: { double v = 0.0;
+                if (!mb_cbor_r_float(&r, &v)) return;
+                old_scale = v; have_old = true; break; }
+            case 3: { double v = 0.0;
+                if (!mb_cbor_r_float(&r, &v)) return;
+                new_scale = v; have_new = true; break; }
+            case 4: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                output_id = (uint32_t)v; break; }
+            default:
+                if (!mb_cbor_r_skip(&r)) return;
+                break;
+        }
+    }
+    if (!have_id || !have_old || !have_new) return;
+
+    mb_window_t *w = mb_internal_window_find(window_id);
+    if (!w) return;   // stale reference — app already closed locally
+
+    mb_internal_window_apply_backing_scale(w, (float)new_scale, output_id);
+
+    mb_event_t ev = {0};
+    ev.kind = MB_EV_BACKING_SCALE_CHANGED;
+    ev.window = w;
+    ev.timestamp_us = mono_us();
+    ev.backing_scale.old_scale = (float)old_scale;
+    ev.backing_scale.new_scale = (float)new_scale;
+    ring_push(&ev);
+}
+
 static void translate_frame(uint16_t kind,
                             const uint8_t *body, size_t body_len) {
     switch (kind) {
@@ -239,6 +292,9 @@ static void translate_frame(uint16_t kind,
         case MB_IPC_KEY_DOWN:
         case MB_IPC_KEY_UP:
             translate_key(kind, body, body_len);
+            break;
+        case MB_IPC_BACKING_SCALE_CHANGED:
+            translate_backing_scale_changed(body, body_len);
             break;
         default:
             // Unmapped kind in this slice. Dropping it on the floor is

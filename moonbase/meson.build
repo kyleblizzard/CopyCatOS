@@ -304,3 +304,25 @@ mb_input_route = executable(
 )
 
 test('input-route', mb_input_route, timeout: 10)
+
+# ---------------------------------------------------------------------
+# mb-backing-scale-changed — Phase C slice 3c.4 scale migration test
+# ---------------------------------------------------------------------
+#
+# Parent replies to WINDOW_CREATE at scale=1.0 then immediately pushes
+# MB_IPC_BACKING_SCALE_CHANGED advertising scale=1.5 on a different
+# output_id. Child asserts moonbase_wait_event delivers
+# MB_EV_BACKING_SCALE_CHANGED with the right old/new payload, that
+# moonbase_window_backing_scale returns the new value, and that
+# moonbase_window_backing_pixel_size scales up accordingly. Pins the
+# full client-side translator + internal apply path.
+
+mb_backing_scale = executable(
+  'mb-backing-scale-changed',
+  'tests/backing-scale-changed.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('backing-scale-changed', mb_backing_scale, timeout: 10)

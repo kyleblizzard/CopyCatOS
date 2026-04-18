@@ -302,6 +302,22 @@ static void window_release_frame(mb_window_t *w) {
     w->px_width = w->px_height = w->stride = 0;
 }
 
+void mb_internal_window_apply_backing_scale(mb_window_t *w,
+                                            float new_scale,
+                                            uint32_t new_output_id) {
+    if (!w || new_scale <= 0.0f) return;
+    if (w->backing_scale == new_scale && w->output_id == new_output_id) return;
+
+    w->backing_scale = new_scale;
+    w->output_id     = new_output_id;
+
+    // Any pending Cairo frame was sized against the old scale. Drop it
+    // so the app's next moonbase_window_cairo() allocates at the right
+    // physical-pixel dimensions. The app will see MB_EV_BACKING_SCALE_CHANGED
+    // and redraw.
+    window_release_frame(w);
+}
+
 void moonbase_window_close(mb_window_t *w) {
     if (!w) {
         mb_internal_set_last_error(MB_EINVAL);

@@ -897,9 +897,120 @@ size_t mb_host_collect_pollfds(struct pollfd *out_fds, size_t max) {
     return mb_server_get_pollfds(g_server, out_fds, max);
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Scale migration
+// ─────────────────────────────────────────────────────────────────────
+//
+// A MoonBase surface's "host output" is the output that contains the
+// largest share of its chrome rectangle — Per-Monitor DPI v2 style. When
+// that output's scale factor differs from what the client last saw, we
+// push MB_IPC_BACKING_SCALE_CHANGED so the client can re-allocate its
+// Cairo surface at the new physical-pixel size before the next frame.
+//
+// The check runs on every mb_host_tick — cost is O(live_surfaces ×
+// connected_outputs), both tiny, and no syscalls unless a change is
+// detected. Triggers in practice:
+//   * Output hotplug (current host disconnects → migrate to primary)
+//   * User changes an output's scale in SysPrefs → Displays
+//   * (Future slice) user drags a window between outputs
+
+// Axis-aligned rectangle intersection area. Returns 0 when rects are
+// disjoint.
+static long rect_intersection_area(int ax, int ay, int aw, int ah,
+                                   int bx, int by, int bw, int bh) {
+    int x0 = ax > bx ? ax : bx;
+    int y0 = ay > by ? ay : by;
+    int x1 = (ax + aw) < (bx + bw) ? (ax + aw) : (bx + bw);
+    int y1 = (ay + ah) < (by + bh) ? (ay + ah) : (by + bh);
+    if (x1 <= x0 || y1 <= y0) return 0;
+    return (long)(x1 - x0) * (long)(y1 - y0);
+}
+
+// Pick which output the surface lives on. NULL means no connected
+// output intersects its rectangle — happens only during hotplug
+// transients, in which case the caller falls back to primary.
+static MROutput *pick_target_output(const mb_surface_t *s) {
+    int count = 0;
+    MROutput *outs = display_get_outputs(&count);
+    if (!outs || count <= 0) return NULL;
+
+    MROutput *best      = NULL;
+    long      best_area = 0;
+    for (int i = 0; i < count; i++) {
+        long area = rect_intersection_area(
+            s->screen_x, s->screen_y,
+            (int)s->chrome_w_px, (int)s->chrome_h_px,
+            outs[i].x, outs[i].y, outs[i].width, outs[i].height);
+        if (area > best_area) {
+            best_area = area;
+            best      = &outs[i];
+        }
+    }
+    return best;
+}
+
+// Build and send MB_IPC_BACKING_SCALE_CHANGED:
+//   { 1: window_id, 2: float old_scale, 3: float new_scale,
+//     4: uint output_id }
+static void emit_backing_scale_changed(mb_surface_t *s,
+                                       float old_scale, float new_scale,
+                                       uint32_t output_id) {
+    if (!g_server) return;
+    mb_cbor_w_t w;
+    mb_cbor_w_init_grow(&w, 32);
+    mb_cbor_w_map_begin(&w, 4);
+    mb_cbor_w_key(&w, 1); mb_cbor_w_uint (&w, s->window_id);
+    mb_cbor_w_key(&w, 2); mb_cbor_w_float(&w, (double)old_scale);
+    mb_cbor_w_key(&w, 3); mb_cbor_w_float(&w, (double)new_scale);
+    mb_cbor_w_key(&w, 4); mb_cbor_w_uint (&w, output_id);
+    if (!mb_cbor_w_ok(&w)) { mb_cbor_w_drop(&w); return; }
+    size_t len = 0;
+    uint8_t *body = mb_cbor_w_finish(&w, &len);
+    if (!body) return;
+    (void)mb_server_send(g_server, s->client,
+                         MB_IPC_BACKING_SCALE_CHANGED,
+                         body, len, NULL, 0);
+    free(body);
+}
+
+static void mb_host_check_scale_migration(void) {
+    if (g_surface_count == 0) return;
+    for (int i = 0; i < MB_MAX_SURFACES; i++) {
+        mb_surface_t *s = &g_surfaces[i];
+        if (!s->in_use) continue;
+
+        MROutput *target = pick_target_output(s);
+        if (!target) {
+            // Surface geometry doesn't intersect any known output — fall
+            // back to primary so the client doesn't stall on an output
+            // id that no longer exists.
+            target = display_get_primary();
+            if (!target) continue;
+        }
+
+        float    new_scale = display_get_scale_for_output(target);
+        uint32_t new_out   = (uint32_t)target->output_id;
+        if (new_scale == s->scale && new_out == s->output_id) continue;
+
+        fprintf(stderr,
+                "[moonrock] moonbase window_id=%u scale migration: "
+                "%.2f (output %u) → %.2f (output %u)\n",
+                s->window_id, (double)s->scale, s->output_id,
+                (double)new_scale, new_out);
+
+        emit_backing_scale_changed(s, s->scale, new_scale, new_out);
+        s->scale        = new_scale;
+        s->output_id    = new_out;
+        s->chrome_stale = true;   // chrome must be repainted at the new scale
+    }
+}
+
 void mb_host_tick(const struct pollfd *fds, size_t nfds) {
     if (!g_server) return;
     mb_server_tick(g_server, fds, nfds);
+    // Runs once per main-loop iteration. Catches output-scale changes
+    // and hotplug-induced migrations before the next composite pass.
+    mb_host_check_scale_migration();
 }
 
 bool mb_host_has_focus(void) {
