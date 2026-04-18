@@ -103,8 +103,9 @@ void content_paint(FinderState *fs);
 bool content_handle_click(FinderState *fs, int x, int y);
 
 // Handle a double-click in the content area.
-// If a directory was double-clicked, navigates into it.
-// If a file was double-clicked, opens it with xdg-open.
+//   - A .appc bundle directory → fork + exec moonbase-launch.
+//   - Any other directory → navigate into it.
+//   - A regular file → fork + exec xdg-open.
 void content_handle_double_click(FinderState *fs, int x, int y);
 
 // Get the number of files currently loaded.

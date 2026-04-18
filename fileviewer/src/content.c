@@ -89,6 +89,29 @@ static const ExtIconMap ext_icon_map[] = {
     { NULL, NULL }
 };
 
+// ── Helper: MoonBase bundle detection ───────────────────────────────
+//
+// A .appc bundle is a directory whose name ends in ".appc" and that
+// has a Contents/Info.appc file inside. We only check structure
+// here — the launcher re-validates the full bundle-spec §8 rules
+// (realpath escapes, absolute-symlink rejects, executable location)
+// before actually running anything. No point duplicating those
+// checks in fileviewer's double-click hot path.
+
+static bool is_appc_bundle(const char *path)
+{
+    if (!path) return false;
+    size_t len = strlen(path);
+    if (len < 5 || strcmp(path + len - 5, ".appc") != 0) return false;
+
+    char info[1024];
+    int n = snprintf(info, sizeof(info), "%s/Contents/Info.appc", path);
+    if (n < 0 || (size_t)n >= sizeof(info)) return false;
+
+    struct stat st;
+    return stat(info, &st) == 0 && S_ISREG(st.st_mode);
+}
+
 // ── Helper: Load a theme icon ───────────────────────────────────────
 //
 // Searches the Aqua and hicolor icon themes for the named icon.
@@ -932,11 +955,26 @@ void content_handle_double_click(FinderState *fs, int x, int y)
         }
     }
 
-    // If we found a file, open it (directory = navigate, file = xdg-open)
+    // If we found a file, open it. Three branches:
+    //   1. MoonBase bundle (.appc directory with Contents/Info.appc): hand to
+    //      moonbase-launch so bwrap + entitlements + consent run.
+    //   2. Plain directory: navigate into it.
+    //   3. Regular file: xdg-open.
     if (hit_idx >= 0) {
         if (files[hit_idx].is_directory) {
-            fprintf(stderr, "[content] Navigate into: %s\n", files[hit_idx].path);
-            finder_navigate(fs, files[hit_idx].path);
+            if (is_appc_bundle(files[hit_idx].path)) {
+                fprintf(stderr, "[content] Launching bundle: %s\n", files[hit_idx].path);
+                pid_t pid = fork();
+                if (pid == 0) {
+                    setsid();
+                    execlp("moonbase-launch", "moonbase-launch",
+                           files[hit_idx].path, NULL);
+                    _exit(127);
+                }
+            } else {
+                fprintf(stderr, "[content] Navigate into: %s\n", files[hit_idx].path);
+                finder_navigate(fs, files[hit_idx].path);
+            }
         } else {
             fprintf(stderr, "[content] Opening: %s\n", files[hit_idx].path);
             pid_t pid = fork();
