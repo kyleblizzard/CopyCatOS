@@ -84,8 +84,10 @@ cp ~/.config/gtk-3.0/settings.ini ~/.config/gtk-4.0/settings.ini
 
 # ─── Set the X root cursor before any windows appear ───
 # Without this, the root window shows the ugly X cursor until something else
-# overrides it. This forces the left_ptr from our chosen XCURSOR_THEME.
-xsetroot -cursor_name left_ptr 2>/dev/null
+# overrides it. cc-setcursor loads the themed cursor from XCURSOR_THEME and
+# applies it to the root window and all children (replaces xsetroot which
+# isn't available on Nobara).
+cc-setcursor 2>/dev/null
 
 # ─── Start the window manager first ───
 # The WM must claim SubstructureRedirect before any other windows appear
@@ -115,6 +117,13 @@ cc-input-session &
 
 # ─── Default Finder window ───
 cc-finder ~ &
+
+# ─── Force the themed cursor after everything has started ───
+# This is the definitive cursor set — runs after all components have created
+# their windows, so nothing can override it. cc-setcursor loads the cursor
+# from XCURSOR_THEME (SnowLeopard) and applies it to root + all children.
+sleep 0.5
+cc-setcursor 2>/dev/null
 
 # ─── Wait for the WM to exit ───
 # When the WM process ends (user logged out or crashed), clean up everything

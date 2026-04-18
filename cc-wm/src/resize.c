@@ -25,6 +25,7 @@
 #include "resize.h"
 #include "frame.h"
 #include <X11/cursorfont.h>
+#include <X11/Xcursor/Xcursor.h>
 #include <stdio.h>
 
 // ─── Module-static state ───────────────────────────────────────
@@ -133,9 +134,8 @@ ResizeDir resize_detect_edge(Client *c, int frame_x, int frame_y)
 
 unsigned int resize_get_cursor(ResizeDir dir)
 {
-    // Each resize direction has a matching cursor from the X11 cursor
-    // font. These are the standard double-arrow cursors that tell the
-    // user "you can drag this edge."
+    // Returns the X11 font cursor constant for a given resize direction.
+    // Used as a fallback if the themed cursor can't be loaded.
     switch (dir) {
         case RESIZE_TOP:          return XC_top_side;
         case RESIZE_BOTTOM:       return XC_bottom_side;
@@ -145,7 +145,27 @@ unsigned int resize_get_cursor(ResizeDir dir)
         case RESIZE_TOP_RIGHT:    return XC_top_right_corner;
         case RESIZE_BOTTOM_LEFT:  return XC_bottom_left_corner;
         case RESIZE_BOTTOM_RIGHT: return XC_bottom_right_corner;
-        default:                  return XC_left_ptr;  // Default arrow
+        default:                  return XC_left_ptr;
+    }
+}
+
+// Returns the Xcursor theme name string for a given resize direction.
+// These names match the freedesktop cursor spec and are what themed
+// cursor files are named in ~/.local/share/icons/<theme>/cursors/.
+// Using names instead of font IDs lets XcursorLibraryLoadCursor find
+// the themed version (e.g., the Snow Leopard arrow instead of generic X11).
+static const char *resize_cursor_name(ResizeDir dir)
+{
+    switch (dir) {
+        case RESIZE_TOP:          return "top_side";
+        case RESIZE_BOTTOM:       return "bottom_side";
+        case RESIZE_LEFT:         return "left_side";
+        case RESIZE_RIGHT:        return "right_side";
+        case RESIZE_TOP_LEFT:     return "top_left_corner";
+        case RESIZE_TOP_RIGHT:    return "top_right_corner";
+        case RESIZE_BOTTOM_LEFT:  return "bottom_left_corner";
+        case RESIZE_BOTTOM_RIGHT: return "bottom_right_corner";
+        default:                  return "left_ptr";
     }
 }
 
@@ -351,7 +371,8 @@ void resize_update_cursor(CCWM *wm, Client *c, int frame_x, int frame_y)
     // Figure out which edge (if any) the cursor is near
     ResizeDir dir = resize_detect_edge(c, frame_x, frame_y);
 
-    // Look up the matching X11 cursor constant
+    // Look up the matching X11 cursor constant (used as fallback ID
+    // and for the caching check)
     unsigned int cursor_id = resize_get_cursor(dir);
 
     // Optimization: don't call XDefineCursor if we already set this
@@ -362,8 +383,15 @@ void resize_update_cursor(CCWM *wm, Client *c, int frame_x, int frame_y)
         return;
     }
 
-    // Create the new cursor and apply it to the frame window
-    Cursor cursor = XCreateFontCursor(wm->dpy, cursor_id);
+    // Try to load the cursor from the active theme (e.g., SnowLeopard)
+    // so that frame cursors match the themed root/desktop cursor.
+    // Falls back to the X11 font cursor if the theme doesn't provide
+    // this particular cursor shape.
+    const char *name = resize_cursor_name(dir);
+    Cursor cursor = XcursorLibraryLoadCursor(wm->dpy, name);
+    if (!cursor) {
+        cursor = XCreateFontCursor(wm->dpy, cursor_id);
+    }
     XDefineCursor(wm->dpy, c->frame, cursor);
     XFreeCursor(wm->dpy, cursor);
 

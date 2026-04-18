@@ -184,16 +184,49 @@ static void apply_config(InputDaemon *daemon)
 
 static bool game_mode_is_active(void)
 {
-    const char *home = getenv("HOME");
-    if (!home) return false;
+    // Uses /tmp/ instead of /run/copycatos/ because RuntimeDirectory is
+    // cleaned on service restart — that would lose the marker if cc-inputd
+    // crashes or gets restarted while in game mode (gamescope still running).
+    // /tmp/ survives service restarts. game-mode.sh creates and removes this file.
+    return access("/tmp/copycatos-gamemode.active", F_OK) == 0;
+}
 
-    char path[512];
-    snprintf(path, sizeof(path),
-             "%s/.local/share/copycatos/gamemode.active", home);
+// ============================================================================
+//  Helper: Adjust volume via PipeWire (wpctl) as the session user
+// ============================================================================
+// cc-inputd runs as root, but PipeWire runs as the logged-in user (UID 1000).
+// Root can't connect to the user's PipeWire socket directly — wpctl just
+// fails silently with "Could not connect to PipeWire."
+//
+// To bridge this gap, we use loginctl to find the active graphical session
+// owner, then runuser to execute wpctl as that user with the correct
+// XDG_RUNTIME_DIR. This works because:
+//   1. loginctl show-seat seat0 → gives us the active session ID
+//   2. loginctl show-session → gives us the UID that owns it
+//   3. getent passwd UID → resolves UID to username (runuser needs a name)
+//   4. runuser -u username runs the command as that user
+//   5. XDG_RUNTIME_DIR=/run/user/UID tells wpctl where to find PipeWire
+//
+// Note: This requires NoNewPrivileges=false in the systemd service, because
+// runuser needs to call setuid() to switch to the target user.
+// ============================================================================
 
-    // access() returns 0 if the file exists and is readable.
-    // F_OK checks existence only — no permissions check needed.
-    return access(path, F_OK) == 0;
+static void volume_adjust(const char *wpctl_args)
+{
+    // Build a shell command that:
+    //   1. Gets the active session's UID via loginctl
+    //   2. Resolves the UID to a username via getent (runuser needs a name, not a UID)
+    //   3. Runs wpctl as that user with their XDG_RUNTIME_DIR set
+    char cmd[512];
+    snprintf(cmd, sizeof(cmd),
+        "uid=$(loginctl show-seat seat0 -p ActiveSession --value 2>/dev/null | "
+        "xargs -I{} loginctl show-session {} -p User --value 2>/dev/null); "
+        "[ -n \"$uid\" ] && "
+        "user=$(getent passwd \"$uid\" | cut -d: -f1) && "
+        "[ -n \"$user\" ] && "
+        "runuser -u \"$user\" -- env XDG_RUNTIME_DIR=/run/user/$uid wpctl %s",
+        wpctl_args);
+    system(cmd);
 }
 
 // ============================================================================
@@ -311,6 +344,21 @@ static void send_copycatos_action(InputDaemon *daemon, int cc_action)
             fprintf(stderr, "inputd: OSK toggle — launching xvkbd\n");
         }
         return;   // Don't send via IPC — we handled it directly
+    }
+
+    // ── Volume up/down ───────────────────────────────────────────────
+    // Handled directly by the daemon (no bridge needed) because PipeWire
+    // volume control requires running wpctl as the session user. The
+    // volume_adjust() helper handles the root-to-user privilege switch.
+    // These actions come from both the mapper (HID Y1/Y2 paddles in
+    // desktop profile) and potentially from the session bridge.
+    if (cc_action == CC_ACTION_VOLUME_UP) {
+        volume_adjust("set-volume @DEFAULT_AUDIO_SINK@ 5%+");
+        return;
+    }
+    if (cc_action == CC_ACTION_VOLUME_DOWN) {
+        volume_adjust("set-volume @DEFAULT_AUDIO_SINK@ 5%-");
+        return;
     }
 
     const char *name = action_names[cc_action];
@@ -929,13 +977,13 @@ void inputd_run(InputDaemon *daemon)
                 // We execute wpctl to adjust PipeWire volume directly.
                 if (dev->is_system_keys && ev.type == EV_KEY && ev.value == 1) {
                     if (ev.code == KEY_VOLUMEUP) {
-                        system("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+");
+                        volume_adjust("set-volume @DEFAULT_AUDIO_SINK@ 5%+");
                         continue;
                     } else if (ev.code == KEY_VOLUMEDOWN) {
-                        system("wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-");
+                        volume_adjust("set-volume @DEFAULT_AUDIO_SINK@ 5%-");
                         continue;
                     } else if (ev.code == KEY_MUTE) {
-                        system("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle");
+                        volume_adjust("set-mute @DEFAULT_AUDIO_SINK@ toggle");
                         continue;
                     }
                 }

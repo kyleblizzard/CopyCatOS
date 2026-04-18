@@ -20,8 +20,9 @@
 # cc-inputd reads this file to detect game mode. When it exists, a power
 # button short press exits gamescope (returning to desktop) instead of
 # suspending the system.
-MARKER_DIR="$HOME/.local/share/copycatos"
-MARKER_FILE="$MARKER_DIR/gamemode.active"
+# /tmp/ instead of /run/copycatos/ — survives cc-inputd service restarts
+# (RuntimeDirectory gets cleaned on restart, but /tmp/ persists)
+MARKER_FILE="/tmp/copycatos-gamemode.active"
 
 # ── Step 1: Let the Apple menu dismiss ───────────────────────────────
 sleep 0.5
@@ -42,7 +43,6 @@ sleep 0.4
 
 # Write the game mode marker so cc-inputd knows we're in game mode.
 # The file's presence is the signal — the content doesn't matter.
-mkdir -p "$MARKER_DIR"
 echo "$$" > "$MARKER_FILE"   # Store our PID for debugging
 echo "[game-mode] Marker written: $MARKER_FILE"
 
@@ -78,10 +78,52 @@ gamescope \
     -w 2560 -h 1600 \
     -f \
     -- \
-    steam -gamepadui -pipewire-dmabuf
+    steam -gamepadui -pipewire-dmabuf &
 
+GAMESCOPE_PID=$!
+echo "[game-mode] gamescope started (PID $GAMESCOPE_PID)"
+
+# Watchdog: if Steam exits but gamescope doesn't follow within 5 seconds,
+# force-kill gamescope. This prevents the recurring "stuck exiting game mode"
+# bug where gamescope hangs after Steam shuts down.
+(
+    while kill -0 $GAMESCOPE_PID 2>/dev/null; do
+        sleep 3
+        # If Steam's gamepadui process is gone but gamescope is still alive,
+        # gamescope is stuck — give it a moment then force-kill.
+        if ! pgrep -f "steam.*-gamepadui" >/dev/null 2>&1; then
+            sleep 2
+            if kill -0 $GAMESCOPE_PID 2>/dev/null; then
+                echo "[game-mode] watchdog: Steam exited but gamescope stuck, killing"
+                kill $GAMESCOPE_PID 2>/dev/null
+                sleep 1
+                kill -9 $GAMESCOPE_PID 2>/dev/null
+            fi
+            break
+        fi
+    done
+) &
+WATCHDOG_PID=$!
+
+# Block until gamescope exits (naturally, via watchdog, or externally).
+wait $GAMESCOPE_PID 2>/dev/null
 EXIT_CODE=$?
-echo "[game-mode] gamescope exited with code $EXIT_CODE. Restoring CopyCatOS desktop..."
+kill $WATCHDOG_PID 2>/dev/null 2>&1
+echo "[game-mode] gamescope exited with code $EXIT_CODE. Cleaning up..."
+
+# Force-kill any leftover Steam/gamescope processes that didn't exit cleanly.
+# Without this, a hung steamwebhelper or steam-runtime process can prevent
+# the desktop from restoring, leaving the user stuck on a blank screen.
+sleep 1
+for proc in gamescope gamescopereaper; do
+    pkill -9 -x "$proc" 2>/dev/null
+done
+pkill -9 -f steamwebhelper 2>/dev/null
+pkill -9 -f steam-runtime-launcher 2>/dev/null
+pkill -9 -f "steam.*-gamepadui" 2>/dev/null
+sleep 0.5
+
+echo "[game-mode] Restoring CopyCatOS desktop..."
 
 # Remove the game mode marker so cc-inputd resumes normal power button behavior
 # (short press = suspend) now that we're back at the desktop.
@@ -100,5 +142,12 @@ sleep 0.2
 cc-menubar   &
 cc-dock      &
 cc-spotlight &
+
+# Re-apply the themed cursor after restoring the desktop.
+# cc-desktop creates a fresh window that covers root — cc-setcursor ensures
+# it gets the SnowLeopard cursor immediately (the XCURSOR_THEME env var
+# was set by cc-session.sh and is still in our environment).
+sleep 0.3
+cc-setcursor 2>/dev/null
 
 echo "[game-mode] Desktop restored."

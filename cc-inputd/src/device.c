@@ -98,6 +98,33 @@ int device_open(DeviceManager *dm, const char *path) {
         return -1;
     }
 
+    // --- Skip our own virtual devices ---
+    // When cc-inputd creates uinput devices (virtual mouse, keyboard, gamepad),
+    // udev fires hotplug events that would cause us to re-open them. If we
+    // grabbed our own virtual gamepad, we'd create an infinite event loop
+    // (events forwarded to uinput → read back → forwarded again).
+    //
+    // Virtual devices created by uinput have no physical location string (PHYS).
+    // Real USB devices always have one (e.g. "usb-0000:c3:00.4-1/input0").
+    // We skip any device whose name starts with "CopyCatOS Virtual", and any
+    // device with an empty PHYS string that claims to be a gamepad-like device.
+    if (strncmp(name, "CopyCatOS Virtual", 17) == 0) {
+        close(fd);
+        return -1;
+    }
+    {
+        char phys[256] = {0};
+        if (ioctl(fd, EVIOCGPHYS(sizeof(phys)), phys) < 0 || phys[0] == '\0') {
+            // No PHYS string — likely a uinput virtual device.
+            // Only skip if it looks like a gamepad (has our Xbox VID/PID).
+            // Real power buttons and keyboards with empty PHYS are fine.
+            if (id.vendor == 0x045e && id.product == 0x028e) {
+                close(fd);
+                return -1;
+            }
+        }
+    }
+
     // --- Determine device type ---
 
     // Gamepad check: requires BOTH vendor/product match AND gamepad capabilities.

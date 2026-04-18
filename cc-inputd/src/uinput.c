@@ -282,9 +282,12 @@ static int create_virtual_gamepad(void) {
         BTN_WEST,    // X / Square
         BTN_TL,      // Left bumper (LB)
         BTN_TR,      // Right bumper (RB)
+        BTN_TL2,     // Y1 back paddle (mapped from HID vendor interface)
+        BTN_TR2,     // Y2 back paddle (mapped from HID vendor interface)
         BTN_SELECT,  // Back / Select / View
         BTN_START,   // Start / Menu
-        BTN_MODE,    // Guide / Home / Legion button
+        BTN_MODE,    // Guide / Home / Legion L button
+        BTN_Z,       // Legion R button (mapped from HID vendor interface)
         BTN_THUMBL,  // Left stick click (L3)
         BTN_THUMBR   // Right stick click (R3)
     };

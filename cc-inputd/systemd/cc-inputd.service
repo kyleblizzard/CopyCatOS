@@ -6,14 +6,12 @@ Conflicts=inputplumber.service hhd@.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/cc-inputd
+ExecStart=/usr/local/sbin/cc-inputd
 Restart=on-failure
 RestartSec=2
 ProtectHome=read-only
 ProtectSystem=strict
-ReadWritePaths=/run
-PrivateTmp=true
-NoNewPrivileges=true
+ReadWritePaths=/run /tmp
 SupplementaryGroups=input
 
 [Install]
