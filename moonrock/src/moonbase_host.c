@@ -27,6 +27,90 @@ static mb_server_t *g_server = NULL;
 static char        *g_default_path = NULL;   // owned, only used when we built it
 static uint32_t     g_next_window_id = 1;    // opaque window_id counter
 
+// ─────────────────────────────────────────────────────────────────────
+// Surface table — one entry per live MoonBase window
+// ─────────────────────────────────────────────────────────────────────
+//
+// MoonBase windows are NOT X windows. They're compositor-internal
+// surfaces that moonrock draws with Aqua chrome, composited via its
+// existing GL pipeline alongside the reparented X clients. This table
+// tracks the state we need to render (size, scale, target output,
+// owning client) and to route events back (window_id <-> client).
+//
+// A linear array is fine — a typical desktop session has well under
+// 100 live windows. When a client disconnects we sweep the table and
+// drop every surface belonging to that client id, which is how crash
+// cleanup works: if the app process dies, the socket closes, the
+// server synthesizes DISCONNECTED, and the sweep runs.
+//
+// Rendering-path fields (GL texture id, shm fd, damage rect) land in
+// slice 3c.2 when the commit path is real. For now the table just
+// carries identity + geometry + pending visibility.
+
+#define MB_MAX_SURFACES 256
+
+typedef struct {
+    bool           in_use;
+    uint32_t       window_id;          // opaque handle returned to the client
+    mb_client_id_t client;             // owning client id from the server layer
+    int            points_w, points_h; // size in points (client's coordinates)
+    float          scale;              // backing scale at creation time
+    uint32_t       output_id;          // target RandR output_id at creation
+    uint32_t       render_mode;        // 0 cairo, 1 gl
+    uint32_t       flags;              // window flags from the request
+    char          *title;              // owned copy, or NULL
+} mb_surface_t;
+
+static mb_surface_t g_surfaces[MB_MAX_SURFACES];
+static int          g_surface_count = 0;
+
+static mb_surface_t *surface_alloc(void) {
+    for (int i = 0; i < MB_MAX_SURFACES; i++) {
+        if (!g_surfaces[i].in_use) {
+            memset(&g_surfaces[i], 0, sizeof(g_surfaces[i]));
+            g_surfaces[i].in_use = true;
+            g_surface_count++;
+            return &g_surfaces[i];
+        }
+    }
+    return NULL;
+}
+
+static mb_surface_t *surface_find(uint32_t window_id) {
+    for (int i = 0; i < MB_MAX_SURFACES; i++) {
+        if (g_surfaces[i].in_use && g_surfaces[i].window_id == window_id) {
+            return &g_surfaces[i];
+        }
+    }
+    return NULL;
+}
+
+static void surface_release(mb_surface_t *s) {
+    if (!s || !s->in_use) return;
+    free(s->title);
+    memset(s, 0, sizeof(*s));
+    g_surface_count--;
+}
+
+// Sweep every surface belonging to a given client. Called when that
+// client disconnects (graceful BYE or abrupt EOF both route here).
+static void surface_sweep_client(mb_client_id_t client) {
+    int freed = 0;
+    for (int i = 0; i < MB_MAX_SURFACES; i++) {
+        if (g_surfaces[i].in_use && g_surfaces[i].client == client) {
+            uint32_t wid = g_surfaces[i].window_id;
+            surface_release(&g_surfaces[i]);
+            freed++;
+            (void)wid; // reserved for a compositor damage call in 3c.2
+        }
+    }
+    if (freed > 0) {
+        fprintf(stderr,
+                "[moonrock] moonbase client %u disconnect: freed %d surface(s)\n",
+                client, freed);
+    }
+}
+
 // Parse a WINDOW_CREATE body. Ignores unknown keys so the schema can
 // grow later without wire-format churn. Returns true if the minimum
 // viable set (width, height) was present and well-formed.
@@ -148,14 +232,38 @@ static void handle_window_create(mb_server_t *s, mb_client_id_t client,
         init_scale = display_get_scale_for_output(target);
     }
 
+    // Record the surface so we can look it up on subsequent frames
+    // (WINDOW_COMMIT, WINDOW_CLOSE, pointer/key routing). If the table
+    // is full the request fails silently — no reply goes out and the
+    // client sees a timeout, which is the right failure shape because
+    // only a runaway app would pile up >256 live windows.
+    mb_surface_t *surf = surface_alloc();
+    if (!surf) {
+        fprintf(stderr,
+                "[moonrock] moonbase client %u: surface table full — "
+                "dropping WINDOW_CREATE\n", client);
+        free(req.title);
+        return;
+    }
+    surf->window_id   = window_id;
+    surf->client      = client;
+    surf->points_w    = req.width_points;
+    surf->points_h    = req.height_points;
+    surf->scale       = init_scale;
+    surf->output_id   = output_id;
+    surf->render_mode = req.render_mode;
+    surf->flags       = req.flags;
+    surf->title       = req.title; // take ownership
+    req.title = NULL;               // avoid the free below
+
     fprintf(stderr,
             "[moonrock] moonbase client %u WINDOW_CREATE: "
             "%s %dx%d pt render=%u flags=0x%x -> window_id=%u "
-            "(output=%u scale=%.2f)\n",
-            client, req.title ? req.title : "(no title)",
+            "(output=%u scale=%.2f, live=%d)\n",
+            client, surf->title ? surf->title : "(no title)",
             req.width_points, req.height_points,
             req.render_mode, req.flags, window_id,
-            output_id, (double)init_scale);
+            output_id, (double)init_scale, g_surface_count);
     free(req.title);
 
     size_t reply_len = 0;
@@ -182,6 +290,66 @@ static void handle_window_create(mb_server_t *s, mb_client_id_t client,
     }
 }
 
+// Parse a WINDOW_CLOSE body: { 1: uint window_id }.
+// Returns 0 on failure — 0 is never a valid window_id because we
+// start the counter at 1, so the caller can null-check cheaply.
+static uint32_t parse_window_close_id(const uint8_t *body, size_t body_len) {
+    mb_cbor_r_t r;
+    mb_cbor_r_init(&r, body, body_len);
+    uint64_t pairs = 0;
+    if (!mb_cbor_r_map_begin(&r, &pairs)) return 0;
+    uint32_t window_id = 0;
+    for (uint64_t i = 0; i < pairs; i++) {
+        uint64_t key = 0;
+        if (!mb_cbor_r_uint(&r, &key)) return 0;
+        if (key == 1) {
+            uint64_t v = 0;
+            if (!mb_cbor_r_uint(&r, &v)) return 0;
+            window_id = (uint32_t)v;
+        } else {
+            if (!mb_cbor_r_skip(&r)) return 0;
+        }
+    }
+    return window_id;
+}
+
+// Handle a client-initiated WINDOW_CLOSE. The app wants to release a
+// window it previously created. We drop the surface entry; a future
+// slice will emit a damage call so the compositor can stop drawing it.
+static void handle_window_close(mb_client_id_t client,
+                                const uint8_t *body, size_t body_len) {
+    uint32_t window_id = parse_window_close_id(body, body_len);
+    if (window_id == 0) {
+        fprintf(stderr,
+                "[moonrock] moonbase client %u sent malformed WINDOW_CLOSE\n",
+                client);
+        return;
+    }
+    mb_surface_t *surf = surface_find(window_id);
+    if (!surf) {
+        // Not an error — races between a client-side close and a
+        // compositor-initiated close race-close on exit are possible.
+        fprintf(stderr,
+                "[moonrock] moonbase client %u WINDOW_CLOSE: window_id=%u "
+                "already gone (ignoring)\n", client, window_id);
+        return;
+    }
+    if (surf->client != client) {
+        // Defense in depth: apps can only close their own windows.
+        fprintf(stderr,
+                "[moonrock] moonbase client %u WINDOW_CLOSE: window_id=%u "
+                "belongs to client %u — refusing\n",
+                client, window_id, surf->client);
+        return;
+    }
+    fprintf(stderr,
+            "[moonrock] moonbase client %u WINDOW_CLOSE: window_id=%u "
+            "(%dx%d pt, live=%d)\n",
+            client, window_id, surf->points_w, surf->points_h,
+            g_surface_count - 1);
+    surface_release(surf);
+}
+
 static void on_event(mb_server_t *s, const mb_server_event_t *ev, void *user) {
     (void)user;
     switch (ev->kind) {
@@ -203,9 +371,8 @@ static void on_event(mb_server_t *s, const mb_server_event_t *ev, void *user) {
                                          ev->frame_body, ev->frame_body_len);
                     break;
                 case MB_IPC_WINDOW_CLOSE:
-                    fprintf(stderr,
-                            "[moonrock] moonbase client %u WINDOW_CLOSE len=%zu\n",
-                            ev->client, ev->frame_body_len);
+                    handle_window_close(ev->client,
+                                        ev->frame_body, ev->frame_body_len);
                     break;
                 default:
                     fprintf(stderr,
@@ -218,6 +385,7 @@ static void on_event(mb_server_t *s, const mb_server_event_t *ev, void *user) {
             fprintf(stderr,
                     "[moonrock] moonbase client %u disconnected (reason=%d)\n",
                     ev->client, ev->disconnect_reason);
+            surface_sweep_client(ev->client);
             break;
     }
 }
