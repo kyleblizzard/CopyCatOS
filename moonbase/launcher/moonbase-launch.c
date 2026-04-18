@@ -26,6 +26,7 @@
 
 #include "bundle/bundle.h"
 #include "bundle/info_appc.h"
+#include "bundle/quarantine.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -38,6 +39,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 // -------------------------------------------------------------------
@@ -216,6 +218,69 @@ static int add_filesystem_bind(argv_t *a, const char *entry,
 }
 
 // -------------------------------------------------------------------
+// consent helper lookup + exec
+// -------------------------------------------------------------------
+
+// Resolve moonbase-consent. Search order:
+//   1. $MOONBASE_CONSENT_BIN (uninstalled / dev builds and tests)
+//   2. <prefix>/libexec/moonbase-consent
+//   3. <prefix>/bin/moonbase-consent
+static int find_consent(char *out, size_t cap) {
+    const char *env = getenv("MOONBASE_CONSENT_BIN");
+    if (env && *env) {
+        if (access(env, X_OK) == 0) {
+            int n = snprintf(out, cap, "%s", env);
+            if (n > 0 && (size_t)n < cap) return 0;
+        }
+    }
+    const char *paths[] = {
+        "/usr/local/libexec/moonbase-consent",
+        "/usr/libexec/moonbase-consent",
+        "/usr/local/bin/moonbase-consent",
+        "/usr/bin/moonbase-consent",
+        NULL,
+    };
+    for (size_t i = 0; paths[i]; i++) {
+        if (access(paths[i], X_OK) == 0) {
+            int n = snprintf(out, cap, "%s", paths[i]);
+            if (n > 0 && (size_t)n < cap) return 0;
+        }
+    }
+    return -1;
+}
+
+// Fork + exec the consent helper against a bundle. Returns:
+//   1  → user approved, caller should mark xattr approved and continue
+//   0  → user rejected (or helper failed) — caller should stop
+//  -1  → couldn't run the helper at all (missing, crashed)
+static int run_consent(const char *bundle_path, const char *bundle_id) {
+    char consent_bin[PATH_MAX];
+    if (find_consent(consent_bin, sizeof(consent_bin)) != 0) {
+        fprintf(stderr,
+            "moonbase-launch: bundle %s is quarantined but "
+            "moonbase-consent isn't installed\n", bundle_id);
+        return -1;
+    }
+    pid_t pid = fork();
+    if (pid < 0) { perror("moonbase-launch: fork(consent)"); return -1; }
+    if (pid == 0) {
+        char *child_argv[] = {
+            consent_bin,
+            (char *)bundle_path,
+            (char *)bundle_id,
+            NULL,
+        };
+        execv(consent_bin, child_argv);
+        perror("moonbase-launch: execv(consent)");
+        _exit(127);
+    }
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) return -1;
+    if (!WIFEXITED(status)) return -1;
+    return WEXITSTATUS(status) == 0 ? 1 : 0;
+}
+
+// -------------------------------------------------------------------
 // main
 // -------------------------------------------------------------------
 
@@ -245,6 +310,59 @@ int main(int argc, char **argv) {
     if (rc != MB_BUNDLE_OK) {
         fprintf(stderr, "moonbase-launch: %s: %s (%s)\n",
                 bundle_arg, err, mb_bundle_err_string(rc));
+        return 2;
+    }
+
+    // 1b. Quarantine gate. Blocks the launch if the bundle's xattr says
+    //     "pending" and the user refuses at the consent sheet — or if
+    //     the xattr says "rejected" outright.
+    mb_quarantine_status_t q = mb_quarantine_check(bundle.bundle_path);
+    switch (q) {
+    case MB_QUARANTINE_APPROVED:
+    case MB_QUARANTINE_NO_XATTR:
+        // NO_XATTR today is trusted because the fallback trust-db isn't
+        // wired yet (D.4b). The day that lands, this branch looks up
+        // (bundle_id, hash, bundle_path) in trust.db and routes through
+        // consent on miss.
+        break;
+    case MB_QUARANTINE_REJECTED:
+        fprintf(stderr,
+            "moonbase-launch: %s refuses to launch (user rejected it "
+            "on first run; clear user.moonbase.quarantine to reset)\n",
+            bundle.info.id);
+        mb_bundle_free(&bundle);
+        return 3;
+    case MB_QUARANTINE_PENDING:
+    case MB_QUARANTINE_MALFORMED: {
+        int rcc = run_consent(bundle.bundle_path, bundle.info.id);
+        if (rcc == 1) {
+            if (mb_quarantine_approve(bundle.bundle_path) != 0) {
+                fprintf(stderr,
+                    "moonbase-launch: warning: couldn't record "
+                    "approval on %s: %s\n",
+                    bundle.bundle_path, strerror(errno));
+                // Continue anyway — the user did approve this launch.
+            }
+        } else if (rcc == 0) {
+            // Explicit rejection. Persist it so the next launch short-
+            // circuits straight to MB_QUARANTINE_REJECTED.
+            (void)mb_quarantine_reject(bundle.bundle_path);
+            fprintf(stderr,
+                "moonbase-launch: %s: user declined at consent sheet\n",
+                bundle.info.id);
+            mb_bundle_free(&bundle);
+            return 3;
+        } else {
+            // Consent helper absent or crashed — don't persist anything.
+            mb_bundle_free(&bundle);
+            return 3;
+        }
+        break;
+    }
+    case MB_QUARANTINE_ERR_IO:
+        fprintf(stderr, "moonbase-launch: quarantine I/O error on %s\n",
+                bundle.bundle_path);
+        mb_bundle_free(&bundle);
         return 2;
     }
 

@@ -81,6 +81,7 @@ moonbase_lib_sources = files(
   'src/window.c',
   'src/bundle/bundle.c',
   'src/bundle/info_appc.c',
+  'src/bundle/quarantine.c',
   'src/bundle/toml_lite.c',
   'src/ipc/cbor.c',
   'src/ipc/debug.c',
@@ -139,6 +140,23 @@ moonbase_launch = executable(
   include_directories: include_directories('include', 'src'),
   link_with: libmoonbase,
   install: true,
+)
+
+# ---------------------------------------------------------------------
+# moonbase-consent — first-launch consent sheet (stub in this slice)
+# ---------------------------------------------------------------------
+#
+# Phase D slice 4 ships a deterministic stub the launcher execs when a
+# bundle's xattr says "pending". Slice 5 replaces this with a real
+# Aqua consent sheet drawn through MoonBase. Installed to libexecdir so
+# users can't invoke it directly (no good reason to; the helper assumes
+# it's been forked by moonbase-launch).
+
+moonbase_consent = executable(
+  'moonbase-consent',
+  'launcher/moonbase-consent.c',
+  install: true,
+  install_dir: get_option('libexecdir'),
 )
 
 # ---------------------------------------------------------------------
@@ -420,4 +438,45 @@ test('launch-smoke', mb_launch_smoke,
   args: [moonbase_launch, meson.project_source_root() / 'sandbox'],
   depends: [moonbase_launch],
   timeout: 20,
+)
+
+# ---------------------------------------------------------------------
+# mb-quarantine — Phase D slice 4 xattr gate unit test
+# ---------------------------------------------------------------------
+
+mb_quarantine = executable(
+  'mb-quarantine',
+  'tests/quarantine.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('quarantine', mb_quarantine, timeout: 10)
+
+# ---------------------------------------------------------------------
+# mb-launch-quarantine — Phase D slice 4 launcher integration test
+# ---------------------------------------------------------------------
+#
+# Drives moonbase-launch against fixture bundles whose quarantine xattr
+# is pre-set to pending / rejected. Verifies the consent helper is
+# exec'd on pending, that the xattr is rewritten on both approve and
+# reject outcomes, and that a rejected bundle short-circuits without
+# running the consent helper at all. MOONBASE_CONSENT_BIN points the
+# launcher at the stub moonbase-consent binary this test suite builds;
+# MOONBASE_CONSENT_AUTO tells that stub how to decide.
+
+mb_launch_quarantine = executable(
+  'mb-launch-quarantine',
+  'tests/launch-quarantine.c',
+  include_directories: include_directories('include', 'src'),
+  install: false,
+)
+
+test('launch-quarantine', mb_launch_quarantine,
+  args: [moonbase_launch,
+         meson.project_source_root() / 'sandbox',
+         moonbase_consent],
+  depends: [moonbase_launch, moonbase_consent],
+  timeout: 30,
 )
