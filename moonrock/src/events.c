@@ -8,8 +8,10 @@
 #include "ewmh.h"
 #include "input.h"
 #include "moonrock.h"
+#include "moonbase_host.h"
 #include "struts.h"
 #include "resize.h"
+#include <poll.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>   // strcasecmp
@@ -111,12 +113,35 @@ void events_run(CCWM *wm)
             mr_composite(wm);
         }
 
-        // Brief sleep to avoid busy-spinning when no events pending.
-        // 16ms ≈ 60Hz — enough to keep ping checks responsive without
-        // burning CPU. The compositing pass above handles display refresh.
+        // Idle wait: poll the X socket and the MoonBase host fds at
+        // the same time so MoonBase apps and X events both wake us.
+        // 16ms ≈ 60Hz — the ceiling for how long ping-timeout checks
+        // can be delayed. Whenever X has events queued we skip the
+        // wait entirely so the outer loop re-enters immediately.
         if (XPending(wm->dpy) == 0) {
-            struct timespec ts = {0, 16000000}; // 16ms
-            nanosleep(&ts, NULL);
+            struct pollfd fds[32];
+            size_t n = 0;
+
+            fds[n].fd      = ConnectionNumber(wm->dpy);
+            fds[n].events  = POLLIN;
+            fds[n].revents = 0;
+            n++;
+
+            size_t mb_first = n;
+            size_t mb_cap   = (sizeof(fds)/sizeof(fds[0])) - n;
+            size_t mb_n     = mb_host_collect_pollfds(fds + mb_first, mb_cap);
+            n += mb_n;
+
+            (void)poll(fds, (nfds_t)n, 16);
+
+            // Feed the MoonBase slice back. Always call — even on a
+            // timeout, tick drains pending_close queues and retries
+            // blocked writes.
+            mb_host_tick(fds + mb_first, mb_n);
+        } else {
+            // X events pending: we'll drain next iteration. Still give
+            // MoonBase a non-blocking tick so its send queues drain.
+            mb_host_tick(NULL, 0);
         }
     }
 }

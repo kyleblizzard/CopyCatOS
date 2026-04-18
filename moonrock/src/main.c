@@ -14,6 +14,7 @@
 #include "decor.h"
 #include "input.h"
 #include "moonrock.h"
+#include "moonbase_host.h"
 #include "struts.h"
 #include <stdio.h>
 #include <signal.h>
@@ -55,6 +56,14 @@ int main(int argc, char *argv[])
         fprintf(stderr, "[moonrock] MoonRock Compositor unavailable — no window shadows\n");
     }
 
+    // Start the MoonBase IPC host. Degrades gracefully: if the socket
+    // can't be opened (missing XDG_RUNTIME_DIR, permission denied,
+    // etc.) moonrock still runs as a pure X11 compositor — MoonBase
+    // apps just can't connect until the path is resolved.
+    if (!mb_host_init(NULL)) {
+        fprintf(stderr, "[moonrock] MoonBase host unavailable — no .appc support\n");
+    }
+
     // Set up strut handling so dock/menubar can reserve screen edges
     struts_init(&wm);
 
@@ -68,6 +77,7 @@ int main(int argc, char *argv[])
     events_run(&wm);
 
     // Clean shutdown — unframe all windows so apps survive restart
+    mb_host_shutdown();
     decor_shutdown();
     mr_shutdown(&wm);
     wm_shutdown(&wm);

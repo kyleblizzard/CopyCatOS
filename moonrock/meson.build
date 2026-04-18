@@ -80,10 +80,34 @@ cc_wm_sources = [
   'src/moonrock.c',
   'src/struts.c',
   'src/resize.c',
+  'src/moonbase_host.c',
 ]
 
+# ── MoonBase IPC sources (shared with libmoonbase.so.1) ────────────────
+#
+# moonrock needs to speak the same protocol as libmoonbase. Instead of
+# introducing a separate static library / pkg-config dependency, we
+# compile the relevant source files from ../moonbase directly into
+# the moonrock binary. The files themselves have no external deps
+# beyond libc — they pull in CBOR codec, TLV framing, and the non-
+# blocking server state machine. Keeping them as a source-level
+# include means there is no stale-artifact risk; every moonrock build
+# recompiles the protocol layer.
+moonbase_ipc_sources = [
+  '../moonbase/src/ipc/cbor.c',
+  '../moonbase/src/ipc/frame.c',
+  '../moonbase/src/server/server.c',
+]
+
+moonbase_includes = include_directories(
+  '../moonbase/include',
+  '../moonbase/src',
+  '../moonbase/src/server',
+)
+
 executable('moonrock',
-  cc_wm_sources + moonrock_sources,
+  cc_wm_sources + moonrock_sources + moonbase_ipc_sources,
+  include_directories: [moonbase_includes],
   dependencies: [
     x11_dep, xcomposite_dep, xdamage_dep, xfixes_dep,
     xext_dep, xrender_dep, xrandr_dep,
