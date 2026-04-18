@@ -42,6 +42,12 @@ memory/
 tasks/
 changelogforkyle.txt
 
+# ── Grok bundles (never ships) ──────────────────────────────────────
+# Local-only dumps of CLAUDE.md files and source code for external
+# reviewers. Lives at /Volumes/Development/grok/ by default, but if a
+# copy ever lands inside the repo it must not be committed.
+grok/
+
 # ── Archives ────────────────────────────────────────────────────────
 *.zip
 *.tar
