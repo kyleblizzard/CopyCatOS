@@ -1,7 +1,0 @@
-- [Kyle Blizzard](user_kyle.md) — CopyCatOS creator, uncompromising on pixel-perfect Snow Leopard fidelity
-- [Architecture Final](project_architecture_final.md) — Full custom DE in C on XLibre. Custom WM + shell + AquaStyle. Locked 2026-04-13.
-- [Closed Ecosystem Philosophy](project_auraos_philosophy.md) — Qt6 AppImages only, no unstyled apps, macOS-style curation
-- [AppImage Strategy](project_appimage_strategy.md) — Every app bundles breeze-aqua, fonts, assets inside the AppImage
-- [Scrollbar Lesson](feedback_scrollbar_lesson.md) — Kvantum was the problem, not KDE; breeze-aqua QStyle solves it
-- [Refinement Workflow](project_refinement_workflow.md) — SSH to both machines, screenshot comparison, HIG spec locations, key measurements
-- [MoonRock Compositor](project_crystal_compositor.md) — Custom OpenGL compositor replacing picom. Genie minimize, blur-behind, Exposé, proper shadows. Build path in 6 phases.
