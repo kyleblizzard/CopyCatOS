@@ -149,15 +149,19 @@ static int find_profile(const char *tier, char *out, size_t cap) {
     return -1;
 }
 
-// Collect one bwrap arg per line of the profile script's stdout.
+// Collect one bwrap arg per line of the profile script's stdout. The
+// profile takes four positional args: bundle path, data path,
+// unshare_net flag, and the host $HOME to overlay with a tmpfs.
 static int collect_profile_args(const char *profile_path,
                                 const char *bundle_path,
                                 const char *data_path,
                                 const char *unshare_net,
+                                const char *host_home,
                                 argv_t *out) {
-    char cmd[PATH_MAX + 256];
-    int n = snprintf(cmd, sizeof(cmd), "'%s' '%s' '%s' '%s'",
-                     profile_path, bundle_path, data_path, unshare_net);
+    char cmd[PATH_MAX * 2 + 256];
+    int n = snprintf(cmd, sizeof(cmd), "'%s' '%s' '%s' '%s' '%s'",
+                     profile_path, bundle_path, data_path, unshare_net,
+                     host_home ? host_home : "");
     if (n < 0 || (size_t)n >= sizeof(cmd)) return -1;
 
     FILE *pipe = popen(cmd, "r");
@@ -428,7 +432,7 @@ int main(int argc, char **argv) {
     if (argv_push(&bw, "bwrap") < 0) goto oom;
 
     if (collect_profile_args(profile_path, bundle.bundle_path, data_dir,
-                             unshare_net, &bw) != 0) {
+                             unshare_net, home, &bw) != 0) {
         fprintf(stderr, "moonbase-launch: failed to source %s\n", profile_path);
         argv_free(&bw);
         mb_bundle_free(&bundle);

@@ -482,3 +482,28 @@ test('launch-quarantine', mb_launch_quarantine,
   depends: [moonbase_launch, moonbase_consent],
   timeout: 30,
 )
+
+# ---------------------------------------------------------------------
+# mb-data-dir-isolation — Phase D slice 6 sandbox privacy test
+# ---------------------------------------------------------------------
+#
+# Builds two fixture bundles with different bundle-ids and launches
+# each through moonbase-launch under a shared fake $HOME. App A writes
+# a secret into its Preferences dir; App B's script tries to read it
+# through the sibling path and verifies the tmpfs overlay hides it.
+# Also asserts every Apple-style subdir exists at mode 0700.
+
+mb_data_dir_isolation = executable(
+  'mb-data-dir-isolation',
+  'tests/data-dir-isolation.c',
+  include_directories: include_directories('include', 'src'),
+  install: false,
+)
+
+test('data-dir-isolation', mb_data_dir_isolation,
+  args: [moonbase_launch,
+         meson.project_source_root() / 'sandbox',
+         moonbase_consent],
+  depends: [moonbase_launch, moonbase_consent],
+  timeout: 30,
+)
