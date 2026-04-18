@@ -731,11 +731,41 @@ DesktopIcon *icons_handle_click(int x, int y)
     return NULL;  // Click was on empty space
 }
 
+// A .appc bundle is a directory whose name ends in ".appc" and that has
+// a Contents/Info.appc file inside. Desktop icons that point at bundles
+// are handed to moonbase-launch so the bwrap sandbox + consent flow run.
+static int path_is_appc_bundle(const char *path)
+{
+    if (!path) return 0;
+    size_t len = strlen(path);
+    if (len < 5 || strcmp(path + len - 5, ".appc") != 0) return 0;
+
+    char info[1024];
+    int n = snprintf(info, sizeof(info), "%s/Contents/Info.appc", path);
+    if (n < 0 || (size_t)n >= sizeof(info)) return 0;
+
+    struct stat st;
+    return stat(info, &st) == 0 && S_ISREG(st.st_mode);
+}
+
 void icons_handle_double_click(DesktopIcon *icon)
 {
     if (!icon) return;
 
     fprintf(stderr, "[icons] Opening: %s\n", icon->path);
+
+    // MoonBase .appc bundles go through moonbase-launch so the sandbox,
+    // entitlements, and consent flow all run.
+    if (path_is_appc_bundle(icon->path)) {
+        pid_t pid = fork();
+        if (pid == 0) {
+            setsid();
+            execlp("moonbase-launch", "moonbase-launch",
+                   icon->path, (char *)NULL);
+            _exit(127);
+        }
+        return;
+    }
 
     // .desktop files need special handling — xdg-open doesn't reliably
     // execute them on a custom DE (no GNOME/KDE session to dispatch).

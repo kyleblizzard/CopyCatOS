@@ -916,31 +916,45 @@ static int stacks_hit_test(int mx, int my)
     return index;
 }
 
+// A .appc bundle is a directory whose name ends in ".appc" and that has
+// a Contents/Info.appc file inside. Used to decide whether a stack entry
+// should be handed to moonbase-launch or opened with xdg-open.
+static int stacks_path_is_appc_bundle(const char *path)
+{
+    if (!path) return 0;
+    size_t len = strlen(path);
+    if (len < 5 || strcmp(path + len - 5, ".appc") != 0) return 0;
+
+    char info[1024];
+    int n = snprintf(info, sizeof(info), "%s/Contents/Info.appc", path);
+    if (n < 0 || (size_t)n >= sizeof(info)) return 0;
+
+    struct stat st;
+    return stat(info, &st) == 0 && S_ISREG(st.st_mode);
+}
+
 // ---------------------------------------------------------------------------
-// stacks_open_entry — Open a file or directory using xdg-open.
+// stacks_open_entry — Open a file, directory, or MoonBase bundle.
 //
-// xdg-open is the standard way on Linux to open a file with its default
-// application (like Finder's "Open" on macOS). We fork a child process
-// to run it so the dock doesn't block waiting for the application.
+// MoonBase .appc bundles go through moonbase-launch so the bwrap sandbox
+// and consent flow run. Everything else falls through to xdg-open, the
+// standard Linux handler.
 // ---------------------------------------------------------------------------
 static void stacks_open_entry(DockState *state, StackEntry *entry)
 {
     (void)state;  // Not needed, but kept for future use
 
-    // Fork a child process to run xdg-open.
-    // fork() creates an exact copy of the current process. The child
-    // (pid == 0) calls exec to replace itself with xdg-open. The parent
-    // continues running the dock.
     pid_t pid = fork();
     if (pid == 0) {
-        // Child process — replace with xdg-open
-        // execlp searches PATH for the command, like typing it in a terminal
+        if (stacks_path_is_appc_bundle(entry->path)) {
+            execlp("moonbase-launch", "moonbase-launch",
+                   entry->path, (char *)NULL);
+            _exit(127);
+        }
         execlp("xdg-open", "xdg-open", entry->path, (char *)NULL);
-
-        // If exec fails (e.g., xdg-open not installed), exit the child
         _exit(127);
     } else if (pid < 0) {
-        fprintf(stderr, "[stacks] Failed to fork for xdg-open\n");
+        fprintf(stderr, "[stacks] Failed to fork launch for %s\n", entry->path);
     }
     // Parent process continues running — don't wait for the child
 }
