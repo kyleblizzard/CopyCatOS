@@ -92,13 +92,21 @@ moonbase_lib_sources = files(
 # is present at load time on glibc.
 threads_dep = dependency('threads')
 
+# Cairo is the CPU-side render backend for MOONBASE_RENDER_CAIRO windows.
+# Apps use moonbase_window_cairo() to get a cairo_t on a shm-backed
+# ARGB32 buffer, draw in points (the framework scales automatically),
+# then moonbase_window_commit() hands the shm fd to MoonRock over
+# SCM_RIGHTS. The GL path in later slices will NOT link cairo — it'll
+# use EGL + GBM instead — but every cairo-rendering app expects it.
+cairo_dep = dependency('cairo')
+
 libmoonbase = shared_library(
   'moonbase',
   moonbase_lib_sources,
   include_directories: include_directories('include', 'src'),
   version: '1.0.0',
   soversion: '1',
-  dependencies: [threads_dep],
+  dependencies: [threads_dep, cairo_dep],
   install: true,
 )
 
@@ -255,3 +263,24 @@ mb_event_window_closed = executable(
 )
 
 test('event-window-closed', mb_event_window_closed, timeout: 10)
+
+# ---------------------------------------------------------------------
+# mb-window-commit — Phase C slice 3c.1 shm-backed Cairo round-trip
+# ---------------------------------------------------------------------
+#
+# Client paints a solid-red Cairo surface, calls moonbase_window_commit,
+# and the parent asserts on the SCM_RIGHTS'd memfd: size matches the
+# advertised stride*height, and the first ARGB32 pixel round-trips back
+# as the red the client painted. Pins the whole client→compositor frame
+# path in one go.
+
+mb_window_commit = executable(
+  'mb-window-commit',
+  'tests/window-commit.c',
+  include_directories: include_directories('include', 'src'),
+  dependencies: [cairo_dep],
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('window-commit', mb_window_commit, timeout: 10)

@@ -22,6 +22,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 static mb_server_t *g_server = NULL;
 static char        *g_default_path = NULL;   // owned, only used when we built it
@@ -59,6 +62,14 @@ typedef struct {
     uint32_t       render_mode;        // 0 cairo, 1 gl
     uint32_t       flags;              // window flags from the request
     char          *title;              // owned copy, or NULL
+
+    // Pixel-state of the most recently committed frame. Slice 3c.1 only
+    // records these; slice 3c.2 uploads the shm buffer to a GL texture
+    // and keeps the fd/mmap alive across frames.
+    uint32_t       px_w, px_h;         // physical-pixel size of last commit
+    uint32_t       stride;             // bytes per row of last commit
+    uint32_t       pixel_format;       // 0 = ARGB32 premultiplied
+    uint64_t       commit_count;       // frames received (debug/throughput)
 } mb_surface_t;
 
 static mb_surface_t g_surfaces[MB_MAX_SURFACES];
@@ -350,6 +361,146 @@ static void handle_window_close(mb_client_id_t client,
     surface_release(surf);
 }
 
+// Parse a WINDOW_COMMIT body. Schema:
+//   { 1: window_id, 2: width_px, 3: height_px, 4: stride_bytes,
+//     5: pixel_format, 6: damage_x, 7: damage_y,
+//     8: damage_w, 9: damage_h }
+// Unknown keys are tolerated — schema can grow without wire-format churn.
+typedef struct {
+    uint32_t window_id;
+    uint32_t width_px, height_px;
+    uint32_t stride;
+    uint32_t pixel_format;
+    uint32_t damage_x, damage_y, damage_w, damage_h;
+    bool     have_id, have_w, have_h, have_stride;
+} window_commit_req_t;
+
+static bool parse_window_commit(const uint8_t *body, size_t body_len,
+                                window_commit_req_t *out) {
+    memset(out, 0, sizeof(*out));
+    mb_cbor_r_t r;
+    mb_cbor_r_init(&r, body, body_len);
+    uint64_t pairs = 0;
+    if (!mb_cbor_r_map_begin(&r, &pairs)) return false;
+    for (uint64_t i = 0; i < pairs; i++) {
+        uint64_t key = 0;
+        if (!mb_cbor_r_uint(&r, &key)) return false;
+        uint64_t v = 0;
+        switch (key) {
+            case 1: if (!mb_cbor_r_uint(&r, &v)) return false;
+                    out->window_id = (uint32_t)v; out->have_id = true; break;
+            case 2: if (!mb_cbor_r_uint(&r, &v)) return false;
+                    out->width_px = (uint32_t)v; out->have_w = true; break;
+            case 3: if (!mb_cbor_r_uint(&r, &v)) return false;
+                    out->height_px = (uint32_t)v; out->have_h = true; break;
+            case 4: if (!mb_cbor_r_uint(&r, &v)) return false;
+                    out->stride = (uint32_t)v; out->have_stride = true; break;
+            case 5: if (!mb_cbor_r_uint(&r, &v)) return false;
+                    out->pixel_format = (uint32_t)v; break;
+            case 6: if (!mb_cbor_r_uint(&r, &v)) return false;
+                    out->damage_x = (uint32_t)v; break;
+            case 7: if (!mb_cbor_r_uint(&r, &v)) return false;
+                    out->damage_y = (uint32_t)v; break;
+            case 8: if (!mb_cbor_r_uint(&r, &v)) return false;
+                    out->damage_w = (uint32_t)v; break;
+            case 9: if (!mb_cbor_r_uint(&r, &v)) return false;
+                    out->damage_h = (uint32_t)v; break;
+            default:
+                if (!mb_cbor_r_skip(&r)) return false;
+                break;
+        }
+    }
+    return out->have_id && out->have_w && out->have_h && out->have_stride;
+}
+
+// Handle a WINDOW_COMMIT from a client. The client has rendered a frame
+// into an shm-backed buffer and is handing us the memfd. Slice 3c.1
+// validates the fd (size matches stride * height) and records the pixel
+// state on the surface. Slice 3c.2 will keep the mapping alive, upload
+// to a GL texture, and stitch the frame into moonrock's composited scene.
+//
+// The server owns the fd and closes it when the callback returns, which
+// is exactly what we want here: we don't hold anything yet.
+static void handle_window_commit(mb_client_id_t client,
+                                 const uint8_t *body, size_t body_len,
+                                 const int *fds, size_t nfds) {
+    window_commit_req_t req;
+    if (!parse_window_commit(body, body_len, &req)) {
+        fprintf(stderr,
+                "[moonrock] moonbase client %u sent malformed WINDOW_COMMIT\n",
+                client);
+        return;
+    }
+    if (nfds != 1 || !fds) {
+        fprintf(stderr,
+                "[moonrock] moonbase client %u WINDOW_COMMIT window_id=%u: "
+                "expected 1 fd, got %zu\n", client, req.window_id, nfds);
+        return;
+    }
+    mb_surface_t *surf = surface_find(req.window_id);
+    if (!surf) {
+        fprintf(stderr,
+                "[moonrock] moonbase client %u WINDOW_COMMIT: window_id=%u "
+                "not found (ignoring)\n", client, req.window_id);
+        return;
+    }
+    if (surf->client != client) {
+        fprintf(stderr,
+                "[moonrock] moonbase client %u WINDOW_COMMIT: window_id=%u "
+                "belongs to client %u — refusing\n",
+                client, req.window_id, surf->client);
+        return;
+    }
+
+    int fd = fds[0];
+
+    // Sanity-check the fd: must be sizeable and match stride*height.
+    // An oversized buffer is tolerated (the app may have allocated a
+    // larger backing store than it's committing), but an undersized
+    // one is rejected because mapping past EOF segfaults readers.
+    struct stat st;
+    if (fstat(fd, &st) != 0 || st.st_size <= 0) {
+        fprintf(stderr,
+                "[moonrock] moonbase client %u WINDOW_COMMIT window_id=%u: "
+                "fstat failed\n", client, req.window_id);
+        return;
+    }
+    size_t need = (size_t)req.stride * (size_t)req.height_px;
+    if ((size_t)st.st_size < need) {
+        fprintf(stderr,
+                "[moonrock] moonbase client %u WINDOW_COMMIT window_id=%u: "
+                "buffer too small (%zu bytes, need %zu)\n",
+                client, req.window_id, (size_t)st.st_size, need);
+        return;
+    }
+
+    // Probe-map the buffer read-only to confirm the fd is actually a
+    // readable shm object. Slice 3c.2 keeps the mapping alive for the
+    // GL upload; here we unmap immediately.
+    void *p = mmap(NULL, need, PROT_READ, MAP_SHARED, fd, 0);
+    if (p == MAP_FAILED) {
+        fprintf(stderr,
+                "[moonrock] moonbase client %u WINDOW_COMMIT window_id=%u: "
+                "mmap failed\n", client, req.window_id);
+        return;
+    }
+    munmap(p, need);
+
+    surf->px_w         = req.width_px;
+    surf->px_h         = req.height_px;
+    surf->stride       = req.stride;
+    surf->pixel_format = req.pixel_format;
+    surf->commit_count++;
+
+    fprintf(stderr,
+            "[moonrock] moonbase client %u WINDOW_COMMIT window_id=%u: "
+            "%ux%u stride=%u fmt=%u damage=(%u,%u %ux%u) frame#%llu\n",
+            client, req.window_id, req.width_px, req.height_px,
+            req.stride, req.pixel_format,
+            req.damage_x, req.damage_y, req.damage_w, req.damage_h,
+            (unsigned long long)surf->commit_count);
+}
+
 static void on_event(mb_server_t *s, const mb_server_event_t *ev, void *user) {
     (void)user;
     switch (ev->kind) {
@@ -373,6 +524,11 @@ static void on_event(mb_server_t *s, const mb_server_event_t *ev, void *user) {
                 case MB_IPC_WINDOW_CLOSE:
                     handle_window_close(ev->client,
                                         ev->frame_body, ev->frame_body_len);
+                    break;
+                case MB_IPC_WINDOW_COMMIT:
+                    handle_window_commit(ev->client,
+                                         ev->frame_body, ev->frame_body_len,
+                                         ev->frame_fds, ev->frame_fd_count);
                     break;
                 default:
                     fprintf(stderr,

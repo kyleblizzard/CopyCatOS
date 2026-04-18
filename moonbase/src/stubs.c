@@ -128,18 +128,10 @@ const char *moonbase_window_output_name(mb_window_t *w) {
 // ---------------------------------------------------------------------
 // Render handoff — Cairo + GL paths
 // ---------------------------------------------------------------------
-
-void *moonbase_window_cairo(mb_window_t *w) {
-    (void)w;
-    nosys();
-    return NULL;
-}
-
-int moonbase_window_commit(mb_window_t *w) {
-    (void)w;
-    nosys();
-    return MB_ENOSYS;
-}
+//
+// moonbase_window_cairo and moonbase_window_commit are real — see
+// window.c (slice 3c.1). The GL pair is still stubbed; slice 3c.3
+// replaces them with EGL + dma-buf.
 
 int moonbase_window_gl_make_current(mb_window_t *w) {
     (void)w;
