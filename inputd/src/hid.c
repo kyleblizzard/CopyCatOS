@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
 // hid.c — Raw HID report parser for the Legion Go S vendor interface
@@ -9,7 +6,7 @@
 // Parses 64-byte vendor HID reports from the WCH.cn controller and
 // converts button state changes into synthetic evdev input_event structs.
 // These synthetic events are then fed into the mapper engine exactly like
-// real evdev events, so the rest of cc-inputd doesn't need to know whether
+// real evdev events, so the rest of inputd doesn't need to know whether
 // a button press came from evdev or hidraw.
 //
 // The approach:
@@ -105,7 +102,7 @@ void hid_init(HidParser *parser)
     parser->initialized = false;
     parser->debug_log   = true;   // Enable during development
 
-    fprintf(stderr, "[cc-inputd] HID parser initialized: %d buttons tracked\n", i);
+    fprintf(stderr, "[inputd] HID parser initialized: %d buttons tracked\n", i);
 }
 
 // --------------------------------------------------------------------------
@@ -188,7 +185,7 @@ int hid_parse(HidParser *parser, const uint8_t *report, int len,
     // Mark as initialized after processing the first report
     if (!parser->initialized) {
         parser->initialized = true;
-        fprintf(stderr, "[cc-inputd] HID parser: first report received, "
+        fprintf(stderr, "[inputd] HID parser: first report received, "
                 "buttons armed (b0=%02x b1=%02x b2=%02x)\n",
                 report[0], report[1], report[2]);
     }
@@ -198,7 +195,7 @@ int hid_parse(HidParser *parser, const uint8_t *report, int len,
     // time someone presses a button, the log shows exactly which bits
     // flipped, making it easy to spot mapping errors.
     if (any_changed && parser->debug_log) {
-        fprintf(stderr, "[cc-inputd] HID buttons changed: "
+        fprintf(stderr, "[inputd] HID buttons changed: "
                 "%02x %02x %02x (%d events) →",
                 report[0], report[1], report[2], event_count);
         // Show which buttons are currently pressed

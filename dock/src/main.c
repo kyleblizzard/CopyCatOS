@@ -1,10 +1,7 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
-// main.c — Entry point for cc-dock
+// main.c — Entry point for dock
 //
 // This is the starting point of the dock application. It does three things:
 //   1. Initialize the dock (create window, load icons, set up X properties)
@@ -53,7 +50,7 @@ static void signal_handler(int sig)
 
 // ---------------------------------------------------------------------------
 // Single-instance lock using a lock file.
-// If another cc-dock process is already running, this prevents a second
+// If another dock process is already running, this prevents a second
 // copy from starting — which would cause both to fight over the same screen
 // space and produce the "double startup" / flickering symptom.
 // Returns the lock file descriptor (>= 0) on success, or -1 if locked.
@@ -64,7 +61,7 @@ static int acquire_instance_lock(void)
     if (!home) home = "/tmp";
 
     char lock_path[512];
-    snprintf(lock_path, sizeof(lock_path), "%s/.cache/cc-dock.lock", home);
+    snprintf(lock_path, sizeof(lock_path), "%s/.cache/dock.lock", home);
 
     int fd = open(lock_path, O_CREAT | O_RDWR, 0600);
     if (fd < 0) return -1;

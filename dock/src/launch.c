@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // launch.c — App launching, process detection, and window activation
@@ -277,7 +274,7 @@ void launch_check_running(DockItem *items, int count)
 
         // Log state changes so we can debug process detection
         if (items[i].running != was_running) {
-            fprintf(stderr, "[cc-dock] %s is now %s\n",
+            fprintf(stderr, "[dock] %s is now %s\n",
                     items[i].name, items[i].running ? "running" : "stopped");
         }
 

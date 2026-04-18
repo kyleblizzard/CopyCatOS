@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
 // window_track.c — X11 active window tracking implementation
@@ -9,7 +6,7 @@
 // Uses XGetWindowProperty to read EWMH and ICCCM properties.
 // These are low-level X11 calls that fetch raw property data from
 // the X server. We parse the data ourselves rather than using
-// higher-level toolkit wrappers, since cc-input-session is a
+// higher-level toolkit wrappers, since inputsession is a
 // lightweight pure-C program with no toolkit dependencies.
 //
 

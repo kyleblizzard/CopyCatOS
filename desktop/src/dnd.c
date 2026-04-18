@@ -1,11 +1,8 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // dnd.c — XDND (X Drag and Drop Protocol v5) implementation
 //
-// Full implementation of the XDND protocol for cc-desktop.
+// Full implementation of the XDND protocol for desktop.
 // We participate as both SOURCE (dragging icons TO other apps) and
 // TARGET (receiving drops FROM other apps onto the desktop).
 //
@@ -60,7 +57,7 @@ static Window g_desktop_win = None;
 
 static struct {
     bool     active;           // True while a drag is in progress
-    Window   src_win;          // Our window (cc-desktop)
+    Window   src_win;          // Our window (desktop)
     Window   root_win;         // Root window (for XQueryPointer)
     Window   target;           // Current XDND-aware window under cursor
     bool     entered;          // True if we've sent XdndEnter to target

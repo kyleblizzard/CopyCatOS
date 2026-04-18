@@ -1,4 +1,5 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 // CopyCatOS Window Manager — Asset loading (real Snow Leopard PNGs)
 
 #ifndef AURA_ASSETS_H

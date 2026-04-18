@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // panes/controller.h — Controller preferences pane (3-tab interface)
@@ -12,8 +9,8 @@
 //   - Desktop Gaming: passthrough toggle, per-game overrides
 //   - Steam Mode: gamescope + Big Picture launcher
 //
-// Uses config_editor from cc-inputmap to read/write input.conf and signals
-// cc-inputd via SIGHUP for live config reload.
+// Uses config_editor from inputmap to read/write input.conf and signals
+// inputd via SIGHUP for live config reload.
 // ============================================================================
 
 #ifndef CC_SYSPREFS_CONTROLLER_PANE_H

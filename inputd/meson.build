@@ -1,12 +1,9 @@
-# Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-# This code is publicly visible for portfolio purposes only.
-# Unauthorized copying, forking, or distribution of this file,
-# via any medium, is strictly prohibited.
+# CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 #
-# meson.build — Build configuration for cc-inputd
+# meson.build — Build configuration for inputd
 #
-# cc-inputd is the CopyCatOS input daemon. It reads Legion Go gamepad
+# inputd is the CopyCatOS input daemon. It reads Legion Go gamepad
 # events and translates them into mouse/keyboard/shell actions.
 #
 # Build:
@@ -19,7 +16,7 @@
 #
 
 project(
-    'cc-inputd',
+    'inputd',
     'c',
     version : '0.1.0',
     default_options : [
@@ -66,11 +63,11 @@ sources = files(
 # --------------------------------------------------------------------------
 # Executable
 # --------------------------------------------------------------------------
-# Installed to sbindir (/usr/local/sbin by default) because cc-inputd
+# Installed to sbindir (/usr/local/sbin by default) because inputd
 # runs as a system daemon with root privileges.
 # --------------------------------------------------------------------------
 executable(
-    'cc-inputd',
+    'inputd',
     sources,
     dependencies : [dep_udev, dep_math],
     install : true,
@@ -80,19 +77,19 @@ executable(
 # --------------------------------------------------------------------------
 # Installed data files
 # --------------------------------------------------------------------------
-# These are optional — they make it easy to enable cc-inputd as a systemd
+# These are optional — they make it easy to enable inputd as a systemd
 # service and set up udev permissions. Install with `meson install -C build`.
 # --------------------------------------------------------------------------
 
-# Systemd service file — enables `systemctl enable/start cc-inputd`
+# Systemd service file — enables `systemctl enable/start inputd`
 install_data(
-    'data/cc-inputd.service',
+    'data/inputd.service',
     install_dir : '/usr/lib/systemd/system',
 )
 
 # Udev rules — gives the "input" group access to /dev/uinput so the
 # daemon can create virtual devices without being fully root
 install_data(
-    'data/99-cc-inputd.rules',
+    'data/99-inputd.rules',
     install_dir : '/usr/lib/udev/rules.d',
 )

@@ -1,5 +1,6 @@
 #!/bin/bash
-# Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
+# CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 # Build all CopyCatOS components in order.
 # Run from the project root: bash scripts/build-all.sh
 
@@ -46,15 +47,17 @@ echo ""
 
 # Build order: WM first, then shell components
 COMPONENTS=(
-    "cc-wm"
-    "cc-desktop"
-    "cc-menubar"
-    "cc-dock"
-    "cc-spotlight"
-    "cc-inputd"
-    "cc-inputmap"
-    "cc-input-session"
-    "cc-sysprefs"
+    "moonrock"
+    "desktop"
+    "menubar"
+    "dock"
+    "searchsystem"
+    "fileviewer"
+    "inputd"
+    "inputmap"
+    "inputsession"
+    "systemcontrol"
+    "moonbase"
 )
 
 FAILED=0
@@ -72,14 +75,14 @@ else
 fi
 echo "════════════════════════════════════════"
 
-# Install helper scripts to ~/.local/bin so they're on PATH alongside
-# the cc-* binaries. This makes cc-game-mode available for the Apple menu
-# action in cc-menubar to launch without needing an absolute path.
+# Install helper scripts to ~/.local/bin so they are on PATH alongside
+# the component binaries. This makes `game-mode` available for the
+# Blizzard menu action in menubar to launch without needing an absolute path.
 echo ""
 echo "Installing scripts to ~/.local/bin..."
 mkdir -p "$HOME/.local/bin"
-cp "$ROOT/scripts/game-mode.sh" "$HOME/.local/bin/cc-game-mode"
-chmod +x "$HOME/.local/bin/cc-game-mode"
-echo -e "${GREEN}[DONE]${NC} cc-game-mode installed"
+cp "$ROOT/scripts/game-mode.sh" "$HOME/.local/bin/game-mode"
+chmod +x "$HOME/.local/bin/game-mode"
+echo -e "${GREEN}[DONE]${NC} game-mode installed"
 
 exit $FAILED

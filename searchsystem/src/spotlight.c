@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ─── spotlight.c ───
 // Core overlay window, hotkey registration, and event dispatch.
@@ -222,7 +219,7 @@ static void show_overlay(Display *dpy) {
     int grab_result = XGrabKeyboard(dpy, overlay_win, False,
                                     GrabModeAsync, GrabModeAsync, CurrentTime);
     if (grab_result != GrabSuccess) {
-        fprintf(stderr, "cc-spotlight: XGrabKeyboard failed (%d) — "
+        fprintf(stderr, "searchsystem: XGrabKeyboard failed (%d) — "
                         "keyboard input may not work\n", grab_result);
     }
 
@@ -305,7 +302,7 @@ static void launch_entry(SearchEntry *entry) {
         // ── Child process ──
 
         // Detach from the parent's terminal and process group
-        // so the launched app doesn't die when cc-spotlight
+        // so the launched app doesn't die when searchsystem
         // exits.
         setsid();
 
@@ -464,7 +461,7 @@ static void grab_hotkey(Display *dpy) {
     // to the physical keycode on this keyboard.
     KeyCode space = XKeysymToKeycode(dpy, XK_space);
     if (space == 0) {
-        fprintf(stderr, "cc-spotlight: cannot find keycode for Space\n");
+        fprintf(stderr, "searchsystem: cannot find keycode for Space\n");
         return;
     }
 
@@ -483,7 +480,7 @@ static void grab_hotkey(Display *dpy) {
     XGrabKey(dpy, space, ControlMask | numlock | capslock,
              root, True, GrabModeAsync, GrabModeAsync);
 
-    printf("cc-spotlight: hotkey Ctrl+Space grabbed\n");
+    printf("searchsystem: hotkey Ctrl+Space grabbed\n");
 }
 
 // Release all our key grabs.
@@ -516,7 +513,7 @@ int spotlight_init(Display *dpy) {
     int depth = 24;
     Visual *visual = find_argb_visual(dpy, screen, &depth);
     if (!visual) {
-        fprintf(stderr, "cc-spotlight: no 32-bit ARGB visual found, "
+        fprintf(stderr, "searchsystem: no 32-bit ARGB visual found, "
                         "falling back to default\n");
         visual = DefaultVisual(dpy, screen);
         depth  = DefaultDepth(dpy, screen);
@@ -570,7 +567,7 @@ int spotlight_init(Display *dpy) {
 
     // Set the WM_NAME so the window shows up nicely in tools
     // like xwininfo / xdotool.
-    XStoreName(dpy, overlay_win, "cc-spotlight");
+    XStoreName(dpy, overlay_win, "searchsystem");
 
     // ── Initialise subsystems ──
     search_init();

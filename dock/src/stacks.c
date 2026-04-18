@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // stacks.c — Folder stacks grid popup (Snow Leopard style)
@@ -12,7 +9,7 @@
 //
 // How it works:
 //   1. When a folder is clicked, stacks_show() scans the directory.
-//   2. Each file gets an icon resolved from the AquaKDE theme (or fallback).
+//   2. Each file gets an icon resolved from the Aqua theme (or fallback).
 //   3. The popup window is created as an override-redirect ARGB window
 //      (no window manager decorations, supports transparency).
 //   4. A nine-patch background is drawn from eccl_*.png assets, giving
@@ -198,7 +195,7 @@ bool stacks_load_assets(DockState *state)
 // stacks_resolve_icon — Find and load an appropriate icon for a file entry.
 //
 // We use a simple mapping from file extension to freedesktop icon name,
-// then search the AquaKDE theme and system themes for a matching PNG.
+// then search the Aqua theme and system themes for a matching PNG.
 // Directories always get the "folder" icon. Unknown types get a generic
 // document icon.
 //
@@ -223,7 +220,7 @@ static bool stacks_resolve_icon(StackEntry *entry)
             dot++;  // Skip past the '.' character
 
             // Map common file extensions to freedesktop icon names.
-            // These icon names correspond to icons in the AquaKDE, Breeze,
+            // These icon names correspond to icons in the Aqua, Breeze,
             // and hicolor themes installed on the system.
             if (strcasecmp(dot, "pdf") == 0) {
                 icon_name = "application-pdf";
@@ -296,7 +293,7 @@ static bool stacks_resolve_icon(StackEntry *entry)
 
     // Theme directories to search (same order as config.c's resolve_icon_path)
     static const char *themes[] = {
-        "AquaKDE-icons", "hicolor", "breeze", "breeze-dark",
+        "Aqua", "hicolor", "breeze", "breeze-dark",
         "oxygen/base", "Adwaita", NULL
     };
 
@@ -306,7 +303,7 @@ static bool stacks_resolve_icon(StackEntry *entry)
     for (const char **theme = themes; *theme; theme++) {
         for (const char **cat = categories; *cat; cat++) {
             for (int s = 0; s < size_count; s++) {
-                // User-local themes (AquaKDE is usually here)
+                // User-local themes (Aqua is usually here)
                 snprintf(path, sizeof(path),
                          "%s/.local/share/icons/%s/%dx%d/%s/%s.png",
                          home, *theme, sizes[s], sizes[s], *cat, icon_name);

@@ -1,7 +1,5 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 //
 // CopyCatOS Window Manager — XComposite compositor for Snow Leopard shadows
 
@@ -322,23 +320,23 @@ bool compositor_init(CCWM *wm)
 {
     if (!wm || !wm->dpy) return false;
 
-    fprintf(stderr, "[cc-wm] Initializing compositor...\n");
+    fprintf(stderr, "[moonrock] Initializing compositor...\n");
 
     // ── Check for required X extensions ──
     // XComposite: lets us redirect window contents to off-screen pixmaps
     //   so we can composite them with effects (shadows, transparency).
     int composite_major = 0, composite_minor = 0;
     if (!XCompositeQueryVersion(wm->dpy, &composite_major, &composite_minor)) {
-        fprintf(stderr, "[cc-wm] ERROR: XComposite extension not available\n");
+        fprintf(stderr, "[moonrock] ERROR: XComposite extension not available\n");
         return false;
     }
-    fprintf(stderr, "[cc-wm] XComposite %d.%d found\n",
+    fprintf(stderr, "[moonrock] XComposite %d.%d found\n",
             composite_major, composite_minor);
 
     // We need at least XComposite 0.2 for NameWindowPixmap, which lets us
     // grab the off-screen pixmap of a redirected window.
     if (composite_major == 0 && composite_minor < 2) {
-        fprintf(stderr, "[cc-wm] ERROR: Need XComposite >= 0.2, got %d.%d\n",
+        fprintf(stderr, "[moonrock] ERROR: Need XComposite >= 0.2, got %d.%d\n",
                 composite_major, composite_minor);
         return false;
     }
@@ -348,10 +346,10 @@ bool compositor_init(CCWM *wm)
     //   everything every frame.
     int damage_major = 0, damage_minor = 0;
     if (!XDamageQueryVersion(wm->dpy, &damage_major, &damage_minor)) {
-        fprintf(stderr, "[cc-wm] ERROR: XDamage extension not available\n");
+        fprintf(stderr, "[moonrock] ERROR: XDamage extension not available\n");
         return false;
     }
-    fprintf(stderr, "[cc-wm] XDamage %d.%d found\n",
+    fprintf(stderr, "[moonrock] XDamage %d.%d found\n",
             damage_major, damage_minor);
 
     // Store the event base so we can identify DamageNotify events later.
@@ -363,20 +361,20 @@ bool compositor_init(CCWM *wm)
     //   through the shadow region.
     int fixes_major = 0, fixes_minor = 0;
     if (!XFixesQueryVersion(wm->dpy, &fixes_major, &fixes_minor)) {
-        fprintf(stderr, "[cc-wm] ERROR: XFixes extension not available\n");
+        fprintf(stderr, "[moonrock] ERROR: XFixes extension not available\n");
         return false;
     }
-    fprintf(stderr, "[cc-wm] XFixes %d.%d found\n", fixes_major, fixes_minor);
+    fprintf(stderr, "[moonrock] XFixes %d.%d found\n", fixes_major, fixes_minor);
 
     // XRender: the X Rendering Extension provides Porter-Duff compositing
     //   operations. Cairo uses it under the hood for hardware-accelerated
     //   rendering on X11.
     int render_event = 0, render_error = 0;
     if (!XRenderQueryExtension(wm->dpy, &render_event, &render_error)) {
-        fprintf(stderr, "[cc-wm] ERROR: XRender extension not available\n");
+        fprintf(stderr, "[moonrock] ERROR: XRender extension not available\n");
         return false;
     }
-    fprintf(stderr, "[cc-wm] XRender found\n");
+    fprintf(stderr, "[moonrock] XRender found\n");
 
     // ── Redirect all subwindows of root ──
     // CompositeRedirectAutomatic means:
@@ -389,7 +387,7 @@ bool compositor_init(CCWM *wm)
     // Automatic mode gives us ARGB support (transparent shadow regions)
     // while letting X handle the actual window compositing.
     XCompositeRedirectSubwindows(wm->dpy, wm->root, CompositeRedirectAutomatic);
-    fprintf(stderr, "[cc-wm] Composite redirect set (automatic mode)\n");
+    fprintf(stderr, "[moonrock] Composite redirect set (automatic mode)\n");
 
     // ── Find a 32-bit ARGB visual ──
     // A "visual" in X11 describes the pixel format of a window. Most windows
@@ -397,15 +395,15 @@ bool compositor_init(CCWM *wm)
     // that includes an 8-bit alpha channel, so our frame windows can have
     // semi-transparent pixels for the shadow effect.
     if (!compositor_create_argb_visual(wm, &argb_visual, &argb_colormap)) {
-        fprintf(stderr, "[cc-wm] WARNING: No 32-bit ARGB visual found. "
+        fprintf(stderr, "[moonrock] WARNING: No 32-bit ARGB visual found. "
                 "Shadows will not be available.\n");
         // Don't fail entirely — the WM can still work without shadows
     } else {
-        fprintf(stderr, "[cc-wm] Found 32-bit ARGB visual\n");
+        fprintf(stderr, "[moonrock] Found 32-bit ARGB visual\n");
     }
 
     compositor_active = true;
-    fprintf(stderr, "[cc-wm] Compositor initialized successfully\n");
+    fprintf(stderr, "[moonrock] Compositor initialized successfully\n");
     return true;
 }
 
@@ -545,7 +543,7 @@ void compositor_set_input_shape(CCWM *wm, Client *c)
     XFixesDestroyRegion(wm->dpy, region);
 
     if (getenv("AURA_DEBUG")) {
-        fprintf(stderr, "[cc-wm] Set input shape for '%s': "
+        fprintf(stderr, "[moonrock] Set input shape for '%s': "
                 "clickable at (%d,%d) %dx%d within frame\n",
                 c->title, rect.x, rect.y, rect.width, rect.height);
     }
@@ -589,7 +587,7 @@ void compositor_damage_notify(CCWM *wm, XEvent *e)
         decor_paint(wm, c);
 
         if (getenv("AURA_DEBUG")) {
-            fprintf(stderr, "[cc-wm] Damage repaint for '%s'\n", c->title);
+            fprintf(stderr, "[moonrock] Damage repaint for '%s'\n", c->title);
         }
     }
 }
@@ -606,7 +604,7 @@ void compositor_shutdown(CCWM *wm)
         // compositor takes over.
         XCompositeUnredirectSubwindows(wm->dpy, wm->root,
                                        CompositeRedirectAutomatic);
-        fprintf(stderr, "[cc-wm] Compositor: unredirected subwindows\n");
+        fprintf(stderr, "[moonrock] Compositor: unredirected subwindows\n");
     }
 
     // Free the colormap we created for the ARGB visual.
@@ -618,5 +616,5 @@ void compositor_shutdown(CCWM *wm)
 
     argb_visual = NULL;
     compositor_active = false;
-    fprintf(stderr, "[cc-wm] Compositor shut down\n");
+    fprintf(stderr, "[moonrock] Compositor shut down\n");
 }

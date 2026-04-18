@@ -1,10 +1,7 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
-// main.c — Entry point for cc-sysprefs (System Preferences)
+// main.c — Entry point for systemcontrol (System Preferences)
 // ============================================================================
 //
 // Follows the standard CopyCatOS shell component pattern:
@@ -49,7 +46,7 @@ static void signal_handler(int sig)
 // ----------------------------------------------------------------------------
 static int acquire_instance_lock(void)
 {
-    const char *lock_path = "/tmp/cc-sysprefs.lock";
+    const char *lock_path = "/tmp/systemcontrol.lock";
     int fd = open(lock_path, O_CREAT | O_RDWR, 0600);
     if (fd < 0) {
         return -1;
@@ -70,7 +67,7 @@ static int acquire_instance_lock(void)
 int main(int argc, char *argv[])
 {
     // Parse --pane flag so external scripts can open directly to a pane.
-    // Usage: cc-sysprefs --pane controller
+    // Usage: systemcontrol --pane controller
     // If no --pane is given, the icon grid is shown (default behavior).
     const char *open_pane = NULL;
     for (int i = 1; i < argc; i++) {
@@ -80,16 +77,16 @@ int main(int argc, char *argv[])
         }
     }
 
-    fprintf(stderr, "[cc-sysprefs] Starting System Preferences...\n");
+    fprintf(stderr, "[systemcontrol] Starting System Preferences...\n");
 
     // Prevent duplicate instances
     int lock_fd = acquire_instance_lock();
     if (lock_fd < 0) {
-        fprintf(stderr, "[cc-sysprefs] Another instance is already running.\n");
+        fprintf(stderr, "[systemcontrol] Another instance is already running.\n");
         return EXIT_FAILURE;
     }
 
-    // Allocate state on the stack (same pattern as cc-dock)
+    // Allocate state on the stack (same pattern as dock)
     SysPrefsState state = {0};
 
     // Install signal handlers so Ctrl+C triggers a clean shutdown
@@ -99,7 +96,7 @@ int main(int argc, char *argv[])
 
     // Initialize X11 window, Cairo surface, and load assets
     if (!sysprefs_init(&state)) {
-        fprintf(stderr, "[cc-sysprefs] Failed to initialize.\n");
+        fprintf(stderr, "[systemcontrol] Failed to initialize.\n");
         close(lock_fd);
         return EXIT_FAILURE;
     }
@@ -108,7 +105,7 @@ int main(int argc, char *argv[])
     registry_init(&state);
     registry_load_icons(&state);
 
-    fprintf(stderr, "[cc-sysprefs] Registered %d panes in %d categories\n",
+    fprintf(stderr, "[systemcontrol] Registered %d panes in %d categories\n",
             state.pane_count, state.category_count);
 
     // If --pane was specified, open directly to that pane instead of the grid.
@@ -135,7 +132,7 @@ int main(int argc, char *argv[])
             }
         }
         if (!found) {
-            fprintf(stderr, "[cc-sysprefs] Unknown pane: %s\n", open_pane);
+            fprintf(stderr, "[systemcontrol] Unknown pane: %s\n", open_pane);
         }
     }
 
@@ -146,6 +143,6 @@ int main(int argc, char *argv[])
     sysprefs_cleanup(&state);
     close(lock_fd);
 
-    fprintf(stderr, "[cc-sysprefs] Shut down cleanly.\n");
+    fprintf(stderr, "[systemcontrol] Shut down cleanly.\n");
     return EXIT_SUCCESS;
 }

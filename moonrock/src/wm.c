@@ -1,4 +1,5 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 // CopyCatOS Window Manager — Core state and initialization
 
 #include "wm.h"
@@ -23,7 +24,7 @@ static int x_error_handler(Display *dpy, XErrorEvent *e)
         if (getenv("AURA_DEBUG")) {
             char buf[256];
             XGetErrorText(dpy, e->error_code, buf, sizeof(buf));
-            fprintf(stderr, "[cc-wm] X error (ignored): %s (request %d)\n",
+            fprintf(stderr, "[moonrock] X error (ignored): %s (request %d)\n",
                     buf, e->request_code);
         }
         return 0;
@@ -32,7 +33,7 @@ static int x_error_handler(Display *dpy, XErrorEvent *e)
     // Unexpected errors — log them
     char buf[256];
     XGetErrorText(dpy, e->error_code, buf, sizeof(buf));
-    fprintf(stderr, "[cc-wm] X error: %s (request %d, resource 0x%lx)\n",
+    fprintf(stderr, "[moonrock] X error: %s (request %d, resource 0x%lx)\n",
             buf, e->request_code, e->resourceid);
     return 0;
 }
@@ -55,7 +56,7 @@ bool wm_init(CCWM *wm, const char *display_name)
     // Connect to X server
     wm->dpy = XOpenDisplay(display_name);
     if (!wm->dpy) {
-        fprintf(stderr, "[cc-wm] Cannot open display '%s'\n",
+        fprintf(stderr, "[moonrock] Cannot open display '%s'\n",
                 display_name ? display_name : ":0");
         return false;
     }
@@ -65,7 +66,7 @@ bool wm_init(CCWM *wm, const char *display_name)
     wm->root_w = DisplayWidth(wm->dpy, wm->screen);
     wm->root_h = DisplayHeight(wm->dpy, wm->screen);
 
-    fprintf(stderr, "[cc-wm] Connected to display, root=%lu, %dx%d\n",
+    fprintf(stderr, "[moonrock] Connected to display, root=%lu, %dx%d\n",
             wm->root, wm->root_w, wm->root_h);
 
     // Intern all atoms before anything else
@@ -84,12 +85,12 @@ bool wm_init(CCWM *wm, const char *display_name)
     XSetErrorHandler(x_error_handler);
 
     if (wm->another_wm) {
-        fprintf(stderr, "[cc-wm] Another window manager is running. Exiting.\n");
+        fprintf(stderr, "[moonrock] Another window manager is running. Exiting.\n");
         XCloseDisplay(wm->dpy);
         return false;
     }
 
-    fprintf(stderr, "[cc-wm] Claimed window manager role\n");
+    fprintf(stderr, "[moonrock] Claimed window manager role\n");
 
     // Set the root window cursor — this is the default cursor shown on the
     // desktop, root window, and anywhere no other window sets a cursor.
@@ -100,7 +101,7 @@ bool wm_init(CCWM *wm, const char *display_name)
         Cursor root_cursor = 0;
 
         // Try loading from the XCURSOR_THEME environment variable first
-        // (set in cc-session.sh as Breeze_Light)
+        // (set in moonrock-session.sh as Breeze_Light)
         root_cursor = XcursorLibraryLoadCursor(wm->dpy, "left_ptr");
 
         if (!root_cursor) {
@@ -110,7 +111,7 @@ bool wm_init(CCWM *wm, const char *display_name)
 
         if (root_cursor) {
             XDefineCursor(wm->dpy, wm->root, root_cursor);
-            fprintf(stderr, "[cc-wm] Root cursor set\n");
+            fprintf(stderr, "[moonrock] Root cursor set\n");
         }
 
         // Load the spinning beach ball cursor for unresponsive windows.
@@ -119,11 +120,11 @@ bool wm_init(CCWM *wm, const char *display_name)
         // Xcursor when we set it on a window.
         wm->beach_ball_cursor = XcursorLibraryLoadCursor(wm->dpy, "wait");
         if (wm->beach_ball_cursor) {
-            fprintf(stderr, "[cc-wm] Beach ball cursor loaded\n");
+            fprintf(stderr, "[moonrock] Beach ball cursor loaded\n");
         } else {
             // Fallback to the standard watch cursor
             wm->beach_ball_cursor = XCreateFontCursor(wm->dpy, 150); // XC_watch
-            fprintf(stderr, "[cc-wm] Beach ball fallback to XC_watch\n");
+            fprintf(stderr, "[moonrock] Beach ball fallback to XC_watch\n");
         }
     }
 
@@ -148,7 +149,7 @@ void wm_shutdown(CCWM *wm)
     }
     XSync(wm->dpy, False);
     XCloseDisplay(wm->dpy);
-    fprintf(stderr, "[cc-wm] Shutdown complete\n");
+    fprintf(stderr, "[moonrock] Shutdown complete\n");
 }
 
 void wm_intern_atoms(CCWM *wm)
@@ -205,7 +206,7 @@ Client *wm_find_client_by_frame(CCWM *wm, Window frame)
 Client *wm_add_client(CCWM *wm, Window client_window)
 {
     if (wm->num_clients >= MAX_CLIENTS) {
-        fprintf(stderr, "[cc-wm] Max clients reached!\n");
+        fprintf(stderr, "[moonrock] Max clients reached!\n");
         return NULL;
     }
 

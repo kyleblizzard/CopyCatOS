@@ -1,20 +1,17 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// dnd.h — XDND (X Drag and Drop Protocol v5) for cc-desktop
+// dnd.h — XDND (X Drag and Drop Protocol v5) for desktop
 //
 // XDND is the standard drag-and-drop protocol for X11 applications.
 // It's a multi-step ClientMessage handshake between a "source" (the window
 // the drag starts in) and a "target" (the window where the user drops).
 //
-// cc-desktop participates as both roles:
+// desktop participates as both roles:
 //
 //   SOURCE: when you drag a file FROM the desktop to another app
 //     (e.g., drag a .pdf to a text editor or drop onto a terminal)
 //
-//   TARGET: when another app (a file manager, cc-finder) drops files
+//   TARGET: when another app (a file manager, fileviewer) drops files
 //     ONTO the desktop, which copies them to ~/Desktop
 //
 // Protocol overview (14 atoms, handshake in both directions):

@@ -1,14 +1,11 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // finder.c — Core Finder window creation, event loop, and painting
 //
 // This module is the heart of CCFinder. It handles:
 //
 //   1. Opening the X display and creating a normal (non-override-redirect)
-//      window. The window manager (cc-wm) will frame it with Snow
+//      window. The window manager (moonrock) will frame it with Snow
 //      Leopard title bar chrome automatically.
 //
 //   2. Setting up Cairo for rendering. All drawing happens through a

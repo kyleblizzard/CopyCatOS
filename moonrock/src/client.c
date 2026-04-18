@@ -1,7 +1,5 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 //
 // CopyCatOS Window Manager — Client window tracking and app grouping
 //
@@ -55,7 +53,7 @@ void client_hide_app(CCWM *wm, Client *c)
     }
 
     if (hidden > 0) {
-        fprintf(stderr, "[cc-wm] Hid %d window(s) of app '%s'\n", hidden, app_class);
+        fprintf(stderr, "[moonrock] Hid %d window(s) of app '%s'\n", hidden, app_class);
         // Update focus to next available window
         wm->focused = NULL;
         for (int i = wm->num_clients - 1; i >= 0; i--) {
@@ -117,7 +115,7 @@ void client_smart_zoom(CCWM *wm, Client *c)
                       sl + BORDER_WIDTH, st + TITLEBAR_HEIGHT,
                       c->w, c->h);
 
-    fprintf(stderr, "[cc-wm] Smart zoom: %s → %dx%d+%d+%d\n",
+    fprintf(stderr, "[moonrock] Smart zoom: %s → %dx%d+%d+%d\n",
             c->zoomed ? "maximized" : "restored",
             c->w, c->h, c->x, c->y);
 }

@@ -4,11 +4,11 @@ A complete desktop environment that recreates Mac OS X Snow Leopard on Linux. Bu
 
 ## Components
 
-- **cc-wm** — X11 reparenting window manager with MoonRock Compositor (OpenGL). Handles window framing, decoration painting, shadows, compositing, keyboard shortcuts, and strut reservation.
-- **cc-dock** — Glass shelf dock with parabolic magnification, two-phase bounce animation, icon reflections, running indicators, drag-and-drop with poof removal, folder stacks with grid popup, and config persistence.
-- **cc-menubar** — 22px translucent global menu bar with Apple logo, per-app menu sets, system tray (clock, battery, volume), and Spotlight icon. Wallpaper bleeds through the gradient.
-- **cc-desktop** — Wallpaper surface with JPEG loading, desktop icon grid with inotify file watching, drag-and-drop snap-to-grid, and Cairo-rendered context menus.
-- **cc-spotlight** — Ctrl+Space search overlay. Scans .desktop files, real-time substring search, icon caching, keyboard navigation.
+- **moonrock** — X11 reparenting window manager with MoonRock Compositor (OpenGL). Handles window framing, decoration painting, shadows, compositing, keyboard shortcuts, and strut reservation.
+- **dock** — Glass shelf dock with parabolic magnification, two-phase bounce animation, icon reflections, running indicators, drag-and-drop with poof removal, folder stacks with grid popup, and config persistence.
+- **menubar** — 22px translucent global menu bar with Apple logo, per-app menu sets, system tray (clock, battery, volume), and Spotlight icon. Wallpaper bleeds through the gradient.
+- **desktop** — Wallpaper surface with JPEG loading, desktop icon grid with inotify file watching, drag-and-drop snap-to-grid, and Cairo-rendered context menus.
+- **searchsystem** — Ctrl+Space search overlay. Scans .desktop files, real-time substring search, icon caching, keyboard navigation.
 - **breeze-aqua** — Qt6 QStyle plugin rendering Aqua scrollbars, buttons, checkboxes, and widgets inside Qt applications using real Snow Leopard PNG assets.
 
 ## Architecture
@@ -41,7 +41,7 @@ bash scripts/install-assets.sh
 Select "CopyCatOS" at the display manager login screen, or:
 
 ```bash
-DISPLAY=:1 startx /usr/local/bin/cc-session.sh -- :1
+DISPLAY=:1 startx /usr/local/bin/moonrock-session.sh -- :1
 ```
 
 ## License

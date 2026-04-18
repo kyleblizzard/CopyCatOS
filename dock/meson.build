@@ -1,17 +1,14 @@
-# Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-# This code is publicly visible for portfolio purposes only.
-# Unauthorized copying, forking, or distribution of this file,
-# via any medium, is strictly prohibited.
+# CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 # ============================================================================
-# meson.build — Build configuration for cc-dock
+# meson.build — Build configuration for dock
 #
 # Meson is a build system (like CMake or Make) that generates ninja build files.
 # This file tells Meson what our project needs: which source files to compile,
 # what libraries to link against, and how to install the final binary.
 # ============================================================================
 
-project('cc-dock', 'c',
+project('dock', 'c',
   version: '0.1.0',
   default_options: ['c_std=c11', 'warning_level=2'],
 )
@@ -54,9 +51,9 @@ sources = [
 
 # --- Build the executable ---
 # This compiles all source files and links them with our dependencies into
-# a single binary called 'cc-dock'. install: true means `meson install`
+# a single binary called 'dock'. install: true means `meson install`
 # will copy it to the system bin directory (usually /usr/local/bin).
-executable('cc-dock', sources,
+executable('dock', sources,
   dependencies: [x11_dep, cairo_dep, cairo_xlib_dep, pangocairo_dep, libpng_dep, math_dep],
   install: true,
   install_dir: get_option('bindir'),

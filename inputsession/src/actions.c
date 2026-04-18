@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
 // actions.c — CopyCatOS desktop action dispatch implementation
@@ -27,7 +24,7 @@
 // then send it a Unix signal.
 //
 // This is how we communicate with other CopyCatOS shell components.
-// For example, cc-spotlight listens for SIGUSR1 to toggle its
+// For example, searchsystem listens for SIGUSR1 to toggle its
 // visibility, so we pgrep for it and send that signal.
 //
 // Parameters:
@@ -35,7 +32,7 @@
 //   sig       — the signal number to send (e.g., SIGUSR1)
 static void send_signal_to_process(const char *proc_name, int sig)
 {
-    // Build a command like: pgrep -f cc-spotlight
+    // Build a command like: pgrep -f searchsystem
     // pgrep returns the PID(s) of matching processes, one per line.
     char cmd[256];
     snprintf(cmd, sizeof(cmd), "pgrep -f %s", proc_name);
@@ -43,7 +40,7 @@ static void send_signal_to_process(const char *proc_name, int sig)
     // popen runs the command and lets us read its stdout
     FILE *fp = popen(cmd, "r");
     if (!fp) {
-        fprintf(stderr, "[cc-input-session] pgrep failed for '%s'\n", proc_name);
+        fprintf(stderr, "[inputsession] pgrep failed for '%s'\n", proc_name);
         return;
     }
 
@@ -53,7 +50,7 @@ static void send_signal_to_process(const char *proc_name, int sig)
         pid_t pid = (pid_t)atoi(line);
         if (pid > 0) {
             kill(pid, sig);
-            fprintf(stderr, "[cc-input-session] sent signal %d to %s (pid %d)\n",
+            fprintf(stderr, "[inputsession] sent signal %d to %s (pid %d)\n",
                     sig, proc_name, pid);
         }
     }
@@ -121,35 +118,35 @@ static void toggle_show_desktop(Display *dpy, Window root)
                SubstructureRedirectMask | SubstructureNotifyMask, &ev);
     XFlush(dpy);
 
-    fprintf(stderr, "[cc-input-session] show_desktop toggled to %ld\n", new_state);
+    fprintf(stderr, "[inputsession] show_desktop toggled to %ld\n", new_state);
 }
 
 // --- Main dispatch function ---
 
 // actions_dispatch — Route an action name to the right handler.
 //
-// This is called whenever cc-inputd sends us a COPYCATOS_ACTION message.
+// This is called whenever inputd sends us a COPYCATOS_ACTION message.
 // The action_name is a simple string like "spotlight" that tells us
 // what the user wants to happen.
 void actions_dispatch(const char *action_name, Display *dpy, Window root)
 {
     if (!action_name || action_name[0] == '\0') {
-        fprintf(stderr, "[cc-input-session] empty action received, ignoring\n");
+        fprintf(stderr, "[inputsession] empty action received, ignoring\n");
         return;
     }
 
-    fprintf(stderr, "[cc-input-session] dispatching action: '%s'\n", action_name);
+    fprintf(stderr, "[inputsession] dispatching action: '%s'\n", action_name);
 
     // --- Spotlight: toggle the search overlay ---
-    // cc-spotlight listens for SIGUSR1 to show/hide itself.
+    // searchsystem listens for SIGUSR1 to show/hide itself.
     if (strcmp(action_name, "spotlight") == 0) {
-        send_signal_to_process("cc-spotlight", SIGUSR1);
+        send_signal_to_process("searchsystem", SIGUSR1);
     }
     // --- Mission Control: show all windows in an overview ---
-    // TODO: This needs a custom protocol with cc-wm. For now, log it.
+    // TODO: This needs a custom protocol with moonrock. For now, log it.
     else if (strcmp(action_name, "mission_control") == 0) {
-        fprintf(stderr, "[cc-input-session] mission_control: not yet implemented\n");
-        // Future: send a custom atom/client message to cc-wm
+        fprintf(stderr, "[inputsession] mission_control: not yet implemented\n");
+        // Future: send a custom atom/client message to moonrock
     }
     // --- Show Desktop: minimize all windows to reveal the desktop ---
     else if (strcmp(action_name, "show_desktop") == 0) {
@@ -176,6 +173,6 @@ void actions_dispatch(const char *action_name, Display *dpy, Window root)
     }
     // --- Unknown action ---
     else {
-        fprintf(stderr, "[cc-input-session] unknown action: '%s'\n", action_name);
+        fprintf(stderr, "[inputsession] unknown action: '%s'\n", action_name);
     }
 }

@@ -1,12 +1,12 @@
 [Unit]
 Description=CopyCatOS Input Daemon
-Documentation=man:cc-inputd(8)
+Documentation=man:inputd(8)
 After=systemd-udevd.service
 Conflicts=inputplumber.service hhd@.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/sbin/cc-inputd
+ExecStart=/usr/local/sbin/inputd
 Restart=on-failure
 RestartSec=2
 ProtectHome=read-only

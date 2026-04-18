@@ -1,4 +1,5 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 // CopyCatOS Window Manager — Entry point
 //
 // A custom X11 reparenting compositing window manager that recreates
@@ -23,7 +24,7 @@ static CCWM wm;
 static void handle_signal(int sig)
 {
     (void)sig;
-    fprintf(stderr, "[cc-wm] Received signal %d, shutting down\n", sig);
+    fprintf(stderr, "[moonrock] Received signal %d, shutting down\n", sig);
     wm.running = false;
 }
 
@@ -51,7 +52,7 @@ int main(int argc, char *argv[])
     // Initialize the MoonRock Compositor for OpenGL compositing and window
     // shadows (optional — degrades gracefully if GLX/XComposite aren't available)
     if (!mr_init(&wm)) {
-        fprintf(stderr, "[cc-wm] MoonRock Compositor unavailable — no window shadows\n");
+        fprintf(stderr, "[moonrock] MoonRock Compositor unavailable — no window shadows\n");
     }
 
     // Set up strut handling so dock/menubar can reserve screen edges

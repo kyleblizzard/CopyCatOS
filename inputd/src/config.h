@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
 // config.h — Input daemon configuration types and API
@@ -9,7 +6,7 @@
 // Defines the InputConfig struct that holds all user-configurable settings
 // loaded from ~/.config/copycatos/input.conf. The config file uses a simple
 // INI format with [section] headers, following the same pattern as the
-// desktop.conf parser in cc-sysprefs.
+// desktop.conf parser in systemcontrol.
 //
 // Sections:
 //   [mouse]             — joystick-to-pointer sensitivity/response curve

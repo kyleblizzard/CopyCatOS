@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // config.h — Dock configuration persistence
@@ -9,7 +6,7 @@
 // This module handles loading and saving the dock's item list so that changes
 // (like drag-and-drop reordering or adding/removing items) survive across
 // sessions. The configuration is stored as a simple pipe-delimited text file
-// at ~/.config/cc-dock/dock.conf.
+// at ~/.config/dock/dock.conf.
 //
 // When the dock starts up, it tries to load the config file. If the file
 // doesn't exist (first launch), it falls back to a hardcoded list of default
@@ -25,7 +22,7 @@
 // ---------------------------------------------------------------------------
 // config_load — Read dock items from the config file on disk.
 //
-// Parses ~/.config/cc-dock/dock.conf and populates state->items[].
+// Parses ~/.config/dock/dock.conf and populates state->items[].
 // Each line in the file represents one dock item with pipe-delimited fields.
 //
 // Returns true if the config file was found and loaded successfully.
@@ -38,7 +35,7 @@ bool config_load(DockState *state);
 // config_save — Write the current dock items to the config file.
 //
 // Iterates over state->items[] and writes each one as a pipe-delimited line
-// to ~/.config/cc-dock/dock.conf. Creates the directory if it doesn't
+// to ~/.config/dock/dock.conf. Creates the directory if it doesn't
 // exist yet (e.g., on first save after rearranging).
 //
 // Returns true on success, false if writing failed.

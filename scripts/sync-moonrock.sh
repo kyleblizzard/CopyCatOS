@@ -1,22 +1,20 @@
 #!/bin/bash
-# Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-# This code is publicly visible for portfolio purposes only.
-# Unauthorized copying, forking, or distribution of this file,
-# via any medium, is strictly prohibited.
+# CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 #
 # sync-moonrock.sh — Copy MoonRock compositor sources from CopyCatOS to the
 # standalone MoonRock repo. No git operations — just the file copy.
 #
 # Usage: ./scripts/sync-moonrock.sh
 #
-# CopyCatOS/cc-wm/src/ is the authoritative source for all moonrock_* files.
+# CopyCatOS/moonrock/src/ is the authoritative source for all moonrock_* files.
 # The standalone MoonRock repo at /Volumes/Development/MoonRock/ gets synced
 # from here whenever changes are ready to publish.
 
 set -euo pipefail
 
 # Paths
-SRC_DIR="$(cd "$(dirname "$0")/../cc-wm/src" && pwd)"
+SRC_DIR="$(cd "$(dirname "$0")/../moonrock/src" && pwd)"
 DST_DIR="/Volumes/Development/MoonRock/src"
 
 if [ ! -d "$SRC_DIR" ]; then
@@ -58,7 +56,7 @@ echo ""
 echo "Done: $count files copied."
 echo ""
 
-# MoonRock is BSD-3-Clause (open source). The source files in cc-wm use the
+# MoonRock is BSD-3-Clause (open source). The source files in moonrock use the
 # CopyCatOS All Rights Reserved header — strip that and replace it with the
 # correct BSD-3-Clause header so MoonRock stays openly licensed.
 echo "Fixing copyright headers (CopyCatOS All Rights Reserved → MoonRock BSD-3-Clause)..."

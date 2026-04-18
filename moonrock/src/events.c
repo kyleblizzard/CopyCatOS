@@ -1,4 +1,5 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 // CopyCatOS Window Manager — X11 event dispatch
 // Uses function pointer array for O(1) dispatch (dwm pattern)
 
@@ -60,7 +61,7 @@ void events_run(CCWM *wm)
     // Frame any pre-existing windows
     frame_existing_windows(wm);
 
-    fprintf(stderr, "[cc-wm] Entering event loop\n");
+    fprintf(stderr, "[moonrock] Entering event loop\n");
 
     // Track when we last sent a ping and checked timeouts.
     // We use XPending + select() with a timeout instead of blocking
@@ -244,7 +245,7 @@ static void on_configure_request(CCWM *wm, XEvent *e)
 
 // ── Dock icon position lookup ──
 //
-// Reads _CC_DOCK_ICON_POSITIONS from the root window (published by cc-dock
+// Reads _CC_DOCK_ICON_POSITIONS from the root window (published by dock
 // after every paint) and returns the screen-absolute center of the dock icon
 // whose process_name or exec_base matches the client's WM_CLASS.
 //
@@ -645,7 +646,7 @@ static void on_client_message(CCWM *wm, XEvent *e)
     } else if (cm->message_type == wm->atom_wm_change_state) {
         // ICCCM WM_CHANGE_STATE: apps or shell components request an iconic
         // (minimized) state transition. IconicState = 3.
-        // This is how cc-menubar's "Window > Minimize" fires the genie effect.
+        // This is how menubar's "Window > Minimize" fires the genie effect.
         if (cm->data.l[0] == IconicState) {
             Client *c = wm_find_client(wm, cm->window);
             if (!c) {

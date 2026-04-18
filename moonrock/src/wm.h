@@ -1,4 +1,5 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 // CopyCatOS Window Manager — Core state and initialization
 
 #ifndef CC_WM_H
@@ -111,9 +112,9 @@ struct CCWM {
     Atom atom_net_wm_ping;       // _NET_WM_PING for responsiveness detection
     Atom atom_wm_change_state;   // WM_CHANGE_STATE — minimize request from apps/menubar
     Atom atom_utf8_string;
-    // _CC_DOCK_ICON_POSITIONS — published by cc-dock on the root window each frame.
+    // _CC_DOCK_ICON_POSITIONS — published by dock on the root window each frame.
     // Format: newline-separated "process:exec_base:screen_x:screen_y\n" entries.
-    // cc-wm reads this when minimizing to aim the genie animation at the real
+    // moonrock reads this when minimizing to aim the genie animation at the real
     // dock icon instead of a hardcoded center-of-screen fallback.
     Atom atom_cc_dock_icon_positions;
 

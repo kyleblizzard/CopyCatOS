@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ─── search.c ───
 // Desktop-file parser and search engine.
@@ -270,7 +267,7 @@ void search_init(void) {
     // System-wide Flatpak exports.
     scan_directory("/var/lib/flatpak/exports/share/applications");
 
-    printf("cc-spotlight: loaded %d applications\n", catalogue_count);
+    printf("searchsystem: loaded %d applications\n", catalogue_count);
 }
 
 void search_cleanup(void) {

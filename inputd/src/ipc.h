@@ -1,14 +1,11 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
 // ipc.h — Unix socket IPC for session bridge communication
 //
-// cc-inputd runs as a system service (root) but needs to talk to the
-// user's desktop session (cc-wm, System Preferences, etc.). It does this
-// through a Unix domain socket at /run/cc-inputd.sock.
+// inputd runs as a system service (root) but needs to talk to the
+// user's desktop session (moonrock, System Preferences, etc.). It does this
+// through a Unix domain socket at /run/inputd.sock.
 //
 // The session bridge (a small user-level helper) connects to this socket
 // and acts as a relay:
@@ -34,7 +31,7 @@
 //   2. The daemon runs as root and has write access
 //   3. We chmod 0666 so the user-level session bridge can connect
 // --------------------------------------------------------------------------
-#define IPC_SOCK_PATH "/run/cc-inputd.sock"
+#define IPC_SOCK_PATH "/run/inputd.sock"
 
 // --------------------------------------------------------------------------
 // IPC message types

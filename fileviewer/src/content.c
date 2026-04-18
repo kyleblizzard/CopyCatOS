@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // content.c — Finder content area (icon grid / list view / column view)
 //
@@ -18,7 +15,7 @@
 // light blue (#D8E6F5) per the Apple HIG. Selected rows get a full-width
 // blue highlight (#386C9D).
 //
-// Icons are loaded from the AquaKDE theme or fall back to Cairo-drawn
+// Icons are loaded from the Aqua theme or fall back to Cairo-drawn
 // generic icons. The content area has a white background (#FFFFFF).
 
 #define _GNU_SOURCE  // For M_PI and strcasecmp
@@ -49,8 +46,8 @@ static ViewMode current_view_mode = VIEW_MODE_ICON;
 
 // ── Icon resolution ─────────────────────────────────────────────────
 //
-// Maps file extensions to icon names in the AquaKDE / freedesktop
-// icon theme. Same approach as cc-desktop's icons.c.
+// Maps file extensions to icon names in the Aqua / freedesktop
+// icon theme. Same approach as desktop's icons.c.
 
 typedef struct {
     const char *extension;    // e.g., ".pdf"
@@ -94,7 +91,7 @@ static const ExtIconMap ext_icon_map[] = {
 
 // ── Helper: Load a theme icon ───────────────────────────────────────
 //
-// Searches the AquaKDE and hicolor icon themes for the named icon.
+// Searches the Aqua and hicolor icon themes for the named icon.
 // Tries 64x64 first (best match for CONTENT_ICON_SIZE), then larger
 // sizes that can be scaled down.
 
@@ -109,9 +106,9 @@ static cairo_surface_t *load_theme_icon(const char *icon_name,
     const char *sizes[] = { "64x64", "128x128", "256x256", "48x48", "32x32", NULL };
 
     for (int i = 0; sizes[i]; i++) {
-        // AquaKDE theme first
+        // Aqua theme first
         snprintf(path, sizeof(path),
-            "%s/.local/share/icons/AquaKDE-icons/%s/%s/%s.png",
+            "%s/.local/share/icons/Aqua/%s/%s/%s.png",
             home, sizes[i], subdir, icon_name);
 
         cairo_surface_t *surface = cairo_image_surface_create_from_png(path);

@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // panes/power.h — Energy Saver preferences pane
@@ -11,7 +8,7 @@
 // actions, plus timing thresholds for distinguishing between them.
 //
 // Changes are written to ~/.config/copycatos/input.conf [power] section
-// and applied live by sending SIGHUP to cc-inputd.
+// and applied live by sending SIGHUP to inputd.
 // ============================================================================
 
 #ifndef CC_SYSPREFS_POWER_PANE_H

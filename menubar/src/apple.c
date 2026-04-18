@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // apple.c — Apple logo button and Apple menu dropdown
 //
@@ -69,7 +66,7 @@ static const char *apple_items[18] = {
     "Software Update...",
     "---",
     "System Preferences...",
-    "Controller Settings...",  // Opens cc-sysprefs directly to the Controller pane
+    "Controller Settings...",  // Opens systemcontrol directly to the Controller pane
     "Dock",
     "Recent Items",
     "---",
@@ -226,7 +223,7 @@ void apple_init(MenuBar *mb)
     logo_selected = load_and_scale_png(path_selected, S(22), S(15));
 
     if (!logo_normal) {
-        fprintf(stderr, "cc-menubar: Apple logo not found at %s (using fallback)\n",
+        fprintf(stderr, "menubar: Apple logo not found at %s (using fallback)\n",
                 path_normal);
     }
 }
@@ -519,14 +516,14 @@ static void apple_execute(MenuBar *mb, int index)
         // Launch the CopyCatOS System Preferences app
         if (fork() == 0) {
             setsid();
-            execlp("cc-sysprefs", "cc-sysprefs", NULL);
+            execlp("systemcontrol", "systemcontrol", NULL);
             _exit(1);
         }
     } else if (strcmp(label, "Controller Settings...") == 0) {
         // Launch System Preferences directly to the Controller pane
         if (fork() == 0) {
             setsid();
-            execlp("cc-sysprefs", "cc-sysprefs", "--pane", "controller", NULL);
+            execlp("systemcontrol", "systemcontrol", "--pane", "controller", NULL);
             _exit(1);
         }
     } else if (strcmp(label, "Force Quit...") == 0) {
@@ -542,15 +539,15 @@ static void apple_execute(MenuBar *mb, int index)
         system("systemctl suspend");
     } else if (strcmp(label, "Game Mode...") == 0) {
         // Switch to Steam Big Picture via gamescope.
-        // game-mode.sh kills all CopyCatOS shell components (not cc-wm),
+        // game-mode.sh kills all CopyCatOS shell components (not moonrock),
         // launches gamescope+steam, then restores the desktop on exit.
-        // We fork + setsid so the script is fully detached — cc-menubar
+        // We fork + setsid so the script is fully detached — menubar
         // will be killed by the script moments later without crashing here.
         if (fork() == 0) {
             setsid();
             // Look for the script next to the binary, then fall back to PATH.
             // execlp searches PATH automatically if the name has no slash.
-            execlp("cc-game-mode", "cc-game-mode", NULL);
+            execlp("game-mode", "game-mode", NULL);
             // Fallback: try the scripts directory relative to $HOME
             const char *home = getenv("HOME");
             if (home) {
@@ -571,11 +568,11 @@ static void apple_execute(MenuBar *mb, int index)
         system("systemctl poweroff");
     } else if (strncmp(label, "Log Out", 7) == 0) {
         // Log out by killing the window manager, which triggers
-        // cc-session.sh's cleanup (kills all shell components).
+        // moonrock-session.sh's cleanup (kills all shell components).
         // This is how Snow Leopard does it — the WM exit triggers
         // the loginwindow to reappear.
         pid_t wm_pid = 0;
-        FILE *proc = popen("pgrep -x cc-wm", "r");
+        FILE *proc = popen("pgrep -x moonrock", "r");
         if (proc) {
             char buf[32];
             if (fgets(buf, sizeof(buf), proc)) {

@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ─── icons.c ───
 // Icon resolution, loading, and caching.
@@ -14,7 +11,7 @@
 //
 // Search order (for a given icon_name):
 //   1. Absolute path — load directly if icon_name starts with '/'.
-//   2. ~/.local/share/icons/AquaKDE-icons/{size}/apps/{name}.png
+//   2. ~/.local/share/icons/Aqua/{size}/apps/{name}.png
 //   3. /usr/share/icons/hicolor/{size}/apps/{name}.png
 //   4. /usr/share/pixmaps/{name}.png
 //   5. Also try .svg and .xpm extensions at each location.
@@ -375,11 +372,11 @@ cairo_surface_t *icon_lookup(const char *icon_name) {
     static const char *exts[] = { "png", "svg", "xpm" };
     static const int nexts = 3;
 
-    // ── 2. AquaKDE-icons theme ──
+    // ── 2. Aqua theme ──
     for (int si = 0; si < nsizes && !surface; si++) {
         for (int ei = 0; ei < nexts && !surface; ei++) {
             surface = try_path(
-                "%s/.local/share/icons/AquaKDE-icons/%dx%d/apps/%s.%s",
+                "%s/.local/share/icons/Aqua/%dx%d/apps/%s.%s",
                 home, sizes[si], sizes[si], icon_name, exts[ei]);
         }
     }

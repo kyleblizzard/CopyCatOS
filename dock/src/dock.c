@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // dock.c — Core dock state, initialization, event loop, and rendering
@@ -214,7 +211,7 @@ bool dock_init(DockState *state)
         }
         dock_config_from_icon_size(&state->cfg, icon_size);
         state->auto_hide = auto_hide;
-        fprintf(stderr, "[cc-dock] Config: icon_size=%d shelf=%d dock=%d spacing=%d auto_hide=%d\n",
+        fprintf(stderr, "[dock] Config: icon_size=%d shelf=%d dock=%d spacing=%d auto_hide=%d\n",
                 state->cfg.icon_size, state->cfg.shelf_height,
                 state->cfg.dock_height, state->cfg.icon_spacing, (int)auto_hide);
     }
@@ -366,7 +363,7 @@ int dock_hit_test(DockState *state, int mx, int my)
 }
 
 // Publish all icon screen positions on the root window as the X property
-// _CC_DOCK_ICON_POSITIONS. cc-wm reads this when minimizing a window so
+// _CC_DOCK_ICON_POSITIONS. moonrock reads this when minimizing a window so
 // the genie animation can aim at the real dock icon instead of a hardcoded
 // center-of-screen fallback.
 //
@@ -375,9 +372,9 @@ int dock_hit_test(DockState *state, int mx, int my)
 //   exec_base    — basename of exec_path (e.g. "konsole" from "/usr/bin/konsole")
 //   x, y         — screen-absolute center of the icon (integer pixels)
 //
-// cc-wm tries to match the window's WM_CLASS instance name against both
+// moonrock tries to match the window's WM_CLASS instance name against both
 // process_name and exec_base (case-insensitive). First match wins.
-// If no match is found, cc-wm falls back to the center of the dock.
+// If no match is found, moonrock falls back to the center of the dock.
 static void dock_publish_icon_positions(DockState *state)
 {
     // Build the property string into a stack buffer. With MAX_DOCK_ITEMS=32
@@ -570,7 +567,7 @@ void dock_paint(DockState *state)
     cairo_surface_flush(state->surface);
     XFlush(state->dpy);
 
-    // Publish current icon positions so cc-wm can aim the genie animation
+    // Publish current icon positions so moonrock can aim the genie animation
     // at the real icon center rather than a hardcoded screen-center fallback.
     // Called after every paint so the property always reflects the current
     // layout (icon order, dock position, auto-hide slide offset).
@@ -667,7 +664,7 @@ void dock_run(DockState *state)
                     state->hide_anim_start  = get_time();
                     state->hide_animating   = true;
                     state->hide_visible     = true;
-                    fprintf(stderr, "[cc-dock] auto-hide: sliding up\n");
+                    fprintf(stderr, "[dock] auto-hide: sliding up\n");
                 } else if (state->auto_hide && state->hide_visible) {
                     // Mouse re-entered while still shown — cancel any pending hide
                     state->hide_delay_timer = 0;
@@ -686,7 +683,7 @@ void dock_run(DockState *state)
                 // can move their mouse back without the dock flickering away.
                 if (state->auto_hide && state->hide_visible && !state->hide_animating) {
                     state->hide_delay_timer = get_time();
-                    fprintf(stderr, "[cc-dock] auto-hide: hide delay started\n");
+                    fprintf(stderr, "[dock] auto-hide: hide delay started\n");
                 }
 
                 magnify_update(state);
@@ -843,7 +840,7 @@ void dock_run(DockState *state)
                 state->hide_anim_start  = now;
                 state->hide_animating   = true;
                 state->hide_visible     = false;
-                fprintf(stderr, "[cc-dock] auto-hide: sliding down\n");
+                fprintf(stderr, "[dock] auto-hide: sliding down\n");
             }
         }
 
@@ -864,7 +861,7 @@ void dock_run(DockState *state)
                 // Only print when the count changes to avoid log spam
                 static int last_count = -1;
                 if (n_running != last_count) {
-                    fprintf(stderr, "[cc-dock] %d apps detected as running\n", n_running);
+                    fprintf(stderr, "[dock] %d apps detected as running\n", n_running);
                     last_count = n_running;
                 }
             }
@@ -897,7 +894,7 @@ void dock_run(DockState *state)
             extern volatile bool g_reload_config;
             if (g_reload_config) {
                 g_reload_config = false;
-                fprintf(stderr, "[cc-dock] Reloading config...\n");
+                fprintf(stderr, "[dock] Reloading config...\n");
 
                 // Re-read [dock] section from desktop.conf
                 int icon_size = DEFAULT_ICON_SIZE;
@@ -960,7 +957,7 @@ void dock_run(DockState *state)
                 // Update struts — auto-hide mode uses zero struts
                 set_struts(state);
 
-                fprintf(stderr, "[cc-dock] Resized: icon=%d shelf=%d dock=%d auto_hide=%d\n",
+                fprintf(stderr, "[dock] Resized: icon=%d shelf=%d dock=%d auto_hide=%d\n",
                         state->cfg.icon_size, state->cfg.shelf_height,
                         state->cfg.dock_height, (int)auto_hide);
                 needs_repaint = true;

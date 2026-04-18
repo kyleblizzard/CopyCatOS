@@ -1,7 +1,5 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 //
 // ============================================================================
 //  MoonRock Robust — production hardening for the MoonRock Compositor
@@ -243,7 +241,7 @@ void robust_enter_fallback_mode(Display *dpy, Window root)
     robust_log(LOG_WARN, "moonrock",
                "Fallback mode active. Windows render directly via X server.");
     robust_log(LOG_WARN, "moonrock",
-               "Restart cc-wm to attempt to restore compositing.");
+               "Restart moonrock to attempt to restore compositing.");
 }
 
 bool robust_is_fallback(void)
@@ -311,7 +309,7 @@ void robust_setup_hardware_cursor(Display *dpy)
 //  Helper: ensure a directory exists (create it if it doesn't)
 // ============================================================================
 //
-// Used by the session save/restore code to create ~/.config/cc-wm/ if it
+// Used by the session save/restore code to create ~/.config/moonrock/ if it
 // doesn't already exist. Works like "mkdir -p" but only one level deep.
 
 static bool ensure_directory(const char *dir_path)
@@ -336,7 +334,7 @@ static bool ensure_directory(const char *dir_path)
 // ============================================================================
 //
 // Returns a pointer to a static buffer containing the path
-// ~/.config/cc-wm/session.state. The buffer is reused on each call.
+// ~/.config/moonrock/session.state. The buffer is reused on each call.
 
 static const char *default_session_path(void)
 {
@@ -350,9 +348,9 @@ static const char *default_session_path(void)
         return NULL;
     }
 
-    // Build the full path: ~/.config/cc-wm/session.state
+    // Build the full path: ~/.config/moonrock/session.state
     snprintf(path_buf, sizeof(path_buf),
-             "%s/.config/cc-wm/session.state", home);
+             "%s/.config/moonrock/session.state", home);
 
     return path_buf;
 }
@@ -380,7 +378,7 @@ bool robust_save_session(CCWM *wm, const char *path)
     if (!path) path = default_session_path();
     MR_CHECK_NULL(path, false);
 
-    // Make sure the parent directory (~/.config/cc-wm/) exists.
+    // Make sure the parent directory (~/.config/moonrock/) exists.
     // We need to extract the directory portion of the path.
     char dir_buf[512];
     snprintf(dir_buf, sizeof(dir_buf), "%s", path);
@@ -397,7 +395,7 @@ bool robust_save_session(CCWM *wm, const char *path)
             ensure_directory(dir_buf);        // ~/.config
             *parent_slash = '/';
         }
-        ensure_directory(dir_buf);            // ~/.config/cc-wm
+        ensure_directory(dir_buf);            // ~/.config/moonrock
     }
 
     // Open the session file for writing. This overwrites any previous content

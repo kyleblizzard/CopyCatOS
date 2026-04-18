@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // icons.c — Desktop icon grid manager
 //
@@ -9,7 +6,7 @@
 // in ~/Desktop. It handles:
 //
 //   - Scanning ~/Desktop with opendir/readdir
-//   - Loading appropriate icons from the AquaKDE icon theme
+//   - Loading appropriate icons from the Aqua icon theme
 //   - Arranging icons in a grid from top-right, filling downward
 //   - Rendering icons with labels (white text, drop shadow)
 //   - Selection highlighting (blue rounded rectangle)
@@ -290,7 +287,7 @@ static cairo_surface_t *create_fallback_folder_icon(void)
 }
 
 // Try to load an icon from the theme search paths.
-// Looks in the AquaKDE icon theme first, then hicolor fallback.
+// Looks in the Aqua icon theme first, then hicolor fallback.
 static cairo_surface_t *load_theme_icon(const char *icon_name,
                                          const char *subdir)
 {
@@ -301,13 +298,13 @@ static cairo_surface_t *load_theme_icon(const char *icon_name,
     // 128px looks better than scaling up from 64), then 128x128, then 64x64.
     char path[1024];
     const char *search_dirs[] = {
-        "%s/.local/share/icons/AquaKDE-icons/256x256/%s/%s.png",
+        "%s/.local/share/icons/Aqua/256x256/%s/%s.png",
         "%s/.local/share/icons/hicolor/256x256/%s/%s.png",
         "/usr/share/icons/hicolor/256x256/%s/%s.png",
-        "%s/.local/share/icons/AquaKDE-icons/128x128/%s/%s.png",
+        "%s/.local/share/icons/Aqua/128x128/%s/%s.png",
         "%s/.local/share/icons/hicolor/128x128/%s/%s.png",
         "/usr/share/icons/hicolor/128x128/%s/%s.png",
-        "%s/.local/share/icons/AquaKDE-icons/64x64/%s/%s.png",
+        "%s/.local/share/icons/Aqua/64x64/%s/%s.png",
         "%s/.local/share/icons/hicolor/64x64/%s/%s.png",
         "/usr/share/icons/hicolor/64x64/%s/%s.png",
         NULL
@@ -768,7 +765,7 @@ void icons_handle_double_click(DesktopIcon *icon)
     if (pid == 0) {
         // Child process: exec xdg-open
         // setsid() detaches from our process group so the child
-        // survives if cc-desktop exits.
+        // survives if desktop exits.
         setsid();
         execlp("xdg-open", "xdg-open", icon->path, NULL);
         _exit(127);  // Only reached if exec fails

@@ -1,13 +1,10 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
-// main.c — Entry point for cc-input-session
+// main.c — Entry point for inputsession
 //
-// cc-input-session is a bridge between the X11 desktop environment and
-// cc-inputd (the CopyCatOS input daemon). It watches for active window
+// inputsession is a bridge between the X11 desktop environment and
+// inputd (the CopyCatOS input daemon). It watches for active window
 // changes in X11 and reports them to the daemon, so the daemon can
 // apply per-application input profiles. It also receives action
 // requests from the daemon (like "open Spotlight") and executes them.
@@ -16,7 +13,7 @@
 // lock file to prevent duplicate instances — if you try to start a
 // second one, it exits immediately.
 //
-// If cc-inputd is not running when we start, we exit gracefully with
+// If inputd is not running when we start, we exit gracefully with
 // a warning rather than crashing. The session can be started again
 // once the daemon is available.
 //
@@ -33,8 +30,8 @@
 
 // Lock file path — used to ensure only one instance runs at a time.
 // flock() is an advisory lock, meaning other programs can ignore it,
-// but all copies of cc-input-session will respect it.
-#define LOCK_FILE "/tmp/cc-input-session.lock"
+// but all copies of inputsession will respect it.
+#define LOCK_FILE "/tmp/inputsession.lock"
 
 // Global pointer to the session bridge, so signal handlers can access it.
 // Signal handlers can only use global/static variables because they can
@@ -71,7 +68,7 @@ static int acquire_lock(void)
 {
     int fd = open(LOCK_FILE, O_CREAT | O_RDWR, 0644);
     if (fd < 0) {
-        perror("[cc-input-session] open lock file");
+        perror("[inputsession] open lock file");
         return -1;
     }
 
@@ -90,12 +87,12 @@ int main(int argc, char *argv[])
     (void)argc;
     (void)argv;
 
-    fprintf(stderr, "[cc-input-session] starting\n");
+    fprintf(stderr, "[inputsession] starting\n");
 
     // --- Step 1: Ensure only one instance runs at a time ---
     int lock_fd = acquire_lock();
     if (lock_fd < 0) {
-        fprintf(stderr, "[cc-input-session] another instance is already running, exiting\n");
+        fprintf(stderr, "[inputsession] another instance is already running, exiting\n");
         return 0;  // Not an error — just means we're already covered
     }
 
@@ -121,10 +118,10 @@ int main(int argc, char *argv[])
     g_session = &sb;
 
     if (!session_init(&sb)) {
-        // If cc-inputd isn't running, this is expected — just log and exit cleanly.
-        // The user can start cc-inputd and then restart us.
-        fprintf(stderr, "[cc-input-session] initialization failed "
-                "(is cc-inputd running?), exiting\n");
+        // If inputd isn't running, this is expected — just log and exit cleanly.
+        // The user can start inputd and then restart us.
+        fprintf(stderr, "[inputsession] initialization failed "
+                "(is inputd running?), exiting\n");
 
         // Clean up any partial initialization
         session_shutdown(&sb);
@@ -145,6 +142,6 @@ int main(int argc, char *argv[])
     // Release the instance lock
     close(lock_fd);
 
-    fprintf(stderr, "[cc-input-session] exited cleanly\n");
+    fprintf(stderr, "[inputsession] exited cleanly\n");
     return 0;
 }

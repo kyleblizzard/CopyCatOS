@@ -1,4 +1,5 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 // CopyCatOS Window Manager — Asset loading
 // Loads real Snow Leopard PNG assets from ~/.local/share/aqua-widgets/
 
@@ -16,12 +17,12 @@ static cairo_surface_t *load_png(const char *path)
 {
     cairo_surface_t *s = cairo_image_surface_create_from_png(path);
     if (cairo_surface_status(s) != CAIRO_STATUS_SUCCESS) {
-        fprintf(stderr, "[cc-wm] Failed to load asset: %s (%s)\n",
+        fprintf(stderr, "[moonrock] Failed to load asset: %s (%s)\n",
                 path, cairo_status_to_string(cairo_surface_status(s)));
         cairo_surface_destroy(s);
         return NULL;
     }
-    fprintf(stderr, "[cc-wm] Loaded asset: %s (%dx%d)\n",
+    fprintf(stderr, "[moonrock] Loaded asset: %s (%dx%d)\n",
             path,
             cairo_image_surface_get_width(s),
             cairo_image_surface_get_height(s));
@@ -48,9 +49,9 @@ void assets_load(CCWM *wm)
     s_zoom = load_png(path);
 
     if (s_close && s_minimize && s_zoom) {
-        fprintf(stderr, "[cc-wm] All decoration assets loaded\n");
+        fprintf(stderr, "[moonrock] All decoration assets loaded\n");
     } else {
-        fprintf(stderr, "[cc-wm] WARNING: Some assets missing — using fallback rendering\n");
+        fprintf(stderr, "[moonrock] WARNING: Some assets missing — using fallback rendering\n");
     }
 }
 

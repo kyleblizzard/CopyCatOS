@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // config.c — Dock configuration persistence (load/save/defaults)
@@ -13,7 +10,7 @@
 //   type|name|exec_path|icon_name|process_name|separator_after
 //
 // Example:
-//   app|Finder|cc-finder|org.kde.dolphin|cc-finder|0
+//   app|Finder|fileviewer|org.kde.dolphin|fileviewer|0
 //   app|Brave|brave-browser|com.brave.Browser|brave|0
 //   folder|Downloads|~/Downloads|folder|downloads|0
 //
@@ -38,10 +35,10 @@
 #include <cairo/cairo.h>
 
 // ---------------------------------------------------------------------------
-// The config file lives at ~/.config/cc-dock/dock.conf
+// The config file lives at ~/.config/dock/dock.conf
 // We build this path at runtime using the HOME environment variable.
 // ---------------------------------------------------------------------------
-#define CONFIG_DIR_NAME   "cc-dock"
+#define CONFIG_DIR_NAME   "dock"
 #define CONFIG_FILE_NAME  "dock.conf"
 
 // Maximum length for a single line in the config file.
@@ -61,7 +58,7 @@ static bool ensure_config_dir_exists(void);
 //
 // This is the same search logic that was originally in dock.c. It checks
 // multiple icon theme directories in order of preference:
-// 1. AquaKDE custom theme (the project's own icon set)
+// 1. Aqua custom theme (the project's own icon set)
 // 2. hicolor theme (the freedesktop standard fallback)
 // 3. Other system themes (Breeze, Oxygen, Adwaita)
 // 4. pixmaps directory (legacy location)
@@ -100,10 +97,10 @@ static bool resolve_icon_path(const char *icon_name, char *out_path,
         return true;
     }
 
-    // Search 1: AquaKDE custom icon theme (project-specific icons)
+    // Search 1: Aqua custom icon theme (project-specific icons)
     for (int i = 0; i < size_count; i++) {
         snprintf(path, sizeof(path),
-                 "%s/.local/share/icons/AquaKDE-icons/%dx%d/apps/%s.png",
+                 "%s/.local/share/icons/Aqua/%dx%d/apps/%s.png",
                  home, sizes[i], sizes[i], icon_name);
         if (access(path, R_OK) == 0) {
             snprintf(out_path, out_size, "%s", path);
@@ -339,7 +336,7 @@ bool config_resolve_and_load_icon(DockItem *item, const char *icon_name)
 }
 
 // ---------------------------------------------------------------------------
-// config_load — Read dock configuration from ~/.config/cc-dock/dock.conf
+// config_load — Read dock configuration from ~/.config/dock/dock.conf
 //
 // The file format is one dock item per line, with fields separated by pipes:
 //   type|name|exec_path|icon_name|process_name|separator_after
@@ -496,7 +493,7 @@ bool config_load(DockState *state)
 // ---------------------------------------------------------------------------
 // config_save — Write the current dock items to the config file.
 //
-// This creates/overwrites ~/.config/cc-dock/dock.conf with one line per
+// This creates/overwrites ~/.config/dock/dock.conf with one line per
 // dock item, using the pipe-delimited format described above.
 //
 // Called after drag-and-drop reordering, adding/removing items, or any other
@@ -600,7 +597,7 @@ typedef struct {
 
 static const DefaultItemDef default_items[] = {
     // name               exec command       icon name (theme)             process name      sep?
-    {"Finder",              "cc-finder",    "org.kde.dolphin",            "cc-finder",    false},
+    {"Finder",              "fileviewer",    "org.kde.dolphin",            "fileviewer",    false},
     {"Brave",               "brave-browser",  "com.brave.Browser",          "brave",          false},
     {"Kate",                "kate",           "org.kde.kate",               "kate",           false},
     {"Terminal",            "konsole",        "utilities-terminal",         "konsole",        false},
@@ -610,7 +607,7 @@ static const DefaultItemDef default_items[] = {
     {"Inkscape",            "inkscape",       "org.inkscape.Inkscape",      "inkscape",       false},
     {"Kdenlive",            "kdenlive",       "kdenlive",                   "kdenlive",       false},
     {"System Preferences",  "systemsettings", "preferences-system",         "systemsettings", false},
-    {"Trash",               "cc-finder trash:/", "trashempty",              "trash",          false},
+    {"Trash",               "fileviewer trash:/", "trashempty",              "trash",          false},
 };
 
 #define DEFAULT_ITEM_COUNT (sizeof(default_items) / sizeof(default_items[0]))
@@ -673,7 +670,7 @@ void config_set_defaults(DockState *state)
 // ---------------------------------------------------------------------------
 // get_config_dir — Build the path to the config directory.
 //
-// The config directory is ~/.config/cc-dock/ following the XDG Base
+// The config directory is ~/.config/dock/ following the XDG Base
 // Directory Specification. We use the HOME environment variable to find
 // the user's home directory.
 //
@@ -721,10 +718,10 @@ static bool get_config_path(char *out, size_t out_size)
 }
 
 // ---------------------------------------------------------------------------
-// ensure_config_dir_exists — Create ~/.config/cc-dock/ if it doesn't exist.
+// ensure_config_dir_exists — Create ~/.config/dock/ if it doesn't exist.
 //
 // Uses mkdir() with mode 0755 (owner can read/write/execute, others can
-// read/execute). We create both ~/.config and ~/.config/cc-dock if needed.
+// read/execute). We create both ~/.config and ~/.config/dock if needed.
 //
 // Returns true if the directory exists (or was created), false on failure.
 // ---------------------------------------------------------------------------
@@ -756,7 +753,7 @@ static bool ensure_config_dir_exists(void)
         }
     }
 
-    // Now create the cc-dock config directory itself
+    // Now create the dock config directory itself
     if (mkdir(dir, 0755) != 0 && errno != EEXIST) {
         fprintf(stderr, "Error: Could not create %s: %s\n",
                 dir, strerror(errno));

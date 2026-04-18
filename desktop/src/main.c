@@ -1,18 +1,15 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// main.c — Entry point for the cc-desktop component
+// main.c — Entry point for the desktop component
 //
-// cc-desktop is the wallpaper surface and desktop icon grid for CopyCatOS.
+// desktop is the wallpaper surface and desktop icon grid for CopyCatOS.
 // It runs as a standalone process, separate from the window manager.
 // It creates a full-screen window with type _NET_WM_WINDOW_TYPE_DESKTOP,
 // which tells the WM to place it below all other windows and skip framing.
 //
 // Usage:
-//   cc-desktop                          # use default wallpaper
-//   cc-desktop --wallpaper /path/to.jpg # override wallpaper image
+//   desktop                          # use default wallpaper
+//   desktop --wallpaper /path/to.jpg # override wallpaper image
 
 #include "desktop.h"
 #include <stdio.h>
@@ -31,7 +28,7 @@ static Desktop *g_desktop = NULL;
 static void handle_signal(int sig)
 {
     (void)sig;  // Mark as intentionally unused
-    fprintf(stderr, "[cc-desktop] Received signal %d, shutting down\n", sig);
+    fprintf(stderr, "[desktop] Received signal %d, shutting down\n", sig);
     if (g_desktop) {
         g_desktop->running = false;
     }
@@ -47,7 +44,7 @@ int main(int argc, char *argv[])
         if (strcmp(argv[i], "--wallpaper") == 0 && i + 1 < argc) {
             wallpaper_path = argv[++i];
         } else {
-            fprintf(stderr, "Usage: cc-desktop [--wallpaper PATH]\n");
+            fprintf(stderr, "Usage: desktop [--wallpaper PATH]\n");
             return 1;
         }
     }
@@ -69,7 +66,7 @@ int main(int argc, char *argv[])
 
     // Initialize everything: X display, window, wallpaper, icons.
     if (!desktop_init(&desktop, wallpaper_path)) {
-        fprintf(stderr, "[cc-desktop] Failed to initialize\n");
+        fprintf(stderr, "[desktop] Failed to initialize\n");
         return 1;
     }
 
@@ -79,6 +76,6 @@ int main(int argc, char *argv[])
     // Clean up all resources before exiting.
     desktop_shutdown(&desktop);
 
-    fprintf(stderr, "[cc-desktop] Shutdown complete\n");
+    fprintf(stderr, "[desktop] Shutdown complete\n");
     return 0;
 }

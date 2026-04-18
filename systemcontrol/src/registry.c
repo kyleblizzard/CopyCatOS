@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // registry.c — Preference pane definitions
@@ -11,7 +8,7 @@
 // appear in NSPrefPaneGroups.xml. Each pane has an internal ID, display name,
 // category, and paths to its 32x32 and 128x128 icon PNGs.
 //
-// Icons are stored in the cc-sysprefs/assets/ directory and installed to
+// Icons are stored in the systemcontrol/assets/ directory and installed to
 // ~/.local/share/aqua-widgets/sysprefs/ at runtime.
 // ============================================================================
 
@@ -140,7 +137,7 @@ void registry_load_icons(SysPrefsState *state)
 
         p->icon_32 = cairo_image_surface_create_from_png(p->icon_path_32);
         if (cairo_surface_status(p->icon_32) != CAIRO_STATUS_SUCCESS) {
-            fprintf(stderr, "[cc-sysprefs] Failed to load icon: %s\n",
+            fprintf(stderr, "[systemcontrol] Failed to load icon: %s\n",
                     p->icon_path_32);
             cairo_surface_destroy(p->icon_32);
             p->icon_32 = NULL;
@@ -149,7 +146,7 @@ void registry_load_icons(SysPrefsState *state)
         }
     }
 
-    fprintf(stderr, "[cc-sysprefs] Loaded %d/%d pane icons\n",
+    fprintf(stderr, "[systemcontrol] Loaded %d/%d pane icons\n",
             loaded, state->pane_count);
 }
 
@@ -165,7 +162,7 @@ void registry_load_icon_128(SysPrefsState *state, int pane_index)
 
     p->icon_128 = cairo_image_surface_create_from_png(p->icon_path_128);
     if (cairo_surface_status(p->icon_128) != CAIRO_STATUS_SUCCESS) {
-        fprintf(stderr, "[cc-sysprefs] Failed to load 128px icon: %s\n",
+        fprintf(stderr, "[systemcontrol] Failed to load 128px icon: %s\n",
                 p->icon_path_128);
         cairo_surface_destroy(p->icon_128);
         p->icon_128 = NULL;

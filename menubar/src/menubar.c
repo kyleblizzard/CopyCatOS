@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // menubar.c — Core menu bar lifecycle and event handling
 //
@@ -95,7 +92,7 @@ bool menubar_init(MenuBar *mb)
 {
     // Read menubar height from shared config before anything else
     read_menubar_config();
-    fprintf(stderr, "[cc-menubar] Config: height=%d\n", menubar_height);
+    fprintf(stderr, "[menubar] Config: height=%d\n", menubar_height);
 
     // Install SIGHUP handler for live config reload.
     // Use sigaction instead of signal() — on Linux, signal() may reset
@@ -119,7 +116,7 @@ bool menubar_init(MenuBar *mb)
     // variable, which is the standard way to find the X server.
     mb->dpy = XOpenDisplay(NULL);
     if (!mb->dpy) {
-        fprintf(stderr, "cc-menubar: cannot open X display\n");
+        fprintf(stderr, "menubar: cannot open X display\n");
         return false;
     }
 
@@ -250,7 +247,7 @@ bool menubar_init(MenuBar *mb)
 
     mb->running = true;
 
-    fprintf(stdout, "cc-menubar: initialized (%dx%d screen)\n",
+    fprintf(stdout, "menubar: initialized (%dx%d screen)\n",
             mb->screen_w, mb->screen_h);
 
     return true;
@@ -604,7 +601,7 @@ void menubar_run(MenuBar *mb)
             read_menubar_config();
 
             if (menubar_height != old_height) {
-                fprintf(stderr, "[cc-menubar] Resizing: %d → %d\n",
+                fprintf(stderr, "[menubar] Resizing: %d → %d\n",
                         old_height, menubar_height);
 
                 // Resize the menubar window
@@ -734,5 +731,5 @@ void menubar_shutdown(MenuBar *mb)
         XCloseDisplay(mb->dpy);
     }
 
-    fprintf(stdout, "cc-menubar: shut down cleanly\n");
+    fprintf(stdout, "menubar: shut down cleanly\n");
 }

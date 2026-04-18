@@ -1,4 +1,5 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 // CopyCatOS Window Manager — EWMH/ICCCM compliance
 // Aggressive early implementation per review feedback — Qt apps
 // and shell components misbehave without _NET_FRAME_EXTENTS,
@@ -87,7 +88,7 @@ void ewmh_setup(CCWM *wm)
                     XA_WINDOW, 32, PropModeReplace,
                     (unsigned char *)&none, 1);
 
-    fprintf(stderr, "[cc-wm] EWMH properties set on root\n");
+    fprintf(stderr, "[moonrock] EWMH properties set on root\n");
 }
 
 void ewmh_update_client_list(CCWM *wm)
@@ -323,7 +324,7 @@ void wm_set_fullscreen(CCWM *wm, Client *c, bool enter)
         // Update the _NET_WM_STATE property on the client
         ewmh_set_wm_state(wm, c->client, wm->atom_net_wm_state_fullscreen, true);
 
-        fprintf(stderr, "[cc-wm] '%s' entered fullscreen %dx%d\n",
+        fprintf(stderr, "[moonrock] '%s' entered fullscreen %dx%d\n",
                 c->title, wm->root_w, wm->root_h);
     } else {
         // Exit fullscreen — restore saved geometry and decorations
@@ -356,7 +357,7 @@ void wm_set_fullscreen(CCWM *wm, Client *c, bool enter)
         // Redraw decorations now that they're visible again
         frame_redraw_decor(wm, c);
 
-        fprintf(stderr, "[cc-wm] '%s' exited fullscreen, restored %dx%d+%d+%d\n",
+        fprintf(stderr, "[moonrock] '%s' exited fullscreen, restored %dx%d+%d+%d\n",
                 c->title, c->w, c->h, c->x, c->y);
     }
 }
@@ -450,7 +451,7 @@ Client *ewmh_handle_pong(CCWM *wm, XClientMessageEvent *cm)
             XUndefineCursor(wm->dpy, c->frame);
         }
         if (getenv("AURA_DEBUG")) {
-            fprintf(stderr, "[cc-wm] '%s' is responsive again\n", c->title);
+            fprintf(stderr, "[moonrock] '%s' is responsive again\n", c->title);
         }
     }
 
@@ -478,7 +479,7 @@ void ewmh_check_ping_timeouts(CCWM *wm)
                 XDefineCursor(wm->dpy, c->frame, (Cursor)wm->beach_ball_cursor);
             }
 
-            fprintf(stderr, "[cc-wm] '%s' is unresponsive — beach ball!\n",
+            fprintf(stderr, "[moonrock] '%s' is unresponsive — beach ball!\n",
                     c->title);
         }
     }

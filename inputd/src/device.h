@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
 // device.h — Physical input device discovery and management
@@ -10,7 +7,7 @@
 // monitor for hotplug events (controllers plugged in / unplugged while
 // the daemon is running). Each discovered device is opened via evdev
 // and optionally "grabbed" (EVIOCGRAB) so that its raw events are
-// consumed exclusively by cc-inputd instead of being seen by X11.
+// consumed exclusively by inputd instead of being seen by X11.
 //
 
 #ifndef DEVICE_H
@@ -133,7 +130,7 @@ void device_shutdown(DeviceManager *dm);
 int device_activate_gamepad_mode(DeviceManager *dm);
 
 // device_restore_fps_mode — Send the HID command to switch back to FPS/Windows
-// mode. Called during shutdown so the controller is usable without cc-inputd.
+// mode. Called during shutdown so the controller is usable without inputd.
 void device_restore_fps_mode(DeviceManager *dm);
 
 // device_init_hid_takeover — Set up HID takeover mode for desktop use.

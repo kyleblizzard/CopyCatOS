@@ -9,7 +9,7 @@
 # Dependencies: Xlib (windowing), Cairo (2D rendering), Pango (text layout),
 #               libpng (PNG asset loading)
 
-project('cc-menubar', 'c',
+project('menubar', 'c',
   version: '0.1.0',
   default_options: ['c_std=c11', 'warning_level=2'],
 )
@@ -45,7 +45,7 @@ sources = [
   'src/apple.c',
 ]
 
-executable('cc-menubar',
+executable('menubar',
   sources,
   dependencies: [x11_dep, cairo_dep, cairo_xlib_dep, pangocairo_dep, libpng_dep, math_dep],
   install: true,

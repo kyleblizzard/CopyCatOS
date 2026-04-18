@@ -1,21 +1,18 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // panes/controller.c — Controller preferences pane (3-tab interface)
 // ============================================================================
 //
-// Full gamepad configuration UI with three tabs matching the cc-inputd
+// Full gamepad configuration UI with three tabs matching the inputd
 // operating modes:
 //
 //   1. Desktop Mode  — button mappings, stick tuning, scroll, triggers
 //   2. Desktop Gaming — passthrough toggle, per-game override list
 //   3. Steam Mode    — "Enter Steam Mode" launcher
 //
-// Uses config_editor from cc-inputmap to read/write ~/.config/copycatos/input.conf
-// and signals cc-inputd via SIGHUP for live config reload.
+// Uses config_editor from inputmap to read/write ~/.config/copycatos/input.conf
+// and signals inputd via SIGHUP for live config reload.
 //
 // Tab bar follows the Snow Leopard NSSegmentedControl style from HIG Chapter 15.
 // ============================================================================
@@ -23,7 +20,7 @@
 #include "controller.h"
 #include "../registry.h"
 
-// config_editor and scanner are compiled from cc-inputmap sources
+// config_editor and scanner are compiled from inputmap sources
 #include "config_editor.h"
 #include "scanner.h"
 
@@ -130,7 +127,7 @@ static void load_config(void)
 
     // Scroll speed is stored in a [scroll] section that config_editor
     // doesn't manage yet — read it ourselves for now. Default 0.15.
-    // TODO: add scroll_speed to config_editor API in cc-inputmap
+    // TODO: add scroll_speed to config_editor API in inputmap
     const char *home = getenv("HOME");
     if (home) {
         char path[512];
@@ -163,7 +160,7 @@ static void load_config(void)
     }
 }
 
-// Save current values back to input.conf and signal cc-inputd to reload.
+// Save current values back to input.conf and signal inputd to reload.
 static void save_config(void)
 {
     if (!editor) return;
@@ -229,7 +226,7 @@ static void save_config(void)
         }
     }
 
-    // Tell cc-inputd to reload config
+    // Tell inputd to reload config
     config_editor_signal_daemon();
 }
 
@@ -740,7 +737,7 @@ static void paint_desktop_mode(cairo_t *cr, double base_y)
             }
         }
     } else {
-        // Show hardcoded defaults (same as cc-inputd's built-in mappings)
+        // Show hardcoded defaults (same as inputd's built-in mappings)
         draw_info_label(cr, LABEL_X + 20, y,
             "A Button         \xe2\x86\x92  Enter");
         y += 18;
@@ -1064,7 +1061,7 @@ bool controller_pane_click(SysPrefsState *state, int x, int y)
         if (x >= LABEL_X && x <= LABEL_X + 250 &&
             y >= cb_y - 2 && y <= cb_y + 18) {
             gaming_mode_enabled = !gaming_mode_enabled;
-            // TODO: send mode switch command to cc-inputd
+            // TODO: send mode switch command to inputd
             return true;
         }
         break;
@@ -1075,15 +1072,15 @@ bool controller_pane_click(SysPrefsState *state, int x, int y)
         double btn_x = LABEL_X + TAB_TOTAL_W / 2 - 110;
         if (x >= btn_x && x <= btn_x + 220 &&
             y >= steam_btn_y && y <= steam_btn_y + 36) {
-            // Launch cc-game-mode (gamescope + Steam Big Picture)
+            // Launch game-mode (gamescope + Steam Big Picture)
             // fork+exec so we don't block the UI.
             // Ignore SIGCHLD so the child doesn't become a zombie.
             signal(SIGCHLD, SIG_IGN);
-            fprintf(stderr, "[cc-sysprefs] Launching Steam Mode...\n");
+            fprintf(stderr, "[systemcontrol] Launching Steam Mode...\n");
             pid_t pid = fork();
             if (pid == 0) {
-                execlp("cc-game-mode", "cc-game-mode", NULL);
-                // If cc-game-mode isn't installed, try gamescope directly
+                execlp("game-mode", "game-mode", NULL);
+                // If game-mode isn't installed, try gamescope directly
                 execlp("gamescope", "gamescope", "-f", "--",
                        "steam", "-gamepadui", NULL);
                 _exit(1);

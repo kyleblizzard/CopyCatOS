@@ -1,13 +1,10 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // inputd.c — Core daemon event loop
 // ============================================================================
 //
-// This is the heart of cc-inputd. It sets up all subsystems, then enters
+// This is the heart of inputd. It sets up all subsystems, then enters
 // a single epoll-based event loop that handles:
 //
 //   - Reading raw events from physical gamepad devices (via evdev)
@@ -185,7 +182,7 @@ static void apply_config(InputDaemon *daemon)
 static bool game_mode_is_active(void)
 {
     // Uses /tmp/ instead of /run/copycatos/ because RuntimeDirectory is
-    // cleaned on service restart — that would lose the marker if cc-inputd
+    // cleaned on service restart — that would lose the marker if inputd
     // crashes or gets restarted while in game mode (gamescope still running).
     // /tmp/ survives service restarts. game-mode.sh creates and removes this file.
     return access("/tmp/copycatos-gamemode.active", F_OK) == 0;
@@ -194,7 +191,7 @@ static bool game_mode_is_active(void)
 // ============================================================================
 //  Helper: Adjust volume via PipeWire (wpctl) as the session user
 // ============================================================================
-// cc-inputd runs as root, but PipeWire runs as the logged-in user (UID 1000).
+// inputd runs as root, but PipeWire runs as the logged-in user (UID 1000).
 // Root can't connect to the user's PipeWire socket directly — wpctl just
 // fails silently with "Could not connect to PipeWire."
 //
@@ -294,13 +291,13 @@ static void execute_power_action(InputDaemon *daemon, PowerAction action)
 //  Helper: Send a CopyCatOS action via IPC
 // ============================================================================
 // Called when the mapper produces a CC_ACTION_* result (e.g. open Spotlight).
-// These are desktop-level actions that cc-wm needs to handle.
+// These are desktop-level actions that moonrock needs to handle.
 // ============================================================================
 
 static void send_copycatos_action(InputDaemon *daemon, int cc_action)
 {
     // Map the CcAction enum value to a string for the IPC message.
-    // The session bridge and cc-wm use string-based action names for
+    // The session bridge and moonrock use string-based action names for
     // flexibility — new actions can be added without changing the protocol.
     const char *action_names[] = {
         "spotlight",           // CC_ACTION_SPOTLIGHT

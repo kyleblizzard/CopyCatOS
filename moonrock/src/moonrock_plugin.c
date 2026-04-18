@@ -1,7 +1,5 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 //
 // ============================================================================
 //  MoonRock Plugin & Theme Engine — implementation
@@ -254,10 +252,10 @@ static bool parse_rgb(const char *value, float out[3])
 // a symlink in the plugin directory points somewhere dangerous.
 //
 // Allowed directories:
-//   ~/.config/cc-wm/          — user configuration files
-//   ~/.local/share/cc-wm/plugins/  — user-installed plugins
-//   /usr/share/cc-wm/         — system-installed plugins and themes
-//   /usr/local/share/cc-wm/   — locally-compiled plugins and themes
+//   ~/.config/moonrock/          — user configuration files
+//   ~/.local/share/moonrock/plugins/  — user-installed plugins
+//   /usr/share/moonrock/         — system-installed plugins and themes
+//   /usr/local/share/moonrock/   — locally-compiled plugins and themes
 //
 // We also reject world-writable files (chmod o+w) because any user on the
 // system could have tampered with them. For .so files, we additionally verify
@@ -276,17 +274,17 @@ static bool validate_path(const char *path, bool allow_so)
     // Build the user-specific allowed directory paths from $HOME
     const char *home = getenv("HOME");
     char user_config[PATH_MAX], user_plugins[PATH_MAX];
-    snprintf(user_config, sizeof(user_config), "%s/.config/cc-wm/",
+    snprintf(user_config, sizeof(user_config), "%s/.config/moonrock/",
              home ? home : "/tmp");
-    snprintf(user_plugins, sizeof(user_plugins), "%s/.local/share/cc-wm/plugins/",
+    snprintf(user_plugins, sizeof(user_plugins), "%s/.local/share/moonrock/plugins/",
              home ? home : "/tmp");
 
     // Check whether the resolved path starts with any of the allowed prefixes.
     // strncmp with the prefix length acts as a "starts with" check.
     bool allowed = (strncmp(resolved, user_config, strlen(user_config)) == 0 ||
                     strncmp(resolved, user_plugins, strlen(user_plugins)) == 0 ||
-                    strncmp(resolved, "/usr/share/cc-wm/", 19) == 0 ||
-                    strncmp(resolved, "/usr/local/share/cc-wm/", 25) == 0);
+                    strncmp(resolved, "/usr/share/moonrock/", 19) == 0 ||
+                    strncmp(resolved, "/usr/local/share/moonrock/", 25) == 0);
 
     if (!allowed) {
         fprintf(stderr, "[plugin] SECURITY: path '%s' resolves to '%s' "
@@ -997,12 +995,12 @@ bool plugin_save_config(const char *path)
             }
             const char *home = getenv("HOME");
             char uc[PATH_MAX], up[PATH_MAX];
-            snprintf(uc, sizeof(uc), "%s/.config/cc-wm", home ? home : "/tmp");
-            snprintf(up, sizeof(up), "%s/.local/share/cc-wm/plugins", home ? home : "/tmp");
+            snprintf(uc, sizeof(uc), "%s/.config/moonrock", home ? home : "/tmp");
+            snprintf(up, sizeof(up), "%s/.local/share/moonrock/plugins", home ? home : "/tmp");
             bool ok = (strncmp(resolved_parent, uc, strlen(uc)) == 0 ||
                        strncmp(resolved_parent, up, strlen(up)) == 0 ||
-                       strncmp(resolved_parent, "/usr/share/cc-wm", 18) == 0 ||
-                       strncmp(resolved_parent, "/usr/local/share/cc-wm", 24) == 0);
+                       strncmp(resolved_parent, "/usr/share/moonrock", 18) == 0 ||
+                       strncmp(resolved_parent, "/usr/local/share/moonrock", 24) == 0);
             if (!ok) {
                 fprintf(stderr, "[plugin] SECURITY: save path '%s' is outside "
                         "allowed directories\n", path);

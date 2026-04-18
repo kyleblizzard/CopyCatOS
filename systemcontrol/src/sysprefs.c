@@ -1,13 +1,10 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // sysprefs.c — Core window management and event loop
 // ============================================================================
 //
-// Creates the System Preferences window as a normal managed window (cc-wm
+// Creates the System Preferences window as a normal managed window (moonrock
 // provides the title bar, traffic lights, and shadow). This module handles:
 //   - X11 window creation with ARGB visual
 //   - Cairo surface setup
@@ -65,7 +62,7 @@ bool sysprefs_init(SysPrefsState *state)
     // Open connection to the X server
     state->dpy = XOpenDisplay(NULL);
     if (!state->dpy) {
-        fprintf(stderr, "[cc-sysprefs] Cannot open X display\n");
+        fprintf(stderr, "[systemcontrol] Cannot open X display\n");
         return false;
     }
 
@@ -79,7 +76,7 @@ bool sysprefs_init(SysPrefsState *state)
     state->win_h = SYSPREFS_WIN_H;
 
     // Use the default visual — System Preferences is a regular opaque window.
-    // Only shell components like cc-dock/cc-spotlight need ARGB for transparency.
+    // Only shell components like dock/searchsystem need ARGB for transparency.
     state->visual = DefaultVisual(state->dpy, state->screen);
     state->colormap = DefaultColormap(state->dpy, state->screen);
     int depth = DefaultDepth(state->dpy, state->screen);
@@ -115,7 +112,7 @@ bool sysprefs_init(SysPrefsState *state)
 
     // WM_CLASS — used for taskbar grouping and icon lookup
     XClassHint class_hint;
-    class_hint.res_name = "cc-sysprefs";
+    class_hint.res_name = "systemcontrol";
     class_hint.res_class = "System Preferences";
     XSetClassHint(state->dpy, state->win, &class_hint);
 
@@ -160,7 +157,7 @@ bool sysprefs_init(SysPrefsState *state)
     XMapWindow(state->dpy, state->win);
     XFlush(state->dpy);
 
-    fprintf(stderr, "[cc-sysprefs] Window created: %dx%d at (%d, %d)\n",
+    fprintf(stderr, "[systemcontrol] Window created: %dx%d at (%d, %d)\n",
             state->win_w, state->win_h, win_x, win_y);
 
     return true;
@@ -393,5 +390,5 @@ void sysprefs_cleanup(SysPrefsState *state)
         XCloseDisplay(state->dpy);
     }
 
-    fprintf(stderr, "[cc-sysprefs] Resources cleaned up\n");
+    fprintf(stderr, "[systemcontrol] Resources cleaned up\n");
 }

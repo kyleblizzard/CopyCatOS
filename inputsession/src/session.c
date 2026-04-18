@@ -1,26 +1,23 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
 // session.c — Main session bridge implementation
 //
-// This is the core of cc-input-session. It manages two connections
+// This is the core of inputsession. It manages two connections
 // simultaneously:
 //
 //   1. X11 display — to watch for active window changes
-//   2. Unix socket — to communicate with cc-inputd
+//   2. Unix socket — to communicate with inputd
 //
 // The main loop uses select() to wait on both file descriptors at
 // once, so we can respond to either X11 events or IPC messages
 // without blocking on one and missing the other.
 //
 // When the active window changes (detected via X11 PropertyNotify),
-// we read the new window's WM_CLASS and send it to cc-inputd so
+// we read the new window's WM_CLASS and send it to inputd so
 // the daemon can apply the right input profile.
 //
-// When cc-inputd sends us a COPYCATOS_ACTION message, we dispatch
+// When inputd sends us a COPYCATOS_ACTION message, we dispatch
 // it to the actions module to perform the requested operation.
 //
 
@@ -46,7 +43,7 @@
 
 // --- IPC helpers ---
 
-// ipc_send — Send an IPC message to cc-inputd.
+// ipc_send — Send an IPC message to inputd.
 //
 // The wire format is:
 //   [type: 1 byte] [length: 2 bytes big-endian] [payload: length bytes]
@@ -76,7 +73,7 @@ static bool ipc_send(int fd, uint8_t type, const void *payload, uint16_t len)
     return true;
 }
 
-// ipc_recv — Read one IPC message from cc-inputd.
+// ipc_recv — Read one IPC message from inputd.
 //
 // Reads the 3-byte header, then reads the payload into the provided buffer.
 // Sets *out_type to the message type and returns the payload length,
@@ -100,7 +97,7 @@ static int ipc_recv(int fd, uint8_t *out_type, void *buf, int buf_size)
 
     // If the payload is bigger than our buffer, something is wrong
     if (len > (uint16_t)buf_size) {
-        fprintf(stderr, "[cc-input-session] message too large: %u bytes\n", len);
+        fprintf(stderr, "[inputsession] message too large: %u bytes\n", len);
         return -1;
     }
 
@@ -115,7 +112,7 @@ static int ipc_recv(int fd, uint8_t *out_type, void *buf, int buf_size)
 
 // --- Socket connection ---
 
-// connect_to_daemon — Attempt to connect to cc-inputd's Unix socket.
+// connect_to_daemon — Attempt to connect to inputd's Unix socket.
 //
 // Unix domain sockets are like network sockets but for local-only
 // communication. They use file paths instead of IP addresses.
@@ -126,7 +123,7 @@ static int connect_to_daemon(void)
     // Create a Unix stream socket
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0) {
-        perror("[cc-input-session] socket");
+        perror("[inputsession] socket");
         return -1;
     }
 
@@ -147,7 +144,7 @@ static int connect_to_daemon(void)
 
 // perform_handshake — Send HELLO and wait for HELLO_ACK.
 //
-// The HELLO message tells cc-inputd which X display we're managing.
+// The HELLO message tells inputd which X display we're managing.
 // The daemon responds with HELLO_ACK to confirm the connection.
 // We give it 2 seconds to respond before giving up.
 //
@@ -164,11 +161,11 @@ static bool perform_handshake(int fd)
 
     // Send the HELLO message
     if (!ipc_send(fd, MSG_HELLO, payload, (uint16_t)strlen(payload))) {
-        fprintf(stderr, "[cc-input-session] failed to send HELLO\n");
+        fprintf(stderr, "[inputsession] failed to send HELLO\n");
         return false;
     }
 
-    fprintf(stderr, "[cc-input-session] sent HELLO (%s)\n", payload);
+    fprintf(stderr, "[inputsession] sent HELLO (%s)\n", payload);
 
     // Wait for HELLO_ACK with a 2-second timeout using select()
     //
@@ -184,7 +181,7 @@ static bool perform_handshake(int fd)
 
     int ret = select(fd + 1, &fds, NULL, NULL, &tv);
     if (ret <= 0) {
-        fprintf(stderr, "[cc-input-session] timeout waiting for HELLO_ACK\n");
+        fprintf(stderr, "[inputsession] timeout waiting for HELLO_ACK\n");
         return false;
     }
 
@@ -194,12 +191,12 @@ static bool perform_handshake(int fd)
     int len = ipc_recv(fd, &msg_type, buf, sizeof(buf) - 1);
 
     if (len < 0 || msg_type != MSG_HELLO_ACK) {
-        fprintf(stderr, "[cc-input-session] expected HELLO_ACK (0x%02x), got 0x%02x\n",
+        fprintf(stderr, "[inputsession] expected HELLO_ACK (0x%02x), got 0x%02x\n",
                 MSG_HELLO_ACK, msg_type);
         return false;
     }
 
-    fprintf(stderr, "[cc-input-session] received HELLO_ACK, connected!\n");
+    fprintf(stderr, "[inputsession] received HELLO_ACK, connected!\n");
     return true;
 }
 
@@ -210,9 +207,9 @@ static bool perform_handshake(int fd)
 // This does three things in order:
 //   1. Opens the X11 display connection
 //   2. Interns the atoms we need (basically caching string-to-ID lookups)
-//   3. Connects to cc-inputd and performs the handshake
+//   3. Connects to inputd and performs the handshake
 //
-// If cc-inputd isn't running, we'll fail gracefully — the caller (main.c)
+// If inputd isn't running, we'll fail gracefully — the caller (main.c)
 // handles this by exiting cleanly rather than crashing.
 bool session_init(SessionBridge *sb)
 {
@@ -226,7 +223,7 @@ bool session_init(SessionBridge *sb)
     // "use the DISPLAY environment variable" which is usually ":0".
     sb->dpy = XOpenDisplay(NULL);
     if (!sb->dpy) {
-        fprintf(stderr, "[cc-input-session] cannot open X display\n");
+        fprintf(stderr, "[inputsession] cannot open X display\n");
         return false;
     }
 
@@ -248,12 +245,12 @@ bool session_init(SessionBridge *sb)
     // focus changes, and we get a PropertyNotify event.
     XSelectInput(sb->dpy, sb->root, PropertyChangeMask);
 
-    fprintf(stderr, "[cc-input-session] X11 display opened (screen %d)\n", sb->screen);
+    fprintf(stderr, "[inputsession] X11 display opened (screen %d)\n", sb->screen);
 
-    // --- Step 3: Connect to cc-inputd ---
+    // --- Step 3: Connect to inputd ---
     sb->sock_fd = connect_to_daemon();
     if (sb->sock_fd < 0) {
-        fprintf(stderr, "[cc-input-session] cc-inputd not available at %s\n",
+        fprintf(stderr, "[inputsession] inputd not available at %s\n",
                 INPUTD_SOCK_PATH);
         return false;
     }
@@ -273,7 +270,7 @@ bool session_init(SessionBridge *sb)
 
 // handle_active_window_change — Called when _NET_ACTIVE_WINDOW changes.
 //
-// Reads the new active window's WM_CLASS and sends it to cc-inputd
+// Reads the new active window's WM_CLASS and sends it to inputd
 // so the daemon can switch input profiles if needed.
 static void handle_active_window_change(SessionBridge *sb)
 {
@@ -293,7 +290,7 @@ static void handle_active_window_change(SessionBridge *sb)
     }
 
     // Only send an update if the WM_CLASS actually changed.
-    // This avoids flooding cc-inputd with duplicate messages when
+    // This avoids flooding inputd with duplicate messages when
     // the user clicks around within the same application.
     if (strcmp(instance, sb->current_wm_class) == 0 &&
         strcmp(class_name, sb->current_wm_class_name) == 0) {
@@ -304,7 +301,7 @@ static void handle_active_window_change(SessionBridge *sb)
     strncpy(sb->current_wm_class, instance, sizeof(sb->current_wm_class) - 1);
     strncpy(sb->current_wm_class_name, class_name, sizeof(sb->current_wm_class_name) - 1);
 
-    fprintf(stderr, "[cc-input-session] active window: %s / %s\n", instance, class_name);
+    fprintf(stderr, "[inputsession] active window: %s / %s\n", instance, class_name);
 
     // Build the ACTIVE_WINDOW payload: "instance\0class_name"
     // The two strings are separated by a null byte, which is the
@@ -321,16 +318,16 @@ static void handle_active_window_change(SessionBridge *sb)
     payload[inst_len] = '\0';  // Null separator between the two strings
     memcpy(payload + inst_len + 1, class_name, cls_len);
 
-    // Send to cc-inputd
+    // Send to inputd
     if (!ipc_send(sb->sock_fd, MSG_ACTIVE_WINDOW, payload, (uint16_t)total)) {
-        fprintf(stderr, "[cc-input-session] failed to send ACTIVE_WINDOW, disconnecting\n");
+        fprintf(stderr, "[inputsession] failed to send ACTIVE_WINDOW, disconnecting\n");
         close(sb->sock_fd);
         sb->sock_fd = -1;
         sb->connected = false;
     }
 }
 
-// handle_ipc_message — Process an incoming message from cc-inputd.
+// handle_ipc_message — Process an incoming message from inputd.
 //
 // Currently the only message we expect from the daemon is COPYCATOS_ACTION,
 // which tells us to perform a desktop action like opening Spotlight.
@@ -342,7 +339,7 @@ static void handle_ipc_message(SessionBridge *sb)
     int len = ipc_recv(sb->sock_fd, &msg_type, buf, sizeof(buf) - 1);
     if (len < 0) {
         // Connection lost — the daemon probably shut down or crashed
-        fprintf(stderr, "[cc-input-session] lost connection to cc-inputd\n");
+        fprintf(stderr, "[inputsession] lost connection to inputd\n");
         close(sb->sock_fd);
         sb->sock_fd = -1;
         sb->connected = false;
@@ -356,17 +353,17 @@ static void handle_ipc_message(SessionBridge *sb)
         case MSG_COPYCATOS_ACTION:
             // The daemon wants us to perform a desktop action.
             // The payload is the action name as a string.
-            fprintf(stderr, "[cc-input-session] received action: '%s'\n", buf);
+            fprintf(stderr, "[inputsession] received action: '%s'\n", buf);
             actions_dispatch(buf, sb->dpy, sb->root);
             break;
 
         default:
-            fprintf(stderr, "[cc-input-session] unknown message type: 0x%02x\n", msg_type);
+            fprintf(stderr, "[inputsession] unknown message type: 0x%02x\n", msg_type);
             break;
     }
 }
 
-// try_reconnect — Attempt to reconnect to cc-inputd after a disconnect.
+// try_reconnect — Attempt to reconnect to inputd after a disconnect.
 //
 // Returns true if reconnection succeeded, false otherwise.
 // The caller should wait between attempts to avoid hammering the socket.
@@ -382,7 +379,7 @@ static bool try_reconnect(SessionBridge *sb)
     }
 
     sb->connected = true;
-    fprintf(stderr, "[cc-input-session] reconnected to cc-inputd\n");
+    fprintf(stderr, "[inputsession] reconnected to inputd\n");
 
     // Re-send the current active window so the daemon is up to date
     // (clear cached class to force a fresh send)
@@ -395,16 +392,16 @@ static bool try_reconnect(SessionBridge *sb)
 
 // session_run — Main event loop.
 //
-// This is the heart of cc-input-session. It uses select() to wait on
+// This is the heart of inputsession. It uses select() to wait on
 // two file descriptors simultaneously:
 //
 //   1. The X11 connection fd — for PropertyNotify events (active window changes)
-//   2. The cc-inputd socket fd — for incoming IPC messages (action requests)
+//   2. The inputd socket fd — for incoming IPC messages (action requests)
 //
 // select() blocks until at least one of these has data ready to read,
 // then we handle whichever events are available.
 //
-// If we lose the connection to cc-inputd, we keep running and try to
+// If we lose the connection to inputd, we keep running and try to
 // reconnect every 5 seconds. X11 event processing continues regardless.
 void session_run(SessionBridge *sb)
 {
@@ -416,7 +413,7 @@ void session_run(SessionBridge *sb)
     // Track when we last tried to reconnect (to enforce the 5-second interval)
     time_t last_reconnect_attempt = 0;
 
-    fprintf(stderr, "[cc-input-session] entering main loop\n");
+    fprintf(stderr, "[inputsession] entering main loop\n");
 
     while (sb->running) {
         // --- Build the set of file descriptors to watch ---
@@ -444,7 +441,7 @@ void session_run(SessionBridge *sb)
         // select() returns -1 on error (usually EINTR from a signal)
         if (ret < 0) {
             if (errno == EINTR) continue;  // Signal interrupted us, just loop again
-            perror("[cc-input-session] select");
+            perror("[inputsession] select");
             break;
         }
 
@@ -466,7 +463,7 @@ void session_run(SessionBridge *sb)
             }
         }
 
-        // --- Handle IPC messages from cc-inputd ---
+        // --- Handle IPC messages from inputd ---
         if (sb->connected && sb->sock_fd >= 0 && FD_ISSET(sb->sock_fd, &read_fds)) {
             handle_ipc_message(sb);
         }
@@ -479,13 +476,13 @@ void session_run(SessionBridge *sb)
             time_t now = time(NULL);
             if (now - last_reconnect_attempt >= 5) {
                 last_reconnect_attempt = now;
-                fprintf(stderr, "[cc-input-session] attempting reconnect...\n");
+                fprintf(stderr, "[inputsession] attempting reconnect...\n");
                 try_reconnect(sb);
             }
         }
     }
 
-    fprintf(stderr, "[cc-input-session] main loop exited\n");
+    fprintf(stderr, "[inputsession] main loop exited\n");
 }
 
 // session_shutdown — Clean up all resources.
@@ -510,5 +507,5 @@ void session_shutdown(SessionBridge *sb)
     sb->connected = false;
     sb->running = false;
 
-    fprintf(stderr, "[cc-input-session] shutdown complete\n");
+    fprintf(stderr, "[inputsession] shutdown complete\n");
 }

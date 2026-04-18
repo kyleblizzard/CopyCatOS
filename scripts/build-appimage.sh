@@ -1,8 +1,6 @@
 #!/bin/bash
-# Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-# This code is publicly visible for portfolio purposes only.
-# Unauthorized copying, forking, or distribution of this file,
-# via any medium, is strictly prohibited.
+# CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 #
 # build-appimage.sh — Package a Qt6 application as an AppImage with CopyCatOS
 # theming baked in (AquaStyle plugin, Lucida Grande font, Aqua widget assets).
@@ -173,15 +171,15 @@ else
     echo -e "${YELLOW}[WARN]${NC} Aqua control assets not found at $CONTROLS_SRC"
 fi
 
-# ── Step 7: Copy AquaKDE icon theme ────────────────────────────────────
+# ── Step 7: Copy Aqua icon theme ────────────────────────────────────
 # The icon theme styled to match Snow Leopard's Aqua look.
 
-ICONS_SRC="$PROJECT_ROOT/icons/AquaKDE-icons"
+ICONS_SRC="$PROJECT_ROOT/icons/Aqua"
 if [ -d "$ICONS_SRC" ]; then
-    echo -e "${GREEN}[COPY]${NC} AquaKDE icon theme"
+    echo -e "${GREEN}[COPY]${NC} Aqua icon theme"
     cp -r "$ICONS_SRC" "$APPDIR/usr/share/icons/"
 else
-    echo -e "${YELLOW}[WARN]${NC} AquaKDE-icons not found at $ICONS_SRC"
+    echo -e "${YELLOW}[WARN]${NC} Aqua not found at $ICONS_SRC"
 fi
 
 # ── Step 8: Generate minimal fonts.conf ─────────────────────────────────

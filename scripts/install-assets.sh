@@ -1,8 +1,5 @@
 #!/bin/bash
-# Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-# This code is publicly visible for portfolio purposes only.
-# Unauthorized copying, forking, or distribution of this file,
-# via any medium, is strictly prohibited.
+# CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 # install-assets.sh
 # Deploys CopyCatOS Snow Leopard assets from the source repository into the
@@ -340,8 +337,8 @@ fi
 # ---------------------------------------------------------------------------
 header "System Preferences icons"
 
-SYSPREFS_ICONS="$ASSET_SRC/cc-sysprefs/assets/icons"
-SYSPREFS_ICONS_128="$ASSET_SRC/cc-sysprefs/assets/icons-128"
+SYSPREFS_ICONS="$ASSET_SRC/systemcontrol/assets/icons"
+SYSPREFS_ICONS_128="$ASSET_SRC/systemcontrol/assets/icons-128"
 
 mkdir -p "$ASSET_DST/sysprefs/icons" "$ASSET_DST/sysprefs/icons-128"
 

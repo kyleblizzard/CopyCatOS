@@ -1,12 +1,9 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
 // inputd.h — Core daemon state and public API
 //
-// This is the "top-level" header for cc-inputd. It owns the InputDaemon
+// This is the "top-level" header for inputd. It owns the InputDaemon
 // struct, which bundles every subsystem (device discovery, virtual devices,
 // mapping engine, mouse emulator, power button handler, config, IPC) into
 // one place so the main loop can reach everything through a single pointer.
@@ -49,7 +46,7 @@ typedef struct InputDaemon {
     MouseEmulator  *mouse;         // Turns stick axes into pointer movement
     PowerButton    *power;         // Handles short/long press of power key
     InputConfig    *config;        // Loaded from ~/.config/copycatos/input.conf
-    IpcServer      *ipc;           // Unix socket for cc-wm / System Prefs
+    IpcServer      *ipc;           // Unix socket for moonrock / System Prefs
     HidParser      *hid;           // Parses raw vendor HID reports for buttons
 
     // --- Event loop ---

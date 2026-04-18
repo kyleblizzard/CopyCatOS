@@ -1,13 +1,10 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
 // session.h — SessionBridge definition and interface
 //
 // The SessionBridge is the central struct that ties together the X11
-// display connection and the Unix socket connection to cc-inputd.
+// display connection and the Unix socket connection to inputd.
 // It tracks the currently active window's WM_CLASS so the daemon
 // can apply per-application input profiles automatically.
 //
@@ -19,9 +16,9 @@
 #include <X11/Xatom.h>
 #include <stdbool.h>
 
-// Path to the cc-inputd Unix domain socket.
-// cc-inputd listens here; we connect as a client.
-#define INPUTD_SOCK_PATH "/run/cc-inputd.sock"
+// Path to the inputd Unix domain socket.
+// inputd listens here; we connect as a client.
+#define INPUTD_SOCK_PATH "/run/inputd.sock"
 
 // IPC message types — these are the first byte of every message.
 // The protocol is: [type: 1 byte] [length: 2 bytes big-endian] [payload: N bytes]
@@ -36,7 +33,7 @@
 //
 // This struct owns:
 //   - The X11 display connection (used to watch for active window changes)
-//   - The Unix socket connection to cc-inputd (used to send/receive IPC messages)
+//   - The Unix socket connection to inputd (used to send/receive IPC messages)
 //   - Cached WM_CLASS strings for the currently active window
 //
 typedef struct {
@@ -50,9 +47,9 @@ typedef struct {
     Atom wm_class_atom;     // WM_CLASS — the application identifier property
 
     // --- IPC state ---
-    int  sock_fd;           // File descriptor for the Unix socket to cc-inputd
+    int  sock_fd;           // File descriptor for the Unix socket to inputd
     bool running;           // True while the main loop should keep running
-    bool connected;         // True if we have an active connection to cc-inputd
+    bool connected;         // True if we have an active connection to inputd
 
     // --- Cached active window info ---
     // WM_CLASS has two parts: instance name and class name.
@@ -61,12 +58,12 @@ typedef struct {
     char current_wm_class_name[256];  // Class name (second string in WM_CLASS)
 } SessionBridge;
 
-// session_init — Set up X11, connect to cc-inputd, and send HELLO.
+// session_init — Set up X11, connect to inputd, and send HELLO.
 // Returns true if everything succeeded, false on failure.
 bool session_init(SessionBridge *sb);
 
 // session_run — Main event loop. Watches for X11 property changes and
-// IPC messages from cc-inputd. Blocks until sb->running becomes false
+// IPC messages from inputd. Blocks until sb->running becomes false
 // or an unrecoverable error occurs.
 void session_run(SessionBridge *sb);
 

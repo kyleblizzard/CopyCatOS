@@ -1,9 +1,6 @@
-# Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-# This code is publicly visible for portfolio purposes only.
-# Unauthorized copying, forking, or distribution of this file,
-# via any medium, is strictly prohibited.
+# CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-project('cc-sysprefs', 'c',
+project('systemcontrol', 'c',
   version: '0.1.0',
   default_options: ['c_std=c11', 'warning_level=2'],
 )
@@ -21,11 +18,11 @@ math_dep       = cc.find_library('m', required: true)
 # _GNU_SOURCE gives us M_PI from math.h under strict C11
 add_project_arguments('-D_GNU_SOURCE', language: 'c')
 
-# cc-inputmap shared sources — config_editor reads/writes input.conf,
+# inputmap shared sources — config_editor reads/writes input.conf,
 # scanner provides device enumeration and code name lookups.
-# These live in ../cc-inputmap/src/ and are compiled directly into cc-sysprefs
+# These live in ../inputmap/src/ and are compiled directly into systemcontrol
 # (no shared library needed since only two programs use them).
-inputmap_dir = '../cc-inputmap/src'
+inputmap_dir = '../inputmap/src'
 
 sources = [
   'src/main.c',
@@ -42,7 +39,7 @@ sources = [
   inputmap_dir / 'scanner.c',
 ]
 
-executable('cc-sysprefs', sources,
+executable('systemcontrol', sources,
   dependencies: [x11_dep, cairo_dep, cairo_xlib_dep, pangocairo_dep, libpng_dep, udev_dep, math_dep],
   include_directories: include_directories(inputmap_dir),
   install: true,

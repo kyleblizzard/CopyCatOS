@@ -1,8 +1,9 @@
 #!/bin/bash
-# Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
+# CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 # CopyCatOS Session Script
 # Starts the custom WM and all shell components in the correct order.
-# Set CC_WM=kwin_x11 to fall back to kwin for testing.
+# Set MOONROCK_WM=kwin_x11 to fall back to kwin for testing.
 
 # Tell X11 and Qt what kind of session this is
 export XDG_SESSION_TYPE=x11
@@ -31,7 +32,7 @@ fi
 
 # Set the display to native resolution before anything starts.
 # XLibre / the display manager leaves the screen at 640x480 by default.
-# This must run before cc-wm starts so the WM initializes at the right size.
+# This must run before moonrock starts so the WM initializes at the right size.
 xrandr --output eDP-1 --mode 1920x1200 --rate 120 --primary 2>/dev/null || \
     xrandr --output eDP-1 --mode 1920x1200 --primary 2>/dev/null || true
 
@@ -51,13 +52,13 @@ export GTK_THEME=Adwaita
 export GTK2_RC_FILES=/usr/share/themes/Adwaita/gtk-2.0/gtkrc
 
 # Icon theme — use the Snow Leopard icon set
-export ICON_THEME=AquaKDE-icons
+export ICON_THEME=Aqua
 
 # Set the icon theme for Qt/KDE apps via kdeglobals
 # This writes to the KDE config so all Qt apps pick it up
 mkdir -p ~/.config
-if ! grep -q "AquaKDE-icons" ~/.config/kdeglobals 2>/dev/null; then
-    kwriteconfig6 --file kdeglobals --group Icons --key Theme AquaKDE-icons 2>/dev/null || true
+if ! grep -q "Aqua" ~/.config/kdeglobals 2>/dev/null; then
+    kwriteconfig6 --file kdeglobals --group Icons --key Theme Aqua 2>/dev/null || true
 fi
 
 # Set light color scheme for KDE
@@ -72,7 +73,7 @@ kwriteconfig6 --file kdeglobals --group General --key fixed "Monaco,10,-1,5,50,0
 mkdir -p ~/.config/gtk-3.0
 cat > ~/.config/gtk-3.0/settings.ini << 'GTKEOF'
 [Settings]
-gtk-icon-theme-name=AquaKDE-icons
+gtk-icon-theme-name=Aqua
 gtk-theme-name=Adwaita
 gtk-application-prefer-dark-theme=false
 gtk-font-name=Lucida Grande 11
@@ -84,14 +85,14 @@ cp ~/.config/gtk-3.0/settings.ini ~/.config/gtk-4.0/settings.ini
 
 # ─── Set the X root cursor before any windows appear ───
 # Without this, the root window shows the ugly X cursor until something else
-# overrides it. cc-setcursor loads the themed cursor from XCURSOR_THEME and
+# overrides it. setcursor loads the themed cursor from XCURSOR_THEME and
 # applies it to the root window and all children (replaces xsetroot which
 # isn't available on Nobara).
-cc-setcursor 2>/dev/null
+setcursor 2>/dev/null
 
 # ─── Start the window manager first ───
 # The WM must claim SubstructureRedirect before any other windows appear
-WM=${CC_WM:-cc-wm}
+WM=${MOONROCK_WM:-moonrock}
 $WM &
 WM_PID=$!
 sleep 0.5
@@ -99,31 +100,34 @@ sleep 0.5
 # ─── Compositor for ARGB transparency ───
 # MoonRock Compositor is now handling compositing in manual mode.
 # picom is disabled — MoonRock draws all windows via OpenGL.
-# picom --config ~/CopyCatOS/cc-wm/session/picom.conf -b
+# picom --config ~/CopyCatOS/moonrock/session/picom.conf -b
 sleep 0.3
 
 # ─── Desktop surface (wallpaper + icons) ───
 # Must come before dock/menubar so it sits at the bottom of the stack
-cc-desktop &
+desktop &
 sleep 0.2
 
 # ─── Shell components (can start in parallel) ───
-cc-menubar &
-cc-dock &
-cc-spotlight &
+menubar &
+dock &
+searchsystem &
 
-# ─── Input daemon (controller → mouse/keyboard mapping) ───
-cc-input-session &
+# ─── Input session bridge (talks to inputd, dispatches X11 actions) ───
+inputsession &
 
-# ─── Default Finder window ───
-cc-finder ~ &
+# ─── Framework host (multi-language app runtime) ───
+moonbase &
+
+# ─── Default file viewer window ───
+fileviewer ~ &
 
 # ─── Force the themed cursor after everything has started ───
 # This is the definitive cursor set — runs after all components have created
-# their windows, so nothing can override it. cc-setcursor loads the cursor
+# their windows, so nothing can override it. setcursor loads the cursor
 # from XCURSOR_THEME (SnowLeopard) and applies it to root + all children.
 sleep 0.5
-cc-setcursor 2>/dev/null
+setcursor 2>/dev/null
 
 # ─── Wait for the WM to exit ───
 # When the WM process ends (user logged out or crashed), clean up everything

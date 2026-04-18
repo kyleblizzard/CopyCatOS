@@ -1,12 +1,9 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
 // mapper.h — Input mapping engine
 //
-// The mapper is the brain of cc-inputd. It takes raw evdev events from
+// The mapper is the brain of inputd. It takes raw evdev events from
 // physical devices and decides what to do with them based on the active
 // profile. Each profile contains a set of MappingRules that say things
 // like "when BTN_SOUTH is pressed, emit KEY_RETURN" or "when ABS_X
@@ -18,7 +15,7 @@
 //              face buttons = keys, bumpers = modifier combos)
 //   - GAME:    Raw passthrough — forward everything to the virtual gamepad
 //
-// The active profile can be switched at runtime by cc-wm via IPC,
+// The active profile can be switched at runtime by moonrock via IPC,
 // e.g. when a game window gains focus.
 //
 
@@ -57,7 +54,7 @@ typedef enum ActionType {
 // --------------------------------------------------------------------------
 // CcAction — CopyCatOS-specific actions (ACTION_COPYCATOS targets)
 // --------------------------------------------------------------------------
-// These are high-level desktop actions that cc-inputd sends to cc-wm
+// These are high-level desktop actions that inputd sends to moonrock
 // via IPC. They don't map to simple keycodes — they invoke shell features.
 // --------------------------------------------------------------------------
 typedef enum CcAction {
@@ -154,7 +151,7 @@ int mapper_process(Mapper *m, const struct input_event *ev,
                    VirtualDevices *vd, MouseEmulator *mouse);
 
 // mapper_set_profile — Switch the active mapping profile.
-// Typically called by IPC when cc-wm detects a game window gaining focus
+// Typically called by IPC when moonrock detects a game window gaining focus
 // (switch to PROFILE_GAME) or losing focus (switch back to PROFILE_DESKTOP).
 void mapper_set_profile(Mapper *m, InputProfile profile);
 

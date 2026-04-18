@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // dnd.c — Drag-and-drop implementation for the dock
@@ -313,7 +310,7 @@ bool dnd_handle_button_release(DockState *state, DndState *dnd,
         if (poof_start) {
             poof_start(state, root_x, root_y);
         } else {
-            fprintf(stderr, "[cc-dock] Icon '%s' removed from dock "
+            fprintf(stderr, "[dock] Icon '%s' removed from dock "
                     "(poof animation not yet implemented)\n",
                     dnd->held_item.name);
         }
@@ -345,7 +342,7 @@ bool dnd_handle_button_release(DockState *state, DndState *dnd,
 
     // Make sure we don't exceed the dock's maximum capacity
     if (state->item_count >= MAX_DOCK_ITEMS) {
-        fprintf(stderr, "[cc-dock] Cannot insert: dock is full (%d items)\n",
+        fprintf(stderr, "[dock] Cannot insert: dock is full (%d items)\n",
                 MAX_DOCK_ITEMS);
         // Drop the icon — it's lost. This should be very rare.
         if (dnd->ghost) {

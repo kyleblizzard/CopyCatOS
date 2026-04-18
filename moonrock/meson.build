@@ -1,4 +1,4 @@
-project('cc-wm', 'c',
+project('moonrock', 'c',
   version: '0.1.0',
   default_options: ['c_std=c11', 'warning_level=2'],
 )
@@ -51,7 +51,7 @@ xcursor_dep = dependency('xcursor', required: false)
 # To use MoonRock as a pre-built library instead, install it and use:
 #   moonrock_dep = dependency('moonrock')
 
-# MoonRock sources are developed here in CopyCatOS/cc-wm/src/.
+# MoonRock sources are developed here in CopyCatOS/moonrock/src/.
 # This is the authoritative copy. To publish changes to the standalone
 # MoonRock repo, run: scripts/sync-moonrock.sh
 # That script copies all moonrock_*.c/h files to /Volumes/Development/MoonRock/src/.
@@ -82,7 +82,7 @@ cc_wm_sources = [
   'src/resize.c',
 ]
 
-executable('cc-wm',
+executable('moonrock',
   cc_wm_sources + moonrock_sources,
   dependencies: [
     x11_dep, xcomposite_dep, xdamage_dep, xfixes_dep,

@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
 // device.c — Physical device discovery and hotplug monitoring
@@ -60,7 +57,7 @@ static inline bool test_bit(unsigned int bit, const unsigned long *arr) {
 int device_open(DeviceManager *dm, const char *path) {
     // Safety check: don't overflow our fixed-size array
     if (dm->device_count >= MAX_DEVICES) {
-        fprintf(stderr, "[cc-inputd] device array full, ignoring %s\n", path);
+        fprintf(stderr, "[inputd] device array full, ignoring %s\n", path);
         return -1;
     }
 
@@ -76,7 +73,7 @@ int device_open(DeviceManager *dm, const char *path) {
     // block if there are no events waiting — important since we use epoll.
     int fd = open(path, O_RDONLY | O_NONBLOCK);
     if (fd < 0) {
-        fprintf(stderr, "[cc-inputd] failed to open %s: %s\n",
+        fprintf(stderr, "[inputd] failed to open %s: %s\n",
                 path, strerror(errno));
         return -1;
     }
@@ -92,14 +89,14 @@ int device_open(DeviceManager *dm, const char *path) {
     // We use vendor + product to identify the Legion Go controller.
     struct input_id id = {0};
     if (ioctl(fd, EVIOCGID, &id) < 0) {
-        fprintf(stderr, "[cc-inputd] EVIOCGID failed for %s: %s\n",
+        fprintf(stderr, "[inputd] EVIOCGID failed for %s: %s\n",
                 path, strerror(errno));
         close(fd);
         return -1;
     }
 
     // --- Skip our own virtual devices ---
-    // When cc-inputd creates uinput devices (virtual mouse, keyboard, gamepad),
+    // When inputd creates uinput devices (virtual mouse, keyboard, gamepad),
     // udev fires hotplug events that would cause us to re-open them. If we
     // grabbed our own virtual gamepad, we'd create an infinite event loop
     // (events forwarded to uinput → read back → forwarded again).
@@ -176,7 +173,7 @@ int device_open(DeviceManager *dm, const char *path) {
         if (has_sticks && has_face_button) {
             is_gamepad = true;
             if (!vid_match) {
-                fprintf(stderr, "[cc-inputd] detected gamepad by capabilities: %s\n", name);
+                fprintf(stderr, "[inputd] detected gamepad by capabilities: %s\n", name);
             }
         }
     }
@@ -216,13 +213,13 @@ int device_open(DeviceManager *dm, const char *path) {
     }
 
     // If this is a gamepad, grab exclusive access so raw events don't
-    // leak to X11/SDL — cc-inputd will be the sole reader.
+    // leak to X11/SDL — inputd will be the sole reader.
     bool grabbed = false;
     if (is_gamepad) {
         if (ioctl(fd, EVIOCGRAB, 1) == 0) {
             grabbed = true;
         } else {
-            fprintf(stderr, "[cc-inputd] EVIOCGRAB failed for %s: %s\n",
+            fprintf(stderr, "[inputd] EVIOCGRAB failed for %s: %s\n",
                     path, strerror(errno));
             // Not fatal — we can still read events, they'll just also
             // go to other consumers.
@@ -243,7 +240,7 @@ int device_open(DeviceManager *dm, const char *path) {
     dev->grabbed         = grabbed;
     dm->device_count++;
 
-    fprintf(stderr, "[cc-inputd] opened %s: \"%s\" [%04x:%04x] %s%s%s%s\n",
+    fprintf(stderr, "[inputd] opened %s: \"%s\" [%04x:%04x] %s%s%s%s\n",
             path, name, id.vendor, id.product,
             is_gamepad  ? "gamepad " : "",
             is_power    ? "power "   : "",
@@ -279,7 +276,7 @@ int device_init(DeviceManager *dm) {
     // for all subsequent udev operations.
     dm->udev = udev_new();
     if (!dm->udev) {
-        fprintf(stderr, "[cc-inputd] udev_new() failed\n");
+        fprintf(stderr, "[inputd] udev_new() failed\n");
         return -1;
     }
 
@@ -289,7 +286,7 @@ int device_init(DeviceManager *dm) {
     // so device nodes are ready to open when we receive the event.
     dm->monitor = udev_monitor_new_from_netlink(dm->udev, "udev");
     if (!dm->monitor) {
-        fprintf(stderr, "[cc-inputd] udev_monitor_new_from_netlink() failed\n");
+        fprintf(stderr, "[inputd] udev_monitor_new_from_netlink() failed\n");
         udev_unref(dm->udev);
         dm->udev = NULL;
         return -1;
@@ -312,7 +309,7 @@ int device_init(DeviceManager *dm) {
     // current /dev/input/ nodes and try to open matching ones.
     struct udev_enumerate *enumerate = udev_enumerate_new(dm->udev);
     if (!enumerate) {
-        fprintf(stderr, "[cc-inputd] udev_enumerate_new() failed\n");
+        fprintf(stderr, "[inputd] udev_enumerate_new() failed\n");
         // Not fatal — we can still get hotplug events
         return 0;
     }
@@ -356,7 +353,7 @@ int device_init(DeviceManager *dm) {
     // Free the enumeration — we're done scanning
     udev_enumerate_unref(enumerate);
 
-    fprintf(stderr, "[cc-inputd] device scan complete: %d device(s) opened\n",
+    fprintf(stderr, "[inputd] device scan complete: %d device(s) opened\n",
             dm->device_count);
 
     return 0;
@@ -386,14 +383,14 @@ void device_handle_hotplug(DeviceManager *dm) {
 
     if (strcmp(action, "add") == 0) {
         // --- Device added ---
-        fprintf(stderr, "[cc-inputd] hotplug add: %s\n", devnode);
+        fprintf(stderr, "[inputd] hotplug add: %s\n", devnode);
         device_open(dm, devnode);
 
     } else if (strcmp(action, "remove") == 0) {
         // --- Device removed ---
         // Find the device in our array by matching the path,
         // then close it and remove it from the array.
-        fprintf(stderr, "[cc-inputd] hotplug remove: %s\n", devnode);
+        fprintf(stderr, "[inputd] hotplug remove: %s\n", devnode);
 
         for (int i = 0; i < dm->device_count; i++) {
             if (strcmp(dm->devices[i].path, devnode) == 0) {
@@ -403,7 +400,7 @@ void device_handle_hotplug(DeviceManager *dm) {
                 }
                 close(dm->devices[i].fd);
 
-                fprintf(stderr, "[cc-inputd] closed %s: \"%s\"\n",
+                fprintf(stderr, "[inputd] closed %s: \"%s\"\n",
                         dm->devices[i].path, dm->devices[i].name);
 
                 // Shift remaining devices down to fill the gap
@@ -428,7 +425,7 @@ void device_shutdown(DeviceManager *dm) {
     if (!dm) return;
 
     // Restore FPS/Windows mode before closing devices.
-    // This ensures the controller is usable without cc-inputd.
+    // This ensures the controller is usable without inputd.
     device_restore_fps_mode(dm);
 
     // Close the hidraw button fd if open (HID takeover mode)
@@ -436,7 +433,7 @@ void device_shutdown(DeviceManager *dm) {
         close(dm->hidraw_button_fd);
         dm->hidraw_button_fd = -1;
         dm->hid_takeover_active = false;
-        fprintf(stderr, "[cc-inputd] closed hidraw buttons: %s\n",
+        fprintf(stderr, "[inputd] closed hidraw buttons: %s\n",
                 dm->hidraw_button_path);
     }
 
@@ -444,7 +441,7 @@ void device_shutdown(DeviceManager *dm) {
     if (dm->hidraw_config_fd >= 0) {
         close(dm->hidraw_config_fd);
         dm->hidraw_config_fd = -1;
-        fprintf(stderr, "[cc-inputd] closed hidraw config: %s\n",
+        fprintf(stderr, "[inputd] closed hidraw config: %s\n",
                 dm->hidraw_config_path);
     }
 
@@ -455,7 +452,7 @@ void device_shutdown(DeviceManager *dm) {
         }
         close(dm->devices[i].fd);
 
-        fprintf(stderr, "[cc-inputd] closed %s: \"%s\"\n",
+        fprintf(stderr, "[inputd] closed %s: \"%s\"\n",
                 dm->devices[i].path, dm->devices[i].name);
     }
     dm->device_count = 0;
@@ -473,7 +470,7 @@ void device_shutdown(DeviceManager *dm) {
         dm->udev = NULL;
     }
 
-    fprintf(stderr, "[cc-inputd] device manager shut down\n");
+    fprintf(stderr, "[inputd] device manager shut down\n");
 }
 
 // --------------------------------------------------------------------------
@@ -531,14 +528,14 @@ static int find_hidraw_config(DeviceManager *dm) {
         // Open it for read+write (we need to send commands).
         int fd = open(devnode, O_RDWR);
         if (fd < 0) {
-            fprintf(stderr, "[cc-inputd] failed to open %s for config: %s\n",
+            fprintf(stderr, "[inputd] failed to open %s for config: %s\n",
                     devnode, strerror(errno));
             continue;
         }
 
         snprintf(dm->hidraw_config_path, sizeof(dm->hidraw_config_path),
                  "%s", devnode);
-        fprintf(stderr, "[cc-inputd] found hidraw config interface: %s\n", devnode);
+        fprintf(stderr, "[inputd] found hidraw config interface: %s\n", devnode);
         return fd;
     }
 
@@ -613,7 +610,7 @@ static int find_hidraw_buttons(DeviceManager *dm)
         // Don't open yet — just record as the best candidate.
         // The highest-numbered 21-byte match is the button interface.
         best_index = i;
-        fprintf(stderr, "[cc-inputd] hidraw candidate for buttons: "
+        fprintf(stderr, "[inputd] hidraw candidate for buttons: "
                 "/dev/hidraw%d (desc=%zd bytes)\n", i, desc_len);
     }
 
@@ -627,14 +624,14 @@ static int find_hidraw_buttons(DeviceManager *dm)
 
     int fd = open(devnode, O_RDONLY | O_NONBLOCK);
     if (fd < 0) {
-        fprintf(stderr, "[cc-inputd] failed to open %s for buttons: %s\n",
+        fprintf(stderr, "[inputd] failed to open %s for buttons: %s\n",
                 devnode, strerror(errno));
         return -1;
     }
 
     snprintf(dm->hidraw_button_path, sizeof(dm->hidraw_button_path),
              "%s", devnode);
-    fprintf(stderr, "[cc-inputd] found hidraw button interface: %s\n", devnode);
+    fprintf(stderr, "[inputd] found hidraw button interface: %s\n", devnode);
     return fd;
 }
 
@@ -655,14 +652,14 @@ int device_init_hid_takeover(DeviceManager *dm)
         dm->hidraw_config_fd = find_hidraw_config(dm);
     }
 
-    // Ensure the firmware is in FPS/Windows mode. If a previous cc-inputd
+    // Ensure the firmware is in FPS/Windows mode. If a previous inputd
     // session was killed with SIGKILL (no cleanup), the controller may still
     // be stuck in SteamOS mode where the vendor hidraw produces no data.
     // We explicitly send the FPS mode command to guarantee the right state.
     if (dm->hidraw_config_fd >= 0) {
         unsigned char cmd_fps[] = { 0x04, 0x0a, 0x00 };
         if (write(dm->hidraw_config_fd, cmd_fps, sizeof(cmd_fps)) < 0) {
-            fprintf(stderr, "[cc-inputd] HID takeover: FPS mode cmd failed: %s\n",
+            fprintf(stderr, "[inputd] HID takeover: FPS mode cmd failed: %s\n",
                     strerror(errno));
         }
         usleep(100000);  // 100ms for firmware to process
@@ -672,18 +669,18 @@ int device_init_hid_takeover(DeviceManager *dm)
         write(dm->hidraw_config_fd, cmd_auto, sizeof(cmd_auto));
         usleep(200000);  // 200ms settle time
 
-        fprintf(stderr, "[cc-inputd] HID takeover: FPS mode restored\n");
+        fprintf(stderr, "[inputd] HID takeover: FPS mode restored\n");
     }
 
     // Find and open the button-reading hidraw
     dm->hidraw_button_fd = find_hidraw_buttons(dm);
     if (dm->hidraw_button_fd < 0) {
-        fprintf(stderr, "[cc-inputd] HID takeover: button hidraw not found\n");
+        fprintf(stderr, "[inputd] HID takeover: button hidraw not found\n");
         return -1;
     }
 
     dm->hid_takeover_active = true;
-    fprintf(stderr, "[cc-inputd] HID takeover mode initialized: "
+    fprintf(stderr, "[inputd] HID takeover mode initialized: "
             "config=%s, buttons=%s\n",
             dm->hidraw_config_path, dm->hidraw_button_path);
     return 0;
@@ -709,7 +706,7 @@ int device_activate_gamepad_mode(DeviceManager *dm) {
     }
 
     if (dm->hidraw_config_fd < 0) {
-        fprintf(stderr, "[cc-inputd] no Legion Go S hidraw config found "
+        fprintf(stderr, "[inputd] no Legion Go S hidraw config found "
                 "— gamepad mode not available\n");
         return -1;
     }
@@ -718,7 +715,7 @@ int device_activate_gamepad_mode(DeviceManager *dm) {
     // Without this, the firmware may switch back to FPS mode on its own
     unsigned char cmd_no_autodetect[] = { 0x04, 0x09, 0x00 };
     if (write(dm->hidraw_config_fd, cmd_no_autodetect, sizeof(cmd_no_autodetect)) < 0) {
-        fprintf(stderr, "[cc-inputd] failed to disable autodetect: %s\n",
+        fprintf(stderr, "[inputd] failed to disable autodetect: %s\n",
                 strerror(errno));
     }
 
@@ -730,13 +727,13 @@ int device_activate_gamepad_mode(DeviceManager *dm) {
     // instead of the keyboard/mouse interfaces
     unsigned char cmd_steamos[] = { 0x04, 0x0a, 0x01 };
     if (write(dm->hidraw_config_fd, cmd_steamos, sizeof(cmd_steamos)) < 0) {
-        fprintf(stderr, "[cc-inputd] failed to set SteamOS mode: %s\n",
+        fprintf(stderr, "[inputd] failed to set SteamOS mode: %s\n",
                 strerror(errno));
         return -1;
     }
 
     dm->gamepad_mode_active = true;
-    fprintf(stderr, "[cc-inputd] Legion Go S switched to gamepad mode\n");
+    fprintf(stderr, "[inputd] Legion Go S switched to gamepad mode\n");
 
     // Give the firmware time to apply the mode switch before we try
     // reading from the gamepad evdev node
@@ -748,7 +745,7 @@ int device_activate_gamepad_mode(DeviceManager *dm) {
 // --------------------------------------------------------------------------
 // device_restore_fps_mode — Switch back to FPS/Windows mode on shutdown
 // --------------------------------------------------------------------------
-// Restores the default mode so the controller works normally without cc-inputd.
+// Restores the default mode so the controller works normally without inputd.
 // --------------------------------------------------------------------------
 void device_restore_fps_mode(DeviceManager *dm) {
     if (!dm->gamepad_mode_active || dm->hidraw_config_fd < 0) return;
@@ -756,7 +753,7 @@ void device_restore_fps_mode(DeviceManager *dm) {
     // Switch back to Windows/FPS mode
     unsigned char cmd_windows[] = { 0x04, 0x0a, 0x00 };
     if (write(dm->hidraw_config_fd, cmd_windows, sizeof(cmd_windows)) >= 0) {
-        fprintf(stderr, "[cc-inputd] Legion Go S restored to FPS mode\n");
+        fprintf(stderr, "[inputd] Legion Go S restored to FPS mode\n");
     }
 
     // Re-enable OS auto-detection

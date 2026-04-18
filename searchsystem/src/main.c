@@ -1,10 +1,7 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ─── main.c ───
-// Entry point for cc-spotlight.
+// Entry point for searchsystem.
 //
 // This file does three things:
 //   1. Opens a connection to the X display server.
@@ -43,7 +40,7 @@ int main(void) {
     // (usually ":0") to figure out which X server to talk to.
     Display *dpy = XOpenDisplay(NULL);
     if (!dpy) {
-        fprintf(stderr, "cc-spotlight: cannot open display\n");
+        fprintf(stderr, "searchsystem: cannot open display\n");
         return 1;
     }
 
@@ -61,12 +58,12 @@ int main(void) {
 
     // --- Step 3: Initialise the overlay ---
     if (spotlight_init(dpy) != 0) {
-        fprintf(stderr, "cc-spotlight: init failed\n");
+        fprintf(stderr, "searchsystem: init failed\n");
         XCloseDisplay(dpy);
         return 1;
     }
 
-    printf("cc-spotlight: running (Ctrl+Space to toggle)\n");
+    printf("searchsystem: running (Ctrl+Space to toggle)\n");
 
     // --- Step 4: Run the event loop (blocks until quit) ---
     spotlight_run(dpy);
@@ -75,6 +72,6 @@ int main(void) {
     spotlight_cleanup(dpy);
     XCloseDisplay(dpy);
 
-    printf("cc-spotlight: exiting\n");
+    printf("searchsystem: exiting\n");
     return 0;
 }

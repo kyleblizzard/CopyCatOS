@@ -1,15 +1,12 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // sysprefs.h — System Preferences main state and public API
 // ============================================================================
 //
-// This is the core header for cc-sysprefs. It defines the main application
+// This is the core header for systemcontrol. It defines the main application
 // state struct and the public functions for initialization, running, and
-// cleanup. The architecture mirrors cc-dock and cc-spotlight: a single state
+// cleanup. The architecture mirrors dock and searchsystem: a single state
 // struct owns all X11 resources, Cairo surfaces, and UI state.
 // ============================================================================
 

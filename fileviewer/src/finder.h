@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // finder.h — Core Finder state and lifecycle
 //
@@ -11,7 +8,7 @@
 // to this struct to coordinate painting and interaction.
 //
 // CCFinder is a standalone C + Xlib + Cairo + Pango application.
-// It does NOT use Qt — it creates its own window, and cc-wm frames
+// It does NOT use Qt — it creates its own window, and moonrock frames
 // it with Snow Leopard title bar chrome automatically.
 
 #ifndef AURA_FINDER_H

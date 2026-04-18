@@ -1,12 +1,9 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
 // actions.h — CopyCatOS desktop action dispatch
 //
-// When cc-inputd sends a COPYCATOS_ACTION message, this module figures
+// When inputd sends a COPYCATOS_ACTION message, this module figures
 // out what to do with it. Actions are high-level desktop operations
 // like "open Spotlight" or "show desktop" that get triggered by
 // hardware buttons, gestures, or hotkeys on the input device.
@@ -24,7 +21,7 @@
 // actions_dispatch — Execute a named desktop action.
 //
 // Supported actions:
-//   "spotlight"        — Toggle cc-spotlight search overlay
+//   "spotlight"        — Toggle searchsystem search overlay
 //   "mission_control"  — Show Mission Control (TODO)
 //   "show_desktop"     — Toggle showing the desktop (minimize all windows)
 //   "volume_up"        — Increase system volume by 5%
@@ -33,7 +30,7 @@
 //   "brightness_down"  — Decrease screen brightness by 10%
 //
 // Parameters:
-//   action_name — the name string received from cc-inputd
+//   action_name — the name string received from inputd
 //   dpy         — X11 display connection (needed for X11-based actions)
 //   root        — root window (needed for sending ClientMessages)
 void actions_dispatch(const char *action_name, Display *dpy, Window root);

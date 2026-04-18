@@ -1,4 +1,5 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 // CopyCatOS Window Manager — Frame management and decoration rendering
 
 #include "frame.h"
@@ -157,7 +158,7 @@ void frame_window(CCWM *wm, Window client)
     }
 
     if (getenv("AURA_DEBUG")) {
-        fprintf(stderr, "[cc-wm] Framed window '%s' client=0x%lx frame=0x%lx %dx%d+%d+%d\n",
+        fprintf(stderr, "[moonrock] Framed window '%s' client=0x%lx frame=0x%lx %dx%d+%d+%d\n",
                 c->title, client, frame, c->w, c->h, c->x, c->y);
     }
 }
@@ -183,7 +184,7 @@ void unframe_window(CCWM *wm, Client *c)
     c->frame = 0;
 
     if (getenv("AURA_DEBUG")) {
-        fprintf(stderr, "[cc-wm] Unframed window '%s' client=0x%lx\n",
+        fprintf(stderr, "[moonrock] Unframed window '%s' client=0x%lx\n",
                 c->title, c->client);
     }
 
@@ -213,7 +214,7 @@ void frame_existing_windows(CCWM *wm)
 
     if (children) XFree(children);
 
-    fprintf(stderr, "[cc-wm] Framed %d existing windows\n", wm->num_clients);
+    fprintf(stderr, "[moonrock] Framed %d existing windows\n", wm->num_clients);
 }
 
 void frame_redraw_decor(CCWM *wm, Client *c)

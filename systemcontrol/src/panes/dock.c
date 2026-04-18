@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // panes/dock.c — Dock & Display preferences pane
@@ -11,7 +8,7 @@
 // Modeled after the real Snow Leopard Dock preferences pane layout.
 //
 // Changes are written to ~/.config/copycatos/desktop.conf and applied
-// live by sending SIGHUP to the running cc-dock and cc-menubar processes.
+// live by sending SIGHUP to the running dock and menubar processes.
 // ============================================================================
 
 #include "dock.h"
@@ -121,11 +118,11 @@ static void apply_config(void)
     fprintf(fp, "\n");
     fclose(fp);
 
-    // Send SIGHUP to cc-dock and cc-menubar for live reload
+    // Send SIGHUP to dock and menubar for live reload
     FILE *proc;
     char pid_buf[32];
 
-    proc = popen("pgrep cc-dock", "r");
+    proc = popen("pgrep dock", "r");
     if (proc) {
         if (fgets(pid_buf, sizeof(pid_buf), proc)) {
             kill(atoi(pid_buf), SIGHUP);
@@ -133,7 +130,7 @@ static void apply_config(void)
         pclose(proc);
     }
 
-    proc = popen("pgrep cc-menubar", "r");
+    proc = popen("pgrep menubar", "r");
     if (proc) {
         if (fgets(pid_buf, sizeof(pid_buf), proc)) {
             kill(atoi(pid_buf), SIGHUP);

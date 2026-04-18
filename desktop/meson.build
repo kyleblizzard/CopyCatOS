@@ -6,7 +6,7 @@
 # Dependencies: Xlib (windowing), Cairo (2D rendering), Pango (text layout),
 #               libjpeg (JPEG wallpaper loading)
 
-project('cc-desktop', 'c',
+project('desktop', 'c',
   version: '0.1.0',
   default_options: ['c_std=c11', 'warning_level=2'],
 )
@@ -41,7 +41,7 @@ sources = [
   'src/dnd.c',
 ]
 
-executable('cc-desktop',
+executable('desktop',
   sources,
   dependencies: [x11_dep, cairo_dep, cairo_xlib_dep, pangocairo_dep, libjpeg_dep, math_dep],
   install: true,

@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // panes/power.c — Energy Saver preferences pane
@@ -12,7 +9,7 @@
 // short press from a long press, and see what action each triggers.
 //
 // Changes are written to ~/.config/copycatos/input.conf [power] section
-// and applied live by sending SIGHUP to cc-inputd.
+// and applied live by sending SIGHUP to inputd.
 // ============================================================================
 
 #include "power.h"
@@ -190,8 +187,8 @@ static void apply_config(void)
 
     fclose(fp);
 
-    // Send SIGHUP to cc-inputd so it reloads the config immediately
-    FILE *proc = popen("pgrep cc-inputd", "r");
+    // Send SIGHUP to inputd so it reloads the config immediately
+    FILE *proc = popen("pgrep inputd", "r");
     if (proc) {
         char pid_buf[32];
         if (fgets(pid_buf, sizeof(pid_buf), proc)) {
@@ -536,7 +533,7 @@ void power_pane_release(SysPrefsState *state)
     (void)state;
     if (dragging_slider != SLIDER_NONE) {
         dragging_slider = SLIDER_NONE;
-        // Write config and send SIGHUP to cc-inputd on release
+        // Write config and send SIGHUP to inputd on release
         apply_config();
     }
 }

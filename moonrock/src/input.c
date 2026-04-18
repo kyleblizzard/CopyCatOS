@@ -1,4 +1,5 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 // CopyCatOS Window Manager — Keyboard input (macOS-style shortcuts)
 
 #include "input.h"
@@ -31,7 +32,7 @@ void input_setup_grabs(CCWM *wm)
     XGrabKey(wm->dpy, XKeysymToKeycode(wm->dpy, XK_Tab),
              MOD_KEY, wm->root, True, GrabModeAsync, GrabModeAsync);
 
-    fprintf(stderr, "[cc-wm] Key grabs set (Super+Q/W/M/H/Tab)\n");
+    fprintf(stderr, "[moonrock] Key grabs set (Super+Q/W/M/H/Tab)\n");
 }
 
 void input_handle_key(CCWM *wm, XKeyEvent *e)

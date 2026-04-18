@@ -1,13 +1,10 @@
-# Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-# This code is publicly visible for portfolio purposes only.
-# Unauthorized copying, forking, or distribution of this file,
-# via any medium, is strictly prohibited.
+# CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 # ─── CopyCatOS Spotlight ───
-# Meson build file for cc-spotlight — a Spotlight-style search overlay
+# Meson build file for searchsystem — a Spotlight-style search overlay
 # activated by Ctrl+Space. Built with Xlib, Cairo, and Pango.
 
-project('cc-spotlight', 'c',
+project('searchsystem', 'c',
   version: '0.1.0',
   default_options: ['c_std=c11', 'warning_level=2'],
 )
@@ -44,7 +41,7 @@ sources = [
   'src/icons.c',
 ]
 
-executable('cc-spotlight', sources,
+executable('searchsystem', sources,
   dependencies: [
     x11_dep,
     cairo_dep,

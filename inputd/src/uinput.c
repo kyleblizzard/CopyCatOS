@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
 // uinput.c — Virtual device creation and event injection via /dev/uinput
@@ -66,7 +63,7 @@ static bool emit_event(int fd, unsigned short type, unsigned short code, int val
 
     ssize_t written = write(fd, &ev, sizeof(ev));
     if (written < 0) {
-        fprintf(stderr, "[cc-inputd] uinput write failed: %s\n", strerror(errno));
+        fprintf(stderr, "[inputd] uinput write failed: %s\n", strerror(errno));
         return false;
     }
 
@@ -98,7 +95,7 @@ static int create_virtual_mouse(void) {
     // events to it. O_NONBLOCK so writes don't block.
     int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
     if (fd < 0) {
-        fprintf(stderr, "[cc-inputd] failed to open /dev/uinput: %s\n",
+        fprintf(stderr, "[inputd] failed to open /dev/uinput: %s\n",
                 strerror(errno));
         return -1;
     }
@@ -148,11 +145,11 @@ static int create_virtual_mouse(void) {
     if (ioctl(fd, UI_DEV_SETUP, &setup) < 0) goto fail;
     if (ioctl(fd, UI_DEV_CREATE, 0)     < 0) goto fail;
 
-    fprintf(stderr, "[cc-inputd] created virtual mouse\n");
+    fprintf(stderr, "[inputd] created virtual mouse\n");
     return fd;
 
 fail:
-    fprintf(stderr, "[cc-inputd] virtual mouse setup failed: %s\n",
+    fprintf(stderr, "[inputd] virtual mouse setup failed: %s\n",
             strerror(errno));
     close(fd);
     return -1;
@@ -171,7 +168,7 @@ fail:
 static int create_virtual_keyboard(void) {
     int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
     if (fd < 0) {
-        fprintf(stderr, "[cc-inputd] failed to open /dev/uinput: %s\n",
+        fprintf(stderr, "[inputd] failed to open /dev/uinput: %s\n",
                 strerror(errno));
         return -1;
     }
@@ -234,11 +231,11 @@ static int create_virtual_keyboard(void) {
     if (ioctl(fd, UI_DEV_SETUP, &setup) < 0) goto fail;
     if (ioctl(fd, UI_DEV_CREATE, 0)     < 0) goto fail;
 
-    fprintf(stderr, "[cc-inputd] created virtual keyboard\n");
+    fprintf(stderr, "[inputd] created virtual keyboard\n");
     return fd;
 
 fail:
-    fprintf(stderr, "[cc-inputd] virtual keyboard setup failed: %s\n",
+    fprintf(stderr, "[inputd] virtual keyboard setup failed: %s\n",
             strerror(errno));
     close(fd);
     return -1;
@@ -261,7 +258,7 @@ fail:
 static int create_virtual_gamepad(void) {
     int fd = open("/dev/uinput", O_WRONLY | O_NONBLOCK);
     if (fd < 0) {
-        fprintf(stderr, "[cc-inputd] failed to open /dev/uinput: %s\n",
+        fprintf(stderr, "[inputd] failed to open /dev/uinput: %s\n",
                 strerror(errno));
         return -1;
     }
@@ -373,11 +370,11 @@ static int create_virtual_gamepad(void) {
     if (ioctl(fd, UI_DEV_SETUP, &setup) < 0) goto fail;
     if (ioctl(fd, UI_DEV_CREATE, 0)     < 0) goto fail;
 
-    fprintf(stderr, "[cc-inputd] created virtual gamepad\n");
+    fprintf(stderr, "[inputd] created virtual gamepad\n");
     return fd;
 
 fail:
-    fprintf(stderr, "[cc-inputd] virtual gamepad setup failed: %s\n",
+    fprintf(stderr, "[inputd] virtual gamepad setup failed: %s\n",
             strerror(errno));
     close(fd);
     return -1;
@@ -411,7 +408,7 @@ int uinput_init(VirtualDevices *vdev) {
     // Mouse and keyboard are essential — without them the desktop mode
     // has no way to move the cursor or type. The gamepad is nice-to-have.
     if (vdev->mouse_fd < 0 || vdev->keyboard_fd < 0) {
-        fprintf(stderr, "[cc-inputd] FATAL: failed to create essential "
+        fprintf(stderr, "[inputd] FATAL: failed to create essential "
                 "virtual devices (mouse=%d, keyboard=%d)\n",
                 vdev->mouse_fd, vdev->keyboard_fd);
         uinput_shutdown(vdev);
@@ -419,11 +416,11 @@ int uinput_init(VirtualDevices *vdev) {
     }
 
     if (vdev->gamepad_fd < 0) {
-        fprintf(stderr, "[cc-inputd] WARNING: virtual gamepad not created, "
+        fprintf(stderr, "[inputd] WARNING: virtual gamepad not created, "
                 "game mode passthrough will be unavailable\n");
     }
 
-    fprintf(stderr, "[cc-inputd] virtual devices ready\n");
+    fprintf(stderr, "[inputd] virtual devices ready\n");
     return 0;
 }
 
@@ -527,7 +524,7 @@ void uinput_gamepad_forward(VirtualDevices *vdev, const struct input_event *ev) 
     // Write the event directly to the virtual gamepad
     ssize_t written = write(vdev->gamepad_fd, ev, sizeof(*ev));
     if (written < 0) {
-        fprintf(stderr, "[cc-inputd] gamepad forward failed: %s\n",
+        fprintf(stderr, "[inputd] gamepad forward failed: %s\n",
                 strerror(errno));
         return;
     }
@@ -559,12 +556,12 @@ void uinput_shutdown(VirtualDevices *vdev) {
     #define DESTROY_VDEV(fd_field, label) do {                          \
         if (vdev->fd_field >= 0) {                                      \
             if (ioctl(vdev->fd_field, UI_DEV_DESTROY) < 0) {           \
-                fprintf(stderr, "[cc-inputd] UI_DEV_DESTROY " label    \
+                fprintf(stderr, "[inputd] UI_DEV_DESTROY " label    \
                         " failed: %s\n", strerror(errno));             \
             }                                                           \
             close(vdev->fd_field);                                      \
             vdev->fd_field = -1;                                        \
-            fprintf(stderr, "[cc-inputd] destroyed virtual " label "\n"); \
+            fprintf(stderr, "[inputd] destroyed virtual " label "\n"); \
         }                                                               \
     } while (0)
 
@@ -574,5 +571,5 @@ void uinput_shutdown(VirtualDevices *vdev) {
 
     #undef DESTROY_VDEV
 
-    fprintf(stderr, "[cc-inputd] virtual devices shut down\n");
+    fprintf(stderr, "[inputd] virtual devices shut down\n");
 }

@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // main.c — Entry point for the CopyCatOS menu bar
 //
@@ -42,7 +39,7 @@ int main(void)
     // Initialize the menu bar — this opens the X display, creates the
     // window, and sets up all subsystems (render, apple, appmenu, systray).
     if (!menubar_init(&g_menubar)) {
-        fprintf(stderr, "cc-menubar: failed to initialize\n");
+        fprintf(stderr, "menubar: failed to initialize\n");
         return 1;
     }
 

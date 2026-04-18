@@ -1,0 +1,20 @@
+# CopyCatOS Gaming Session Entry
+#
+# This file tells SDDM / GDM / LightDM to offer "CopyCatOS Gaming" as a
+# selectable session on the login screen. It boots directly into a pure
+# Gamescope compositor — no moonrock, no cc-shell. Steam takes the screen.
+#
+# inputd auto-detects this session (via XDG_SESSION_DESKTOP) and switches
+# the controller to GAME profile: raw events pass through the virtual
+# gamepad so Steam Input / per-game bindings take over.
+#
+# Install:
+#   sudo cp copycatos-gaming.desktop /usr/share/xsessions/
+#   sudo cp gaming-session.sh /usr/local/bin/
+
+[Desktop Entry]
+Name=CopyCatOS Gaming
+Comment=Pure Gamescope session for Steam / emulators
+Exec=/usr/local/bin/gaming-session.sh
+Type=Application
+DesktopNames=CopyCatOS-Gaming

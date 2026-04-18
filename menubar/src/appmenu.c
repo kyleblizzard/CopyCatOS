@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // appmenu.c — Application menu tracking and dropdown rendering
 //
@@ -72,7 +69,7 @@ static const struct {
     {"kdenlive",         "Kdenlive"},
     {"strawberry",       "Strawberry"},
     {"systemsettings",   "System Preferences"},
-    {"cc-desktop",       "Finder"},
+    {"desktop",       "Finder"},
 
     // KDE apps — appear as their KDE identities
     {"ark",               "Archive Utility"},
@@ -96,8 +93,8 @@ static const struct {
     {"thunderbird",       "Mail"},
     {"evolution",         "Mail"},
     {"nm-connection-editor", "Network Preferences"},
-    {"cc-sysprefs",       "System Preferences"},
-    {"cc-spotlight",      "Spotlight"},
+    {"systemcontrol",       "System Preferences"},
+    {"searchsystem",      "Spotlight"},
     {"steam",             "Steam"},
     {"lutris",            "Lutris"},
     {"heroic",            "Game Center"},
@@ -360,7 +357,7 @@ void appmenu_get_menus(const char *app_class, const char ***menus, int *count)
     // set of menu titles. Default to the generic set for unknown apps.
 
     if (strcasecmp(app_class, "dolphin") == 0 ||
-        strcasecmp(app_class, "cc-desktop") == 0) {
+        strcasecmp(app_class, "desktop") == 0) {
         *menus = finder_menus;
         *count = finder_menu_count;
     } else if (strcasecmp(app_class, "konsole") == 0) {
@@ -370,7 +367,7 @@ void appmenu_get_menus(const char *app_class, const char ***menus, int *count)
                strcasecmp(app_class, "firefox") == 0) {
         *menus = browser_menus;
         *count = browser_menu_count;
-    } else if (strcasecmp(app_class, "cc-sysprefs") == 0 ||
+    } else if (strcasecmp(app_class, "systemcontrol") == 0 ||
                strcasecmp(app_class, "systemsettings") == 0) {
         *menus = sysprefs_menus;
         *count = sysprefs_menu_count;
@@ -691,7 +688,7 @@ static void dispatch_menu_action(MenuBar *mb, const char *item_label)
     // ── Window menu actions ──────────────────────────────────────
     if (strcmp(item_label, "Minimize") == 0) {
         // Send WM_CHANGE_STATE with IconicState to ask the WM to minimize.
-        // The WM (cc-wm) handles this and triggers the genie animation.
+        // The WM (moonrock) handles this and triggers the genie animation.
         // IconicState = 3 per ICCCM. This mirrors what clicking the yellow
         // traffic light button does — the code path is identical in the WM.
         if (active == None) return;

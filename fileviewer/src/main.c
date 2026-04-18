@@ -1,12 +1,9 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // main.c — Entry point for CCFinder
 //
 // CCFinder is the Snow Leopard-style file manager for CopyCatOS.
-// It creates a normal window that cc-wm frames with Snow Leopard
+// It creates a normal window that moonrock frames with Snow Leopard
 // title bar chrome. The window has three zones:
 //
 //   1. Toolbar  (top 30px)  — view buttons, breadcrumb path, search field
@@ -14,9 +11,9 @@
 //   3. Content  (remaining)  — icon grid showing directory contents
 //
 // Usage:
-//   cc-finder                    # open at $HOME
-//   cc-finder /path/to/dir       # open at specific directory
-//   cc-finder ~/Documents        # open Documents folder
+//   fileviewer                    # open at $HOME
+//   fileviewer /path/to/dir       # open at specific directory
+//   fileviewer ~/Documents        # open Documents folder
 
 #include "finder.h"
 
@@ -37,7 +34,7 @@ static FinderState *g_finder = NULL;
 static void handle_signal(int sig)
 {
     (void)sig;  // Mark parameter as intentionally unused
-    fprintf(stderr, "[cc-finder] Received signal %d, shutting down\n", sig);
+    fprintf(stderr, "[fileviewer] Received signal %d, shutting down\n", sig);
     if (g_finder) {
         g_finder->running = false;
     }
@@ -53,7 +50,7 @@ int main(int argc, char *argv[])
     for (int i = 1; i < argc; i++) {
         if (argv[i][0] == '-') {
             // Unknown flag — show usage
-            fprintf(stderr, "Usage: cc-finder [PATH]\n");
+            fprintf(stderr, "Usage: fileviewer [PATH]\n");
             return 1;
         } else {
             // Treat as directory path
@@ -79,7 +76,7 @@ int main(int argc, char *argv[])
     // Initialize: open X display, create window, set up Cairo,
     // load sidebar items, scan initial directory.
     if (!finder_init(&finder, initial_path)) {
-        fprintf(stderr, "[cc-finder] Failed to initialize\n");
+        fprintf(stderr, "[fileviewer] Failed to initialize\n");
         return 1;
     }
 
@@ -90,6 +87,6 @@ int main(int argc, char *argv[])
     // Clean up all resources before exiting.
     finder_shutdown(&finder);
 
-    fprintf(stderr, "[cc-finder] Shutdown complete\n");
+    fprintf(stderr, "[fileviewer] Shutdown complete\n");
     return 0;
 }

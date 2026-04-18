@@ -1,12 +1,12 @@
 # Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
 # CopyCatOS Input Daemon — systemd service unit
 #
-# Starts cc-inputd at boot to translate Legion Go controller input
+# Starts inputd at boot to translate Legion Go controller input
 # into mouse/keyboard/gamepad events for the desktop environment.
 #
-# Enable:  sudo systemctl enable cc-inputd
-# Start:   sudo systemctl start cc-inputd
-# Logs:    journalctl -u cc-inputd -f
+# Enable:  sudo systemctl enable inputd
+# Start:   sudo systemctl start inputd
+# Logs:    journalctl -u inputd -f
 
 [Unit]
 Description=CopyCatOS Input Daemon
@@ -15,7 +15,7 @@ Wants=systemd-udevd.service
 
 [Service]
 Type=simple
-ExecStart=/usr/local/sbin/cc-inputd
+ExecStart=/usr/local/sbin/inputd
 Restart=on-failure
 RestartSec=2
 

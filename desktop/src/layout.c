@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // layout.c — Persistent desktop icon layout (spatial memory)
 //
@@ -10,7 +7,7 @@
 // it's still there. This module implements that guarantee.
 //
 // Every time you drag an icon to a new position, layout_save_all() writes
-// the complete grid layout to disk atomically. Every time cc-desktop starts,
+// the complete grid layout to disk atomically. Every time desktop starts,
 // layout_load() reads it back and layout_apply() restores every icon to
 // exactly where you left it.
 //
@@ -273,7 +270,7 @@ void layout_save_all(const DesktopIcon *icons, int count)
 
     // Write to a temp file first, then atomically rename into place.
     // This ensures the layout file is never in a half-written state
-    // even if cc-desktop is killed during the write.
+    // even if desktop is killed during the write.
     char tmp_path[1056];
     snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", path);
 

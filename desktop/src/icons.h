@@ -1,12 +1,9 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // icons.h — Desktop icon grid manager
 //
 // Scans ~/Desktop for files and folders, loads appropriate icons from
-// the AquaKDE icon theme, and arranges them in a grid starting from
+// the Aqua icon theme, and arranges them in a grid starting from
 // the top-right corner of the screen (like classic Mac OS).
 //
 // Supports:

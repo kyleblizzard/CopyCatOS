@@ -1,16 +1,13 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
 // ipc.c — Unix domain socket IPC server
 // ============================================================================
 //
-// Manages a Unix domain socket at /run/cc-inputd.sock through which the
+// Manages a Unix domain socket at /run/inputd.sock through which the
 // daemon communicates with the user-level session bridge. The session bridge
-// relays messages between cc-inputd (running as root) and desktop components
-// like cc-wm and System Preferences (running as the logged-in user).
+// relays messages between inputd (running as root) and desktop components
+// like moonrock and System Preferences (running as the logged-in user).
 //
 // The protocol is intentionally simple — a 3-byte header followed by a
 // variable-length payload:
@@ -80,7 +77,7 @@ bool ipc_server_init(IpcServer *srv)
     strncpy(addr.sun_path, IPC_SOCK_PATH, sizeof(addr.sun_path) - 1);
 
     // Bind the socket to the filesystem path.
-    // After this call, /run/cc-inputd.sock exists as a special file.
+    // After this call, /run/inputd.sock exists as a special file.
     if (bind(srv->listen_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         fprintf(stderr, "ipc: bind(%s) failed: %s\n",
                 IPC_SOCK_PATH, strerror(errno));

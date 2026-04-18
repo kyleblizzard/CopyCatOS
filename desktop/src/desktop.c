@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // desktop.c — Core desktop surface manager
 //
@@ -94,7 +91,7 @@ bool desktop_init(Desktop *d, const char *wallpaper_path)
     // NULL means use the DISPLAY environment variable (e.g., ":0").
     d->dpy = XOpenDisplay(NULL);
     if (!d->dpy) {
-        fprintf(stderr, "[cc-desktop] Cannot open X display\n");
+        fprintf(stderr, "[desktop] Cannot open X display\n");
         return false;
     }
 
@@ -104,18 +101,18 @@ bool desktop_init(Desktop *d, const char *wallpaper_path)
     d->height = DisplayHeight(d->dpy, d->screen);
     d->running = true;
 
-    fprintf(stderr, "[cc-desktop] Screen: %dx%d\n", d->width, d->height);
+    fprintf(stderr, "[desktop] Screen: %dx%d\n", d->width, d->height);
 
     // Try to get a 32-bit ARGB visual for transparency effects.
     // If that fails, use the default visual (usually 24-bit RGB).
     d->visual = find_argb_visual(d->dpy, d->screen, &d->depth);
     if (d->visual) {
-        fprintf(stderr, "[cc-desktop] Using 32-bit ARGB visual\n");
+        fprintf(stderr, "[desktop] Using 32-bit ARGB visual\n");
         // ARGB visuals need their own colormap because they use a
         // different pixel format than the default visual.
         d->colormap = XCreateColormap(d->dpy, d->root, d->visual, AllocNone);
     } else {
-        fprintf(stderr, "[cc-desktop] Falling back to default visual\n");
+        fprintf(stderr, "[desktop] Falling back to default visual\n");
         d->visual = DefaultVisual(d->dpy, d->screen);
         d->depth = DefaultDepth(d->dpy, d->screen);
         d->colormap = DefaultColormap(d->dpy, d->screen);
@@ -166,7 +163,7 @@ bool desktop_init(Desktop *d, const char *wallpaper_path)
 
     // Initialize the wallpaper (load image, scale to screen)
     if (!wallpaper_init(wallpaper_path, d->width, d->height)) {
-        fprintf(stderr, "[cc-desktop] Warning: wallpaper init failed, using fallback\n");
+        fprintf(stderr, "[desktop] Warning: wallpaper init failed, using fallback\n");
     }
 
     // Initialize the icon grid (scan ~/Desktop, load icons, set up inotify)
@@ -178,7 +175,7 @@ bool desktop_init(Desktop *d, const char *wallpaper_path)
     // Do an initial paint so the desktop isn't blank
     desktop_repaint(d);
 
-    fprintf(stderr, "[cc-desktop] Initialized successfully\n");
+    fprintf(stderr, "[desktop] Initialized successfully\n");
     return true;
 }
 
@@ -374,13 +371,13 @@ void desktop_run(Desktop *d)
 
                         case ICON_ACTION_INFO:
                             // Get Info — placeholder for now
-                            fprintf(stderr, "[cc-desktop] TODO: Get Info for '%s'\n",
+                            fprintf(stderr, "[desktop] TODO: Get Info for '%s'\n",
                                     rhit->name);
                             break;
 
                         case ICON_ACTION_TRASH:
                             // Move to Trash — placeholder for now
-                            fprintf(stderr, "[cc-desktop] TODO: Move to Trash '%s'\n",
+                            fprintf(stderr, "[desktop] TODO: Move to Trash '%s'\n",
                                     rhit->name);
                             break;
 
@@ -390,7 +387,7 @@ void desktop_run(Desktop *d)
                                 int new_label = action - ICON_ACTION_LABEL_BASE;
                                 label_set(rhit->path, new_label);
                                 rhit->label = new_label;
-                                fprintf(stderr, "[cc-desktop] Label '%s' → %s\n",
+                                fprintf(stderr, "[desktop] Label '%s' → %s\n",
                                         rhit->name, label_names[new_label]);
                             }
                             break;
@@ -434,7 +431,7 @@ void desktop_run(Desktop *d)
                             desktop_repaint(d);
                             break;
                         case 5:  // "Change Desktop Background..."
-                            fprintf(stderr, "[cc-desktop] TODO: desktop background picker\n");
+                            fprintf(stderr, "[desktop] TODO: desktop background picker\n");
                             break;
                         case 7:  // "Open Terminal Here"
                         {
@@ -551,7 +548,7 @@ void desktop_run(Desktop *d)
                     if (dest) {
                         // A new file arrived on the desktop — inotify will
                         // catch it, but trigger a repaint now for instant feedback.
-                        fprintf(stderr, "[cc-desktop] File dropped onto desktop: %s\n",
+                        fprintf(stderr, "[desktop] File dropped onto desktop: %s\n",
                                 dest);
                         desktop_repaint(d);
                     }

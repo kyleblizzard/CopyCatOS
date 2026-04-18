@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
 // mapper.c — Button/axis mapping engine implementation
@@ -514,7 +511,7 @@ int mapper_process(Mapper *m, const struct input_event *ev,
 // --------------------------------------------------------------------------
 // mapper_set_profile — Switch the active mapping profile
 // --------------------------------------------------------------------------
-// Called by the IPC handler when cc-wm tells us to change modes:
+// Called by the IPC handler when moonrock tells us to change modes:
 //   - PROFILE_DESKTOP: normal desktop navigation
 //   - PROFILE_LOGIN:   restricted mode for login screen
 //   - PROFILE_GAME:    raw passthrough for games

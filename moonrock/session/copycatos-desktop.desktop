@@ -1,0 +1,19 @@
+# CopyCatOS Desktop Session Entry
+#
+# This file tells SDDM / GDM / LightDM to offer "CopyCatOS" as a selectable
+# desktop session on the login screen. It starts the full Snow Leopard shell:
+# moonrock compositor + desktop + menubar + dock + searchsystem + fileviewer
+# + moonbase + inputd / inputsession.
+#
+# Install:
+#   sudo cp copycatos-desktop.desktop /usr/share/xsessions/
+#
+# Pairs with copycatos-gaming.desktop, which boots into pure Gamescope mode
+# instead of the Snow Leopard shell.
+
+[Desktop Entry]
+Name=CopyCatOS
+Comment=Snow Leopard desktop environment
+Exec=/usr/local/bin/moonrock-session.sh
+Type=Application
+DesktopNames=CopyCatOS

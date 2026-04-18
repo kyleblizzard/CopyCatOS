@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // CopyCatOS Window Manager — Strut (reserved screen space) management
 //
@@ -90,7 +87,7 @@ void struts_init(CCWM *wm)
                     XA_CARDINAL, 32, PropModeReplace,
                     (unsigned char *)workarea, 4);
 
-    fprintf(stderr, "[cc-wm] Struts initialised — workarea %dx%d+%d+%d\n",
+    fprintf(stderr, "[moonrock] Struts initialised — workarea %dx%d+%d+%d\n",
             wa_w, wa_h, wa_x, wa_y);
 }
 
@@ -176,7 +173,7 @@ void struts_recalculate(CCWM *wm)
     if (!XQueryTree(wm->dpy, wm->root, &root_ret, &parent_ret,
                     &children, &nchildren))
     {
-        fprintf(stderr, "[cc-wm] struts_recalculate: XQueryTree failed\n");
+        fprintf(stderr, "[moonrock] struts_recalculate: XQueryTree failed\n");
         return;
     }
 
@@ -224,7 +221,7 @@ void struts_recalculate(CCWM *wm)
                     XA_CARDINAL, 32, PropModeReplace,
                     (unsigned char *)workarea, 4);
 
-    fprintf(stderr, "[cc-wm] Workarea recalculated: %dx%d+%d+%d "
+    fprintf(stderr, "[moonrock] Workarea recalculated: %dx%d+%d+%d "
             "(struts L=%ld R=%ld T=%ld B=%ld)\n",
             wa_w, wa_h, wa_x, wa_y,
             max_left, max_right, max_top, max_bottom);

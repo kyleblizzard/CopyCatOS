@@ -1,12 +1,9 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
-// main.c — Entry point for cc-inputd
+// main.c — Entry point for inputd
 //
-// cc-inputd is the CopyCatOS input daemon. It reads raw gamepad events from
+// inputd is the CopyCatOS input daemon. It reads raw gamepad events from
 // the Lenovo Legion Go's built-in controllers, translates them into mouse
 // movements, keyboard presses, and CopyCatOS shell actions, and injects
 // the results through Linux uinput virtual devices.
@@ -17,9 +14,9 @@
 //   - Daemon initialization, main loop, and teardown
 //
 // Usage:
-//   cc-inputd           Run the daemon (requires root for /dev/input + /dev/uinput)
-//   cc-inputd --version Print version and exit
-//   cc-inputd --help    Print usage and exit
+//   inputd           Run the daemon (requires root for /dev/input + /dev/uinput)
+//   inputd --version Print version and exit
+//   inputd --help    Print usage and exit
 //
 
 #include <stdio.h>
@@ -41,11 +38,11 @@
 // --------------------------------------------------------------------------
 // Lock file path — prevents two instances from running simultaneously
 // --------------------------------------------------------------------------
-// We use flock() on this file to ensure only one cc-inputd process runs
+// We use flock() on this file to ensure only one inputd process runs
 // at a time. If a second instance tries to start, flock() will fail with
 // EWOULDBLOCK and we exit with an error message.
 // --------------------------------------------------------------------------
-#define LOCK_FILE "/tmp/cc-inputd.lock"
+#define LOCK_FILE "/tmp/inputd.lock"
 
 // --------------------------------------------------------------------------
 // Global daemon pointer — needed by signal handlers
@@ -127,7 +124,7 @@ static void setup_signals(void) {
 }
 
 // --------------------------------------------------------------------------
-// acquire_lock — Ensure only one instance of cc-inputd is running
+// acquire_lock — Ensure only one instance of inputd is running
 // --------------------------------------------------------------------------
 // Opens (or creates) a lock file and applies an exclusive, non-blocking
 // flock(). If another instance already holds the lock, flock() returns
@@ -142,7 +139,7 @@ static int acquire_lock(void) {
     // O_RDWR because flock() needs at least one access mode.
     int fd = open(LOCK_FILE, O_RDWR | O_CREAT, 0644);
     if (fd < 0) {
-        fprintf(stderr, "cc-inputd: failed to open lock file %s: %s\n",
+        fprintf(stderr, "inputd: failed to open lock file %s: %s\n",
                 LOCK_FILE, strerror(errno));
         return -1;
     }
@@ -152,9 +149,9 @@ static int acquire_lock(void) {
     // LOCK_NB = non-blocking (return immediately if lock can't be acquired)
     if (flock(fd, LOCK_EX | LOCK_NB) < 0) {
         if (errno == EWOULDBLOCK) {
-            fprintf(stderr, "cc-inputd: another instance is already running\n");
+            fprintf(stderr, "inputd: another instance is already running\n");
         } else {
-            fprintf(stderr, "cc-inputd: flock failed: %s\n", strerror(errno));
+            fprintf(stderr, "inputd: flock failed: %s\n", strerror(errno));
         }
         close(fd);
         return -1;
@@ -168,22 +165,22 @@ static int acquire_lock(void) {
 // --------------------------------------------------------------------------
 static void print_usage(void) {
     fprintf(stderr,
-        "cc-inputd — CopyCatOS input daemon\n"
+        "inputd — CopyCatOS input daemon\n"
         "\n"
         "Reads Legion Go gamepad events and translates them into\n"
         "mouse, keyboard, and shell actions for the desktop environment.\n"
         "\n"
         "Usage:\n"
-        "  cc-inputd           Run the daemon (requires root)\n"
-        "  cc-inputd --help    Show this help message\n"
-        "  cc-inputd --version Show version\n"
+        "  inputd           Run the daemon (requires root)\n"
+        "  inputd --help    Show this help message\n"
+        "  inputd --version Show version\n"
         "\n"
         "Signals:\n"
         "  SIGINT/SIGTERM      Shut down gracefully\n"
         "  SIGHUP              Reload configuration\n"
         "\n"
         "Config file: ~/.config/copycatos/input.conf\n"
-        "IPC socket:  /run/cc-inputd.sock\n"
+        "IPC socket:  /run/inputd.sock\n"
     );
 }
 
@@ -191,7 +188,7 @@ static void print_usage(void) {
 // print_version — Show version on stderr
 // --------------------------------------------------------------------------
 static void print_version(void) {
-    fprintf(stderr, "cc-inputd version %s\n", INPUTD_VERSION);
+    fprintf(stderr, "inputd version %s\n", INPUTD_VERSION);
 }
 
 // --------------------------------------------------------------------------
@@ -212,25 +209,25 @@ int main(int argc, char *argv[]) {
     }
 
     // --- Check for root privileges ---
-    // cc-inputd needs root to:
+    // inputd needs root to:
     //   1. Open /dev/input/event* device files
     //   2. Open /dev/uinput to create virtual devices
     //   3. Use EVIOCGRAB to grab exclusive access to controllers
     //   4. Create the IPC socket in /run/
     if (geteuid() != 0) {
-        fprintf(stderr, "cc-inputd: must run as root (need /dev/input + /dev/uinput access)\n");
+        fprintf(stderr, "inputd: must run as root (need /dev/input + /dev/uinput access)\n");
         return 1;
     }
 
     // --- Single instance enforcement ---
-    // Acquire the lock file. If another cc-inputd is already running,
+    // Acquire the lock file. If another inputd is already running,
     // this returns -1 and we exit immediately.
     int lock_fd = acquire_lock();
     if (lock_fd < 0) {
         return 1;
     }
 
-    fprintf(stderr, "cc-inputd: starting (version %s)\n", INPUTD_VERSION);
+    fprintf(stderr, "inputd: starting (version %s)\n", INPUTD_VERSION);
 
     // --- Initialize the daemon struct ---
     // Zero the struct so all pointers start as NULL and all fds start as 0.
@@ -250,20 +247,20 @@ int main(int argc, char *argv[]) {
     // This opens physical devices, creates virtual devices, loads config,
     // sets up the IPC socket, creates the self-pipe, and builds the epoll set.
     if (inputd_init(&daemon) < 0) {
-        fprintf(stderr, "cc-inputd: initialization failed\n");
+        fprintf(stderr, "inputd: initialization failed\n");
         inputd_shutdown(&daemon);
         close(lock_fd);
         return 1;
     }
 
-    fprintf(stderr, "cc-inputd: initialized, entering main loop\n");
+    fprintf(stderr, "inputd: initialized, entering main loop\n");
 
     // --- Run the main event loop ---
     // This blocks until daemon.running is set to false by a signal handler.
     // All event processing happens inside this function.
     inputd_run(&daemon);
 
-    fprintf(stderr, "cc-inputd: shutting down\n");
+    fprintf(stderr, "inputd: shutting down\n");
 
     // --- Clean shutdown ---
     // Close all devices, destroy virtual devices, remove IPC socket, free memory.
@@ -276,6 +273,6 @@ int main(int argc, char *argv[]) {
     // Close the lock file — this automatically releases the flock
     close(lock_fd);
 
-    fprintf(stderr, "cc-inputd: stopped\n");
+    fprintf(stderr, "inputd: stopped\n");
     return 0;
 }

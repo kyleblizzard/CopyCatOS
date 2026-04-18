@@ -1,14 +1,11 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
-// config.c — INI config parser for cc-inputd
+// config.c — INI config parser for inputd
 // ============================================================================
 //
 // Reads and writes ~/.config/copycatos/input.conf using a simple INI format.
-// Follows the same line-by-line parsing pattern used in cc-sysprefs/panes/dock.c
+// Follows the same line-by-line parsing pattern used in systemcontrol/panes/dock.c
 // for desktop.conf — track the current [section] name, then match "key=value"
 // pairs within each section.
 //
@@ -293,7 +290,7 @@ bool config_load_input(InputConfig *cfg)
     // ------------------------------------------------------------------
     // Step 4: Parse line by line, tracking the current section
     // ------------------------------------------------------------------
-    // This follows the exact same pattern as cc-sysprefs/panes/dock.c:
+    // This follows the exact same pattern as systemcontrol/panes/dock.c:
     //   - If a line starts with '[', extract the section name
     //   - Otherwise, match "key=value" pairs based on the current section
     // ------------------------------------------------------------------

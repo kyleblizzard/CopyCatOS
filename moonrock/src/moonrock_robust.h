@@ -1,7 +1,5 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
+
 //
 // ============================================================================
 //  MoonRock Robust — production hardening for the MoonRock Compositor
@@ -119,7 +117,7 @@ void robust_set_log_file(const char *path);
 // desktop. It un-redirects all windows so the X server paints them directly
 // to the screen — no compositing effects, but the user can still work.
 //
-// The user can restart cc-wm to attempt to restore full compositing.
+// The user can restart moonrock to attempt to restore full compositing.
 
 // Enter fallback mode — disable compositing and let windows render directly.
 // This is a one-way trip: once in fallback mode, compositing stays off until
@@ -165,14 +163,14 @@ void robust_setup_hardware_cursor(Display *dpy);
 // File format (one window per line):
 //   window_class|x|y|w|h|space_index
 //
-// The default path is ~/.config/cc-wm/session.state
+// The default path is ~/.config/moonrock/session.state
 
 // Save the current session state (all managed window positions and Spaces) to
 // the given file path. Creates parent directories if they don't exist.
 //
 // Parameters:
 //   wm   — pointer to the global CCWM state (for reading window info)
-//   path — file path to write to (NULL for default ~/.config/cc-wm/session.state)
+//   path — file path to write to (NULL for default ~/.config/moonrock/session.state)
 //
 // Returns true on success, false if the file could not be written.
 bool robust_save_session(CCWM *wm, const char *path);

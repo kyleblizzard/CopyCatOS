@@ -1,14 +1,11 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 //
 // uinput.h — Virtual input devices via Linux uinput
 //
 // The kernel's uinput subsystem (/dev/uinput) lets userspace programs
-// create "virtual" input devices. When cc-inputd grabs the real Legion
-// Go controllers, X11/XLibre can no longer see them. Instead, cc-inputd
+// create "virtual" input devices. When inputd grabs the real Legion
+// Go controllers, X11/XLibre can no longer see them. Instead, inputd
 // injects translated events through these virtual devices, which X11
 // sees as ordinary mouse, keyboard, and gamepad hardware.
 //

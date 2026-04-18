@@ -1,7 +1,4 @@
-// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.
-// This code is publicly visible for portfolio purposes only.
-// Unauthorized copying, forking, or distribution of this file,
-// via any medium, is strictly prohibited.
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // sidebar.c — Snow Leopard Finder source list (sidebar)
 //
@@ -94,10 +91,10 @@ static int entry_count = 0;
 // Index of the currently selected (highlighted) item, or -1 for none
 static int selected_index = -1;
 
-// ── Helper: load a 16x16 icon from the AquaKDE theme ───────────────
+// ── Helper: load a 16x16 icon from the Aqua theme ───────────────
 //
 // Looks for the icon in the places/ or devices/ subdirectory of the
-// AquaKDE icon theme at multiple sizes, preferring 64x64 (scaled down
+// Aqua icon theme at multiple sizes, preferring 64x64 (scaled down
 // to 16x16 looks fine for sidebar icons).
 
 static cairo_surface_t *load_sidebar_icon(const char *icon_name,
@@ -113,7 +110,7 @@ static cairo_surface_t *load_sidebar_icon(const char *icon_name,
 
     for (int i = 0; sizes[i]; i++) {
         snprintf(path, sizeof(path),
-            "%s/.local/share/icons/AquaKDE-icons/%s/%s/%s.png",
+            "%s/.local/share/icons/Aqua/%s/%s/%s.png",
             home, sizes[i], subdir, icon_name);
 
         cairo_surface_t *surface = cairo_image_surface_create_from_png(path);
