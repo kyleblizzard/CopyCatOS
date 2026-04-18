@@ -14,17 +14,14 @@
 #   $1 = absolute path to the .appc bundle directory
 #   $2 = absolute path to the app's writable data directory
 #        (~/.local/share/moonbase/<bundle-id>/)
-#
-# Output:
-#   One bwrap arg per line on stdout. Consume the same way as
-#   native.profile:
-#       mapfile -t args < <(webview.profile "$bundle" "$data")
-#       bwrap "${args[@]}" -- "$inner_cmd" "$@"
+#   $3 = unshare_net: "1" (default) unshares the host netns,
+#        "0" leaves the app on the host network.
 
 set -euo pipefail
 
 bundle_path="${1:?webview.profile: bundle path required}"
 data_path="${2:?webview.profile: data path required}"
+unshare_net="${3:-1}"
 
 printf '%s\n' \
     --ro-bind     /               /                 \
@@ -34,9 +31,17 @@ printf '%s\n' \
     --ro-bind     "$bundle_path"  "$bundle_path"    \
     --bind        "$data_path"    "$data_path"      \
     --dev-bind    /dev/dri        /dev/dri          \
-    --unshare-all                                   \
+    --unshare-user                                  \
+    --unshare-ipc                                   \
+    --unshare-pid                                   \
+    --unshare-uts                                   \
+    --unshare-cgroup                                \
     --die-with-parent                               \
     --new-session                                   \
     --clearenv                                      \
     --setenv      HOME            "$data_path"      \
     --setenv      PATH            /usr/bin:/bin
+
+if [[ "$unshare_net" == "1" ]]; then
+    printf '%s\n' --unshare-net
+fi

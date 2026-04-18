@@ -127,16 +127,17 @@ pkg.generate(
 )
 
 # ---------------------------------------------------------------------
-# moonbase-launch — bwrap launcher scaffold
+# moonbase-launch — bundle-aware, sandbox-aware launcher
 # ---------------------------------------------------------------------
 #
-# No library link — the launcher is a bwrap wrapper, it does not
-# embed libmoonbase. Phase D grows this into the real Info.appc
-# reader + quarantine-aware launcher.
+# Links libmoonbase so it can call mb_bundle_load (bundle-spec.md §8
+# validation) on the target .appc before building the bwrap argv.
 
-executable(
+moonbase_launch = executable(
   'moonbase-launch',
   'launcher/moonbase-launch.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
   install: true,
 )
 
@@ -394,3 +395,29 @@ mb_bundle_load = executable(
 )
 
 test('bundle-load', mb_bundle_load, timeout: 15)
+
+# ---------------------------------------------------------------------
+# mb-launch-smoke — Phase D slice 3 end-to-end launcher test
+# ---------------------------------------------------------------------
+#
+# Builds a real fixture .appc in a tmpdir, forks moonbase-launch with
+# an overridden $HOME + $MOONBASE_SANDBOX_DIR, then verifies the
+# bundle's shell script ran inside the bwrap sandbox (by checking a
+# marker file in the per-app data dir), that MOONBASE_BUNDLE_ID was
+# set, that the Apple-style subdirs were created, and that the
+# script's exit code propagates through bwrap back to the launcher.
+# Skips (exit 77) if bwrap isn't on the machine — macOS CI will, Legion
+# won't.
+
+mb_launch_smoke = executable(
+  'mb-launch-smoke',
+  'tests/launch-smoke.c',
+  include_directories: include_directories('include', 'src'),
+  install: false,
+)
+
+test('launch-smoke', mb_launch_smoke,
+  args: [moonbase_launch, meson.project_source_root() / 'sandbox'],
+  depends: [moonbase_launch],
+  timeout: 20,
+)
