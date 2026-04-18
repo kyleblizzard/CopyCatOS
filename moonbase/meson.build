@@ -75,7 +75,12 @@ install_headers(ipc_headers, subdir: 'moonbase/ipc')
 
 moonbase_lib_sources = files(
   'src/error.c',
+  'src/init.c',
   'src/stubs.c',
+  'src/ipc/cbor.c',
+  'src/ipc/debug.c',
+  'src/ipc/frame.c',
+  'src/ipc/transport.c',
 )
 
 # Phase B library links no external deps on purpose — the stubs
@@ -152,3 +157,22 @@ executable(
   link_with: libmoonbase,
   install: false,
 )
+
+# ---------------------------------------------------------------------
+# mb-hello-handshake — Phase C slice 1 end-to-end test
+# ---------------------------------------------------------------------
+#
+# Forks a mock compositor, runs moonbase_init against it, asserts the
+# full HELLO / WELCOME / BYE exchange. Links libmoonbase plus reaches
+# into src/ipc/ directly so it can drive the compositor side without
+# duplicating the frame / CBOR code.
+
+mb_hello_handshake = executable(
+  'mb-hello-handshake',
+  'tests/hello-handshake.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('hello-handshake', mb_hello_handshake, timeout: 10)

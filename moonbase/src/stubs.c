@@ -40,12 +40,7 @@ static inline void nosys(void) {
 // Lifecycle + main loop
 // ---------------------------------------------------------------------
 
-int moonbase_init(int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-    nosys();
-    return MB_ENOSYS;
-}
+// moonbase_init and moonbase_quit are real — see init.c.
 
 int moonbase_run(void) {
     nosys();
@@ -63,15 +58,6 @@ int moonbase_wait_event(mb_event_t *ev, int timeout_ms) {
     (void)timeout_ms;
     nosys();
     return MB_ENOSYS;
-}
-
-void moonbase_quit(int exit_code) {
-    (void)exit_code;
-    // quit is inherently "no failure" — the app asked to leave. We
-    // still record ENOSYS so that a caller watching last-error can
-    // see the stub didn't actually tear anything down, but we never
-    // refuse the request.
-    nosys();
 }
 
 void moonbase_set_event_handler(mb_event_handler_t fn, void *userdata) {
