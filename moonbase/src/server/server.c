@@ -93,6 +93,22 @@ static void bq_consume(byteq_t *q, size_t n) {
 // ---------------------------------------------------------------------
 // Per-client state
 // ---------------------------------------------------------------------
+//
+// SCM_RIGHTS bookkeeping: fds attach to the first byte of a frame on
+// the sending side (mb_ipc_frame_send emits them with the 6-byte
+// header sendmsg). Linux AF_UNIX guarantees the receiver sees those
+// fds on the recvmsg that picks up that first byte — and splits the
+// read at the cmsg boundary, so the fds always ride with the first
+// byte of *this* recv's buffer. We translate that into stream offsets
+// and re-attach each batch to its frame as drain_rx walks the rx queue.
+
+#define MB_CLIENT_PENDING_FD_BATCHES 8
+
+typedef struct {
+    int      fds[MB_IPC_FRAME_MAX_FDS];
+    size_t   count;
+    uint64_t attach_offset;   // rx-stream offset of the frame's first byte
+} fd_batch_t;
 
 typedef struct mb_client {
     struct mb_client *next;
@@ -103,6 +119,18 @@ typedef struct mb_client {
     byteq_t           rx;
     byteq_t           tx;
 
+    // Total bytes ever received / dispatched for this client's rx
+    // stream. The delta is always bq_len(&rx). We key fd batches off
+    // received; drain_rx advances consumed one frame at a time.
+    uint64_t          rx_received;
+    uint64_t          rx_consumed;
+
+    // Pending fd batches, FIFO. Each batch remembers the rx-stream
+    // offset it arrived at; drain_rx pops the head when the current
+    // frame's start offset matches.
+    fd_batch_t        pending_fds[MB_CLIENT_PENDING_FD_BATCHES];
+    size_t            pending_fd_count;
+
     // Identity recorded from HELLO. Copied into owned storage so the
     // frame buffer can be reused immediately.
     uint32_t          api_version;
@@ -112,11 +140,24 @@ typedef struct mb_client {
     uint32_t          language;
 } mb_client_t;
 
+// Close every fd still buffered in the pending-batch queue. Called
+// on connection teardown and on unrecoverable protocol errors to
+// make sure we don't leak descriptors the peer handed us.
+static void client_drop_pending_fds(mb_client_t *c) {
+    for (size_t i = 0; i < c->pending_fd_count; i++) {
+        for (size_t j = 0; j < c->pending_fds[i].count; j++) {
+            close(c->pending_fds[i].fds[j]);
+        }
+    }
+    c->pending_fd_count = 0;
+}
+
 static void client_free(mb_client_t *c) {
     if (!c) return;
     if (c->fd >= 0) close(c->fd);
     bq_free(&c->rx);
     bq_free(&c->tx);
+    client_drop_pending_fds(c);
     free(c->bundle_id);
     free(c->bundle_version);
     free(c);
@@ -347,8 +388,12 @@ static int server_accept(mb_server_t *s) {
 
 static void handle_complete_frame(mb_server_t *s, mb_client_t *c,
                                   uint16_t kind,
-                                  const uint8_t *body, size_t body_len) {
+                                  const uint8_t *body, size_t body_len,
+                                  const int *fds, size_t nfds) {
     if (!c->handshaken) {
+        // HELLO never carries ancillary fds; any that arrived are
+        // closed by the caller (drain_rx) once we return. No error —
+        // a compliant client won't send them here.
         if (kind != MB_IPC_HELLO) {
             client_send_error(c, MB_EPROTO, "handshake required");
             c->pending_close = true;
@@ -400,7 +445,24 @@ static void handle_complete_frame(mb_server_t *s, mb_client_t *c,
     ev.frame_kind     = kind;
     ev.frame_body     = body;
     ev.frame_body_len = body_len;
+    ev.frame_fds      = fds;
+    ev.frame_fd_count = nfds;
     if (s->on_event) s->on_event(s, &ev, s->user);
+}
+
+// Pop the head fd batch off the pending queue, returning its count.
+// `out_fds` gets a copy of the fds; the batch's storage is freed.
+static size_t client_pop_fd_batch(mb_client_t *c,
+                                  int out_fds[MB_IPC_FRAME_MAX_FDS]) {
+    if (c->pending_fd_count == 0) return 0;
+    fd_batch_t *head = &c->pending_fds[0];
+    size_t n = head->count;
+    for (size_t i = 0; i < n; i++) out_fds[i] = head->fds[i];
+    for (size_t i = 1; i < c->pending_fd_count; i++) {
+        c->pending_fds[i - 1] = c->pending_fds[i];
+    }
+    c->pending_fd_count--;
+    return n;
 }
 
 // Try to parse and dispatch as many complete frames as the rx buffer
@@ -422,8 +484,41 @@ static int client_drain_rx(mb_server_t *s, mb_client_t *c) {
 
         const uint8_t *body = p + 6;
         size_t body_len     = (size_t)length - 2;
-        handle_complete_frame(s, c, kind, body, body_len);
+
+        // Attach any fd batch tagged to this frame's start offset.
+        // The sender's contract: fds ride on the frame header, so the
+        // batch's attach_offset equals c->rx_consumed at dispatch time.
+        // A batch tagged earlier than the current frame is a bug on
+        // our side (or a malicious peer) — close and abort.
+        int    owned_fds[MB_IPC_FRAME_MAX_FDS] = {0};
+        size_t owned_nfds = 0;
+
+        if (c->pending_fd_count > 0) {
+            fd_batch_t *head = &c->pending_fds[0];
+            if (head->attach_offset < c->rx_consumed) {
+                // Stream position passed the batch — drop and error.
+                (void)client_pop_fd_batch(c, owned_fds);
+                for (size_t i = 0; i < MB_IPC_FRAME_MAX_FDS; i++) {
+                    if (owned_fds[i] > 0) close(owned_fds[i]);
+                }
+                return MB_EPROTO;
+            }
+            if (head->attach_offset == c->rx_consumed) {
+                owned_nfds = client_pop_fd_batch(c, owned_fds);
+            }
+            // head->attach_offset > rx_consumed: batch belongs to a
+            // later frame; leave it in place.
+        }
+
+        handle_complete_frame(s, c, kind, body, body_len,
+                              owned_nfds ? owned_fds : NULL, owned_nfds);
+
+        // Callback has returned; close every fd we owned so apps
+        // that want to keep them must have dup'd in-band.
+        for (size_t i = 0; i < owned_nfds; i++) close(owned_fds[i]);
+
         bq_consume(&c->rx, frame_total);
+        c->rx_consumed += (uint64_t)frame_total;
 
         if (c->pending_close) return 0;
     }
@@ -431,24 +526,97 @@ static int client_drain_rx(mb_server_t *s, mb_client_t *c) {
 }
 
 // Read what's available on a client fd and drain the rx buffer.
+// Uses recvmsg so ancillary SCM_RIGHTS payloads ride in with the byte
+// stream. Every batch of fds is tagged with the stream offset of the
+// first byte of this recv — which, per AF_UNIX kernel semantics, is
+// always the first byte of the frame the sender attached them to.
+// drain_rx then re-joins each batch to its frame at dispatch time.
+//
 // We always drain before reporting EOF so a BYE frame delivered in
 // the same read as the close is observed as a clean shutdown instead
 // of a crash.
 static int client_read(mb_server_t *s, mb_client_t *c) {
     uint8_t buf[4096];
     bool eof = false;
+
+    // cmsg scratch sized for the max fds any single frame can carry.
+    // Using a union-over-cmsghdr ensures the raw bytes are aligned
+    // tightly enough for CMSG_FIRSTHDR / CMSG_NXTHDR.
+    union {
+        char raw[CMSG_SPACE(sizeof(int) * MB_IPC_FRAME_MAX_FDS)];
+        struct cmsghdr align;
+    } cmsg_buf;
+
     for (;;) {
-        ssize_t n = recv(c->fd, buf, sizeof(buf), 0);
-        if (n > 0) {
-            int rc = bq_append(&c->rx, buf, (size_t)n);
-            if (rc != 0) return rc;
-            continue;
+        struct iovec iov = { .iov_base = buf, .iov_len = sizeof(buf) };
+        struct msghdr msg;
+        memset(&msg, 0, sizeof(msg));
+        msg.msg_iov        = &iov;
+        msg.msg_iovlen     = 1;
+        msg.msg_control    = cmsg_buf.raw;
+        msg.msg_controllen = sizeof(cmsg_buf.raw);
+
+        int flags = 0;
+#ifdef MSG_CMSG_CLOEXEC
+        // Linux-only: atomically set O_CLOEXEC on received fds. On
+        // darwin we fall through to per-fd fcntl below.
+        flags |= MSG_CMSG_CLOEXEC;
+#endif
+
+        ssize_t n = recvmsg(c->fd, &msg, flags);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK) break;
+            return MB_EIPC;
         }
         if (n == 0) { eof = true; break; }
-        if (errno == EINTR) continue;
-        if (errno == EAGAIN || errno == EWOULDBLOCK) break;
-        return MB_EIPC;
+
+        // Peer sent more ancillary data than our buffer can hold.
+        // The fds that overflowed were discarded (closed) by the
+        // kernel, but we still treat this as a protocol error: our
+        // framing contract caps fds at MB_IPC_FRAME_MAX_FDS.
+        if (msg.msg_flags & MSG_CTRUNC) {
+            return MB_EPROTO;
+        }
+
+        // Every SCM_RIGHTS cmsg on this recv attaches to the first
+        // byte of this recv buffer — the kernel splits reads at
+        // cmsg boundaries. Tag the batch with rx_received (pre-append).
+        uint64_t attach_at = c->rx_received;
+        for (struct cmsghdr *cm = CMSG_FIRSTHDR(&msg); cm;
+             cm = CMSG_NXTHDR(&msg, cm)) {
+            if (cm->cmsg_level != SOL_SOCKET
+             || cm->cmsg_type  != SCM_RIGHTS) continue;
+
+            size_t fd_n = (cm->cmsg_len - CMSG_LEN(0)) / sizeof(int);
+            int   *src  = (int *)CMSG_DATA(cm);
+
+            // Saturated pending queue or oversized batch → malicious
+            // or buggy peer. Close what we got and tear the conn down.
+            if (fd_n > MB_IPC_FRAME_MAX_FDS
+             || c->pending_fd_count >= MB_CLIENT_PENDING_FD_BATCHES) {
+                for (size_t i = 0; i < fd_n; i++) close(src[i]);
+                return MB_EPROTO;
+            }
+
+            fd_batch_t *b = &c->pending_fds[c->pending_fd_count++];
+            b->count = fd_n;
+            b->attach_offset = attach_at;
+            for (size_t i = 0; i < fd_n; i++) {
+                b->fds[i] = src[i];
+#ifndef MSG_CMSG_CLOEXEC
+                // Best-effort CLOEXEC on platforms without the flag.
+                int f = fcntl(b->fds[i], F_GETFD);
+                if (f >= 0) (void)fcntl(b->fds[i], F_SETFD, f | FD_CLOEXEC);
+#endif
+            }
+        }
+
+        int rc = bq_append(&c->rx, buf, (size_t)n);
+        if (rc != 0) return rc;
+        c->rx_received += (uint64_t)n;
     }
+
     int rc = client_drain_rx(s, c);
     if (rc != 0) return rc;
     if (eof) {
@@ -608,8 +776,16 @@ int mb_server_send(mb_server_t *s,
                    uint16_t kind,
                    const uint8_t *body, size_t body_len,
                    const int *fds, size_t nfds) {
-    (void)fds; (void)nfds;  // SCM_RIGHTS not in this slice
     if (!s) return MB_EINVAL;
+
+    // Server → client SCM_RIGHTS is a distinct slice: the tx byte
+    // queue would need each fd batch tagged with its stream offset
+    // so client_write can switch to sendmsg on the right byte. No
+    // current caller needs outbound fds (WINDOW_CREATE_REPLY has no
+    // fd payload), so keep this path explicit and rejectable.
+    (void)fds;
+    if (nfds > 0) return MB_ENOSYS;
+
     mb_client_t *c = NULL;
     for (mb_client_t *it = s->clients; it; it = it->next) {
         if (it->id == client) { c = it; break; }

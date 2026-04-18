@@ -198,6 +198,26 @@ mb_server_smoke = executable(
 test('server-smoke', mb_server_smoke, timeout: 10)
 
 # ---------------------------------------------------------------------
+# mb-server-fds — server-side SCM_RIGHTS round-trip
+# ---------------------------------------------------------------------
+#
+# Child sends a frame with a pipe read-end attached; parent verifies
+# the server surfaces the fd on the matching MB_SERVER_EV_FRAME and
+# that reading from it yields the magic byte the child wrote. Pins
+# the client→server fd-passing contract and the "server owns and
+# closes received fds" ownership rule.
+
+mb_server_fds = executable(
+  'mb-server-fds',
+  'tests/server-fds.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('server-fds', mb_server_fds, timeout: 10)
+
+# ---------------------------------------------------------------------
 # mb-window-create — Phase C slice 3a round-trip test
 # ---------------------------------------------------------------------
 #

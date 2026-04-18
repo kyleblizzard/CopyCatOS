@@ -24,8 +24,14 @@
 //   * The caller sees connections only *after* a successful handshake.
 //     A broken handshake is logged and the socket is closed before the
 //     caller is notified.
-//   * SCM_RIGHTS (fd passing) is not implemented in this slice. Slice 3
-//     (surface memory) grows the reader into full recvmsg handling.
+//   * SCM_RIGHTS (fd passing, client → server) is implemented: any
+//     ancillary fds arriving with a frame are surfaced on the matching
+//     MB_SERVER_EV_FRAME as `frame_fds` / `frame_fd_count`. The server
+//     owns those fds and closes them after the callback returns, so
+//     the callback must `dup()` (or `fcntl(F_DUPFD_CLOEXEC)`) any fd
+//     it wants to keep past the event. Server → client fd passing
+//     (mb_server_send with nfds > 0) is not wired yet and currently
+//     returns MB_ENOSYS.
 
 #ifndef MOONBASE_SERVER_H
 #define MOONBASE_SERVER_H
@@ -79,6 +85,14 @@ typedef struct {
     uint16_t        frame_kind;
     const uint8_t  *frame_body;
     size_t          frame_body_len;
+
+    // Ancillary fds delivered alongside the frame (SCM_RIGHTS). The
+    // pointer is borrowed — the server retains ownership and closes
+    // every fd after the callback returns. If the callback wants any
+    // fd to survive past the event, it must dup (`F_DUPFD_CLOEXEC`).
+    // `frame_fd_count` is zero for frames that carried no fds.
+    const int      *frame_fds;
+    size_t          frame_fd_count;
 
     // Populated on MB_SERVER_EV_DISCONNECTED.
     int             disconnect_reason;   // 0 == clean BYE / peer EOF
