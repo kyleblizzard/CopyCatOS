@@ -79,6 +79,7 @@ moonbase_lib_sources = files(
   'src/init.c',
   'src/stubs.c',
   'src/window.c',
+  'src/bundle/bundle.c',
   'src/bundle/info_appc.c',
   'src/bundle/toml_lite.c',
   'src/ipc/cbor.c',
@@ -371,3 +372,25 @@ mb_info_appc = executable(
 )
 
 test('info-appc', mb_info_appc, timeout: 10)
+
+# ---------------------------------------------------------------------
+# mb-bundle-load — Phase D slice 2 on-disk loader test
+# ---------------------------------------------------------------------
+#
+# Drives mb_bundle_load against real tmpdir .appc trees. Covers the
+# happy path plus every failure in bundle-spec.md §8 except quarantine
+# (its own slice): bad suffix, not-a-directory, missing Info.appc,
+# executable missing, executable not-executable, executable outside
+# MacOS/Resources, relative-symlink escape via realpath, absolute
+# symlink anywhere in the tree, file at bundle root outside Contents/,
+# and minimum-moonbase newer than library.
+
+mb_bundle_load = executable(
+  'mb-bundle-load',
+  'tests/bundle-load.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('bundle-load', mb_bundle_load, timeout: 15)
