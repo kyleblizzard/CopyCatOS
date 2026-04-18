@@ -1,0 +1,23 @@
+[bundle]
+id               = "show.blizzard.hello"
+name             = "Hello"
+version          = "1.0.0"
+minimum-moonbase = "1.0"
+copyright        = "by Kyle Blizzard @ Blizzard.show"
+category         = "utility"
+
+[executable]
+path                = "Contents/MacOS/hello"
+language            = "c"
+render-mode-default = "cairo"
+
+[permissions]
+filesystem = []
+network    = []
+hardware   = []
+system     = []
+ipc        = []
+
+[localization]
+base-locale       = "en"
+supported-locales = ["en"]

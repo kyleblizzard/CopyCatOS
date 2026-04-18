@@ -507,3 +507,40 @@ test('data-dir-isolation', mb_data_dir_isolation,
   depends: [moonbase_launch, moonbase_consent],
   timeout: 30,
 )
+
+# ---------------------------------------------------------------------
+# examples/hello — reference MoonBase app + assembled .appc bundle
+# ---------------------------------------------------------------------
+#
+# Produces build/hello.appc/Contents/{Info.appc, MacOS/hello}. Layout
+# matches bundle-spec.md §1 and passes mb_bundle_load's validator. Not
+# installed system-wide — the bundle is a build artifact the user runs
+# from the build tree via `moonbase-launch build/hello.appc`.
+#
+# No Resources/ contents are shipped yet; §8 validation doesn't require
+# them and a real AppIcon.icns slice lands once the icon loader uses it.
+
+hello_exe = executable(
+  'hello',
+  'examples/hello/main.c',
+  include_directories: include_directories('include'),
+  dependencies: [cairo_dep],
+  link_with: libmoonbase,
+  install: false,
+)
+
+hello_appc = custom_target('hello-appc',
+  output: 'hello.appc',
+  input: [files('examples/hello/Info.appc'), hello_exe],
+  command: [
+    find_program('sh'), '-c',
+    'set -eu; '
+    + 'rm -rf "$0"; '
+    + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
+    + 'cp "$1" "$0/Contents/Info.appc"; '
+    + 'cp "$2" "$0/Contents/MacOS/hello"; '
+    + 'chmod 0755 "$0/Contents/MacOS/hello"',
+    '@OUTPUT@', '@INPUT0@', '@INPUT1@',
+  ],
+  build_by_default: true,
+)
