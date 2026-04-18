@@ -77,19 +77,12 @@ void moonbase_dispatch_main(void (*fn)(void *), void *userdata) {
 // ---------------------------------------------------------------------
 // Windows
 // ---------------------------------------------------------------------
-
-mb_window_t *moonbase_window_create(const mb_window_desc_t *desc) {
-    (void)desc;
-    nosys();
-    return NULL;
-}
+//
+// moonbase_window_create, moonbase_window_close, moonbase_window_size,
+// moonbase_window_backing_scale, moonbase_window_backing_pixel_size
+// are real — see window.c.
 
 void moonbase_window_show(mb_window_t *w) {
-    (void)w;
-    nosys();
-}
-
-void moonbase_window_close(mb_window_t *w) {
     (void)w;
     nosys();
 }
@@ -97,14 +90,6 @@ void moonbase_window_close(mb_window_t *w) {
 void moonbase_window_set_title(mb_window_t *w, const char *title_utf8) {
     (void)w;
     (void)title_utf8;
-    nosys();
-}
-
-void moonbase_window_size(mb_window_t *w,
-                          int *width_points, int *height_points) {
-    (void)w;
-    if (width_points)  *width_points  = 0;
-    if (height_points) *height_points = 0;
     nosys();
 }
 
@@ -149,25 +134,8 @@ const char *moonbase_window_output_name(mb_window_t *w) {
 }
 
 // ---------------------------------------------------------------------
-// HiDPI — backing scale queries
+// HiDPI — backing scale queries are real — see window.c.
 // ---------------------------------------------------------------------
-
-float moonbase_window_backing_scale(mb_window_t *w) {
-    (void)w;
-    nosys();
-    // 1.0 is the no-backend default so callers that forget to check
-    // last-error still get a finite multiplier and won't divide by
-    // zero when mapping points to pixels.
-    return 1.0f;
-}
-
-void moonbase_window_backing_pixel_size(mb_window_t *w,
-                                        int *width_px, int *height_px) {
-    (void)w;
-    if (width_px)  *width_px  = 0;
-    if (height_px) *height_px = 0;
-    nosys();
-}
 
 // ---------------------------------------------------------------------
 // Render handoff — Cairo + GL paths

@@ -371,20 +371,28 @@ bool mb_cbor_r_null(mb_cbor_r_t *r) {
 }
 
 bool mb_cbor_r_float(mb_cbor_r_t *r, double *out) {
-    uint8_t major;
-    uint64_t arg;
-    if (!r_head(r, &major, &arg)) return false;
-    if (major != 7) return r_fail(r, MB_EPROTO);
-    if (arg == 26) {
-        uint32_t bits = (uint32_t)arg;  // arg holds the 4 bytes we read
+    if (r->err) return false;
+    if (r->pos >= r->len) return r_fail(r, MB_EPROTO);
+    // Floats must be decoded from the head byte directly: r_head
+    // swallows the info nibble, so the major-7 / info-26 / info-27
+    // distinction between float32 and float64 would be lost.
+    uint8_t b = r->buf[r->pos];
+    if ((b >> 5) != 7) return r_fail(r, MB_EPROTO);
+    uint8_t info = b & 0x1Fu;
+    if (info == 26u) {
+        if (r->pos + 5 > r->len) return r_fail(r, MB_EPROTO);
+        uint32_t bits = ld_be32(r->buf + r->pos + 1);
         float f;
         memcpy(&f, &bits, sizeof(f));
         *out = (double)f;
+        r->pos += 5;
         return true;
     }
-    if (arg == 27) {
-        uint64_t bits = arg;
+    if (info == 27u) {
+        if (r->pos + 9 > r->len) return r_fail(r, MB_EPROTO);
+        uint64_t bits = ld_be64(r->buf + r->pos + 1);
         memcpy(out, &bits, sizeof(*out));
+        r->pos += 9;
         return true;
     }
     return r_fail(r, MB_EPROTO);

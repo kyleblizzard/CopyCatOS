@@ -336,3 +336,58 @@ int mb_conn_recv(uint16_t *out_kind,
     }
     return rc;
 }
+
+// Decode the `code` field of an ERROR body. Returns MB_EPROTO if the
+// body is malformed. Safe on body == NULL / body_len == 0.
+static int decode_error_code(const uint8_t *body, size_t body_len) {
+    mb_cbor_r_t r;
+    mb_cbor_r_init(&r, body, body_len);
+    uint64_t pairs = 0;
+    if (!mb_cbor_r_map_begin(&r, &pairs)) return MB_EPROTO;
+    int64_t code = MB_EIPC;
+    for (uint64_t i = 0; i < pairs; i++) {
+        uint64_t key = 0;
+        if (!mb_cbor_r_uint(&r, &key)) return MB_EPROTO;
+        if (key == 1) {
+            if (!mb_cbor_r_int(&r, &code)) return MB_EPROTO;
+        } else {
+            if (!mb_cbor_r_skip(&r)) return MB_EPROTO;
+        }
+    }
+    return (int)code;
+}
+
+int mb_conn_request(uint16_t kind,
+                    const uint8_t *body, size_t body_len,
+                    uint16_t reply_kind,
+                    uint8_t **out_reply_body, size_t *out_reply_body_len) {
+    if (out_reply_body)     *out_reply_body     = NULL;
+    if (out_reply_body_len) *out_reply_body_len = 0;
+
+    int rc = mb_conn_send(kind, body, body_len, NULL, 0);
+    if (rc < 0) return rc;
+
+    for (;;) {
+        uint16_t in_kind = 0;
+        uint8_t *in_body = NULL;
+        size_t   in_len  = 0;
+        size_t   nfds    = 0;
+        int r = mb_conn_recv(&in_kind, &in_body, &in_len, NULL, &nfds);
+        if (r == 0) return MB_EIPC;     // peer closed mid-request
+        if (r < 0) return r;
+
+        if (in_kind == reply_kind) {
+            if (out_reply_body)     *out_reply_body     = in_body;
+            else                    free(in_body);
+            if (out_reply_body_len) *out_reply_body_len = in_len;
+            return 0;
+        }
+        if (in_kind == MB_IPC_ERROR) {
+            int code = decode_error_code(in_body, in_len);
+            free(in_body);
+            return code;
+        }
+        // Unrelated frame — slice 3a discards. Slice 4 queues it.
+        free(in_body);
+    }
+}

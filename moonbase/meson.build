@@ -77,6 +77,7 @@ moonbase_lib_sources = files(
   'src/error.c',
   'src/init.c',
   'src/stubs.c',
+  'src/window.c',
   'src/ipc/cbor.c',
   'src/ipc/debug.c',
   'src/ipc/frame.c',
@@ -195,3 +196,22 @@ mb_server_smoke = executable(
 )
 
 test('server-smoke', mb_server_smoke, timeout: 10)
+
+# ---------------------------------------------------------------------
+# mb-window-create — Phase C slice 3a round-trip test
+# ---------------------------------------------------------------------
+#
+# Parent runs mb_server_t and replies to MB_IPC_WINDOW_CREATE with a
+# canned WINDOW_CREATE_REPLY. Child calls moonbase_window_create and
+# asserts the returned handle carries the advertised size and scale.
+# Proves mb_conn_request + client-side window.c work end-to-end.
+
+mb_window_create = executable(
+  'mb-window-create',
+  'tests/window-create.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('window-create', mb_window_create, timeout: 10)

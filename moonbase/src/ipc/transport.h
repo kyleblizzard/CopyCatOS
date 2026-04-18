@@ -83,6 +83,23 @@ int mb_conn_recv(uint16_t *out_kind,
                  uint8_t **out_body, size_t *out_body_len,
                  int *fds, size_t *io_nfds);
 
+// Synchronous request/reply over the connection. Sends one frame of
+// kind `kind` with the given body, then waits for a frame whose kind
+// matches `reply_kind`. On success returns 0 and hands the malloc'd
+// reply body back via `out_reply_body` / `out_reply_body_len` — the
+// caller frees with free().
+//
+// If the peer replies with MB_IPC_ERROR first, the error body's code
+// is decoded and returned (negative mb_error_t). If the peer hangs
+// up, returns MB_EIPC. Frames of unrelated kinds that arrive before
+// the match are silently discarded — slice 3a has no windows beyond
+// the one being created, so no stray events are expected. Slice 4
+// replaces this with a real event queue.
+int mb_conn_request(uint16_t kind,
+                    const uint8_t *body, size_t body_len,
+                    uint16_t reply_kind,
+                    uint8_t **out_reply_body, size_t *out_reply_body_len);
+
 #ifdef __cplusplus
 }
 #endif
