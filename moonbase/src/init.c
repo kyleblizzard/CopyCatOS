@@ -29,6 +29,11 @@ int moonbase_init(int argc, char **argv) {
         return 0;
     }
 
+    // Reset the event-loop state. The ring is static storage, so a
+    // prior quit + init cycle in the same process would otherwise see
+    // a latched quit flag and a stray APP_WILL_QUIT still queued.
+    mb_internal_eventloop_shutdown();
+
     int rc = mb_conn_open(NULL);
     if (rc < 0) {
         mb_internal_set_last_error((mb_error_t)rc);
@@ -49,10 +54,5 @@ int moonbase_init(int argc, char **argv) {
     return 0;
 }
 
-void moonbase_quit(int exit_code) {
-    (void)exit_code;
-    // exit_code is accepted for API parity with a future "graceful
-    // exit with status" semantic; the current BYE body is empty and
-    // MoonRock treats BYE as a clean shutdown regardless.
-    mb_conn_close();
-}
+// moonbase_quit lives in eventloop.c — it posts MB_EV_APP_WILL_QUIT
+// before tearing the connection down.

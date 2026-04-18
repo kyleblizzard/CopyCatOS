@@ -40,22 +40,10 @@ static inline void nosys(void) {
 // Lifecycle + main loop
 // ---------------------------------------------------------------------
 
-// moonbase_init and moonbase_quit are real — see init.c.
+// moonbase_init lives in init.c; moonbase_quit, moonbase_poll_event,
+// and moonbase_wait_event live in eventloop.c.
 
 int moonbase_run(void) {
-    nosys();
-    return MB_ENOSYS;
-}
-
-int moonbase_poll_event(mb_event_t *ev) {
-    (void)ev;
-    nosys();
-    return MB_ENOSYS;
-}
-
-int moonbase_wait_event(mb_event_t *ev, int timeout_ms) {
-    (void)ev;
-    (void)timeout_ms;
     nosys();
     return MB_ENOSYS;
 }
@@ -64,8 +52,8 @@ void moonbase_set_event_handler(mb_event_handler_t fn, void *userdata) {
     (void)fn;
     (void)userdata;
     // Deliberately does NOT set last-error: installing a handler is
-    // a fire-and-forget configuration call. With no event pump yet,
-    // the handler simply isn't invoked.
+    // a fire-and-forget configuration call. The handler is only
+    // consulted by moonbase_run(), which is still ENOSYS in this slice.
 }
 
 void moonbase_dispatch_main(void (*fn)(void *), void *userdata) {

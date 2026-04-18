@@ -92,13 +92,28 @@ int mb_conn_recv(uint16_t *out_kind,
 // If the peer replies with MB_IPC_ERROR first, the error body's code
 // is decoded and returned (negative mb_error_t). If the peer hangs
 // up, returns MB_EIPC. Frames of unrelated kinds that arrive before
-// the match are silently discarded — slice 3a has no windows beyond
-// the one being created, so no stray events are expected. Slice 4
-// replaces this with a real event queue.
+// the match are pushed onto the pending-frame queue (see below) and
+// delivered to the app's next poll/wait turn — compositor-initiated
+// events (a WINDOW_CLOSED landing while a WINDOW_CREATE round-trip
+// is in flight) don't get swallowed.
 int mb_conn_request(uint16_t kind,
                     const uint8_t *body, size_t body_len,
                     uint16_t reply_kind,
                     uint8_t **out_reply_body, size_t *out_reply_body_len);
+
+// ---------------------------------------------------------------------
+// Pending-frame queue
+// ---------------------------------------------------------------------
+//
+// Frames that arrive on the socket but aren't claimed by
+// mb_conn_request park here until the app pumps them out via the
+// event loop. The queue is single-threaded (main thread only), FIFO,
+// and owns the frame body: pop hands body ownership to the caller,
+// who must free() with stdlib free() once done.
+//
+// Returns 1 on pop, 0 if the queue is empty.
+int mb_conn_pop_queued(uint16_t *out_kind,
+                       uint8_t **out_body, size_t *out_body_len);
 
 #ifdef __cplusplus
 }

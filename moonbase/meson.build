@@ -75,6 +75,7 @@ install_headers(ipc_headers, subdir: 'moonbase/ipc')
 
 moonbase_lib_sources = files(
   'src/error.c',
+  'src/eventloop.c',
   'src/init.c',
   'src/stubs.c',
   'src/window.c',
@@ -235,3 +236,22 @@ mb_window_create = executable(
 )
 
 test('window-create', mb_window_create, timeout: 10)
+
+# ---------------------------------------------------------------------
+# mb-event-window-closed — Phase C slice 4 event-pump test
+# ---------------------------------------------------------------------
+#
+# Parent replies to WINDOW_CREATE with a canned reply, then immediately
+# pushes a WINDOW_CLOSED frame at the client. Child asserts
+# moonbase_wait_event delivers it as MB_EV_WINDOW_CLOSED with ev.window
+# pointing at the handle returned from moonbase_window_create.
+
+mb_event_window_closed = executable(
+  'mb-event-window-closed',
+  'tests/event-window-closed.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('event-window-closed', mb_event_window_closed, timeout: 10)

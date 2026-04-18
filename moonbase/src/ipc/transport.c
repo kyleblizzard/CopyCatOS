@@ -30,6 +30,13 @@
 // "not connected" marker — 0 is a legitimate fd number so we cannot
 // rely on the zeroed struct to mean "closed".
 
+typedef struct queued_frame {
+    uint16_t              kind;
+    uint8_t              *body;     // malloc'd; NULL when body_len == 0
+    size_t                body_len;
+    struct queued_frame  *next;
+} queued_frame_t;
+
 typedef struct {
     int       fd;
     bool      connected;
@@ -39,9 +46,55 @@ typedef struct {
     uint32_t  session_type;
     char    **capabilities;    // NULL-terminated
     size_t    capability_count;
+
+    // Pending-frame FIFO. Populated by mb_conn_request when it reads a
+    // frame whose kind doesn't match the one it's waiting for.
+    // Drained by the event loop (mb_conn_pop_queued) on poll/wait.
+    queued_frame_t *queue_head;
+    queued_frame_t *queue_tail;
 } mb_conn_t;
 
 static mb_conn_t g_conn = { .fd = -1 };
+
+// Push-back onto the FIFO. Takes ownership of `body`.
+static int conn_queue_push(uint16_t kind, uint8_t *body, size_t body_len) {
+    queued_frame_t *n = malloc(sizeof(*n));
+    if (!n) return MB_ENOMEM;
+    n->kind = kind;
+    n->body = body;
+    n->body_len = body_len;
+    n->next = NULL;
+    if (g_conn.queue_tail) g_conn.queue_tail->next = n;
+    else                   g_conn.queue_head = n;
+    g_conn.queue_tail = n;
+    return 0;
+}
+
+// Drop everything in the queue. Used on teardown.
+static void conn_queue_drop(void) {
+    queued_frame_t *n = g_conn.queue_head;
+    while (n) {
+        queued_frame_t *next = n->next;
+        free(n->body);
+        free(n);
+        n = next;
+    }
+    g_conn.queue_head = NULL;
+    g_conn.queue_tail = NULL;
+}
+
+int mb_conn_pop_queued(uint16_t *out_kind,
+                       uint8_t **out_body, size_t *out_body_len) {
+    queued_frame_t *n = g_conn.queue_head;
+    if (!n) return 0;
+    g_conn.queue_head = n->next;
+    if (!g_conn.queue_head) g_conn.queue_tail = NULL;
+    if (out_kind)     *out_kind     = n->kind;
+    if (out_body)     *out_body     = n->body;     // transfer ownership
+    if (out_body_len) *out_body_len = n->body_len;
+    free(n);
+    return 1;
+}
 
 static void conn_reset(void) {
     if (g_conn.capabilities) {
@@ -50,6 +103,7 @@ static void conn_reset(void) {
         }
         free(g_conn.capabilities);
     }
+    conn_queue_drop();
     g_conn.fd = -1;
     g_conn.connected = false;
     g_conn.handshaken = false;
@@ -387,7 +441,12 @@ int mb_conn_request(uint16_t kind,
             free(in_body);
             return code;
         }
-        // Unrelated frame — slice 3a discards. Slice 4 queues it.
-        free(in_body);
+        // Unrelated frame — park it on the pending-frame queue so the
+        // app's next poll_event / wait_event turn can pick it up.
+        int qrc = conn_queue_push(in_kind, in_body, in_len);
+        if (qrc < 0) {
+            free(in_body);
+            return qrc;
+        }
     }
 }

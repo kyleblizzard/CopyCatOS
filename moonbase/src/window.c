@@ -58,6 +58,52 @@ struct mb_window {
 };
 
 // ---------------------------------------------------------------------
+// Window registry (window_id → mb_window_t *)
+// ---------------------------------------------------------------------
+//
+// The event loop uses this to fill ev->window on compositor-originated
+// events that reference a window by id. Small linked list; per-process
+// window counts in Snow Leopard-era apps are typically under a dozen.
+//
+// All mutations happen on the main thread (window_create + window_close
+// are main-thread-only, per moonbase.h), so no locking is required.
+
+typedef struct window_reg_node {
+    mb_window_t            *win;
+    struct window_reg_node *next;
+} window_reg_node_t;
+
+static window_reg_node_t *g_registry = NULL;
+
+static void registry_add(mb_window_t *w) {
+    window_reg_node_t *n = malloc(sizeof(*n));
+    if (!n) return;   // best-effort — event routing will find NULL later
+    n->win = w;
+    n->next = g_registry;
+    g_registry = n;
+}
+
+static void registry_remove(mb_window_t *w) {
+    window_reg_node_t **p = &g_registry;
+    while (*p) {
+        if ((*p)->win == w) {
+            window_reg_node_t *gone = *p;
+            *p = gone->next;
+            free(gone);
+            return;
+        }
+        p = &(*p)->next;
+    }
+}
+
+mb_window_t *mb_internal_window_find(uint32_t window_id) {
+    for (window_reg_node_t *n = g_registry; n; n = n->next) {
+        if (n->win->id == window_id) return n->win;
+    }
+    return NULL;
+}
+
+// ---------------------------------------------------------------------
 // moonbase_window_create
 // ---------------------------------------------------------------------
 
@@ -178,6 +224,7 @@ mb_window_t *moonbase_window_create(const mb_window_desc_t *desc) {
     if (desc->title) {
         win->title = strdup(desc->title);  // best-effort; NULL is tolerated
     }
+    registry_add(win);
     return win;
 
 proto:
@@ -200,6 +247,7 @@ void moonbase_window_close(mb_window_t *w) {
         mb_internal_set_last_error(MB_EINVAL);
         return;
     }
+    registry_remove(w);
     if (mb_conn_is_handshaken()) {
         mb_cbor_w_t cw;
         mb_cbor_w_init_grow(&cw, 16);
