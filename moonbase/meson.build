@@ -81,6 +81,7 @@ moonbase_lib_sources = files(
   'src/ipc/debug.c',
   'src/ipc/frame.c',
   'src/ipc/transport.c',
+  'src/server/server.c',
 )
 
 # Phase B library links no external deps on purpose — the stubs
@@ -176,3 +177,21 @@ mb_hello_handshake = executable(
 )
 
 test('hello-handshake', mb_hello_handshake, timeout: 10)
+
+# ---------------------------------------------------------------------
+# mb-server-smoke — Phase C slice 2 server-side test
+# ---------------------------------------------------------------------
+#
+# Stands up an mb_server_t in the parent and forks two client children.
+# Verifies that both clients handshake and bye cleanly, and that the
+# server delivers connected + disconnected events for each.
+
+mb_server_smoke = executable(
+  'mb-server-smoke',
+  'tests/server-smoke.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('server-smoke', mb_server_smoke, timeout: 10)
