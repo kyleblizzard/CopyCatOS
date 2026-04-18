@@ -326,3 +326,25 @@ mb_backing_scale = executable(
 )
 
 test('backing-scale-changed', mb_backing_scale, timeout: 10)
+
+# ---------------------------------------------------------------------
+# mb-leakcheck-loop — Phase C plumbing-tasks line 62
+# ---------------------------------------------------------------------
+#
+# In-process 1000-iteration loop of init/window_create/cairo/commit/
+# close/quit. Asserts that heap bytes (mallinfo2 after malloc_trim)
+# and /proc/self/fd count are stable across iterations. Stronger than
+# 1000 separate processes because each process exit reaps everything
+# regardless of leaks; a single long-running process surfaces any
+# drip linearly.
+
+mb_leakcheck_loop = executable(
+  'mb-leakcheck-loop',
+  'tests/leakcheck-loop.c',
+  include_directories: include_directories('include', 'src'),
+  dependencies: [cairo_dep],
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('leakcheck-loop', mb_leakcheck_loop, timeout: 90)
