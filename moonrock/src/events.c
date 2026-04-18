@@ -9,6 +9,7 @@
 #include "input.h"
 #include "moonrock.h"
 #include "moonbase_host.h"
+#include "moonbase.h"     // MB_MOD_*
 #include "struts.h"
 #include "resize.h"
 #include <poll.h>
@@ -17,6 +18,7 @@
 #include <strings.h>   // strcasecmp
 #include <stdlib.h>    // free
 #include <time.h>
+#include <X11/Xutil.h>
 
 // Forward declarations for event handlers
 static void on_map_request(CCWM *wm, XEvent *e);
@@ -30,6 +32,7 @@ static void on_property_notify(CCWM *wm, XEvent *e);
 static void on_client_message(CCWM *wm, XEvent *e);
 static void on_focus_in(CCWM *wm, XEvent *e);
 static void on_key_press(CCWM *wm, XEvent *e);
+static void on_key_release(CCWM *wm, XEvent *e);
 static void on_expose(CCWM *wm, XEvent *e);
 static void on_leave_notify(CCWM *wm, XEvent *e);
 
@@ -52,6 +55,7 @@ static void init_handlers(void)
     handlers[ClientMessage]    = on_client_message;
     handlers[FocusIn]          = on_focus_in;
     handlers[KeyPress]         = on_key_press;
+    handlers[KeyRelease]       = on_key_release;
     handlers[Expose]           = on_expose;
     handlers[LeaveNotify]      = on_leave_notify;
 }
@@ -707,9 +711,48 @@ static void on_focus_in(CCWM *wm, XEvent *e)
     }
 }
 
+// Translate X11 event-state bits to MoonBase modifier flags. The MB
+// namespace is Apple-flavored (Option = Alt, Command = Super), so we
+// map Mod1 → OPTION and Mod4 → COMMAND; the rest are 1:1.
+static uint32_t translate_x_mods(unsigned int state)
+{
+    uint32_t mods = 0;
+    if (state & ShiftMask)   mods |= MB_MOD_SHIFT;
+    if (state & ControlMask) mods |= MB_MOD_CONTROL;
+    if (state & Mod1Mask)    mods |= MB_MOD_OPTION;
+    if (state & Mod4Mask)    mods |= MB_MOD_COMMAND;
+    if (state & LockMask)    mods |= MB_MOD_CAPSLOCK;
+    return mods;
+}
+
 static void on_key_press(CCWM *wm, XEvent *e)
 {
+    // If a MoonBase surface owns the compositor focus, route the key
+    // event to it as an MB_IPC_KEY_DOWN frame and swallow it here.
+    // Otherwise, fall through to the normal X shortcut path.
+    if (mb_host_has_focus()) {
+        KeySym sym = XLookupKeysym(&e->xkey, 0);
+        uint32_t mods = translate_x_mods(e->xkey.state);
+        if (mb_host_route_key((uint32_t)sym, mods,
+                              /*is_down*/ true, /*is_repeat*/ false)) {
+            return;
+        }
+    }
     input_handle_key(wm, &e->xkey);
+}
+
+static void on_key_release(CCWM *wm, XEvent *e)
+{
+    // KeyRelease has no legacy dispatch path — it exists solely so
+    // MoonBase apps see matched down/up pairs. If no MoonBase surface
+    // has focus, the release is silently ignored by the WM.
+    (void)wm;
+    if (mb_host_has_focus()) {
+        KeySym sym = XLookupKeysym(&e->xkey, 0);
+        uint32_t mods = translate_x_mods(e->xkey.state);
+        (void)mb_host_route_key((uint32_t)sym, mods,
+                                /*is_down*/ false, /*is_repeat*/ false);
+    }
 }
 
 static void on_expose(CCWM *wm, XEvent *e)

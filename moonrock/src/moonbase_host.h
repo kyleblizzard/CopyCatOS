@@ -40,6 +40,12 @@ size_t mb_host_collect_pollfds(struct pollfd *out_fds, size_t max);
 // Process I/O that poll() flagged ready. Safe to call with nfds==0.
 void mb_host_tick(const struct pollfd *fds, size_t nfds);
 
+// True when some MoonBase surface currently holds the compositor focus.
+// Callers (events.c, input.c) consult this before routing a keyboard /
+// pointer event: if focus is on an X client instead, the event takes
+// the normal X dispatch path.
+bool mb_host_has_focus(void);
+
 // Deliver a keyboard event to the currently-focused MoonBase surface.
 // `keycode` is an X11 keysym (XK_*); `modifiers` is an MB_MOD_* mask;
 // `is_down` chooses MB_IPC_KEY_DOWN vs MB_IPC_KEY_UP. Returns true if a

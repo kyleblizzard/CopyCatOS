@@ -77,10 +77,16 @@ bool wm_init(CCWM *wm, const char *display_name)
     detect_wm_ptr = wm;
     wm->another_wm = false;
     XSetErrorHandler(detect_wm_error);
+    // Include KeyPress / KeyRelease on root so X delivers key events to
+    // moonrock whenever the focus target is the root (or a window we
+    // haven't explicitly routed focus to). Needed for the MoonBase
+    // key-routing path — MoonBase surfaces are compositor-internal, not
+    // X windows, so keys reach us via the root.
     XSelectInput(wm->dpy, wm->root,
                  SubstructureRedirectMask | SubstructureNotifyMask |
                  StructureNotifyMask | PropertyChangeMask |
-                 FocusChangeMask);
+                 FocusChangeMask |
+                 KeyPressMask | KeyReleaseMask);
     XSync(wm->dpy, False);
     XSetErrorHandler(x_error_handler);
 

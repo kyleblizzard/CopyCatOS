@@ -801,6 +801,11 @@ void mb_host_tick(const struct pollfd *fds, size_t nfds) {
     mb_server_tick(g_server, fds, nfds);
 }
 
+bool mb_host_has_focus(void) {
+    if (g_focused_window_id == 0) return false;
+    return surface_find(g_focused_window_id) != NULL;
+}
+
 // Timestamp for outgoing input events. Monotonic microseconds since
 // boot — matches mb_event_t.timestamp_us semantics on the client side.
 static uint64_t ts_us(void) {
