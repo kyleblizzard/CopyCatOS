@@ -50,6 +50,7 @@
 #define MR_DISPLAY_H
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <X11/Xlib.h>
 
 // Forward declaration — full definition lives in wm_compat.h.
@@ -85,6 +86,39 @@ typedef struct {
                              // active monitor is connected through exactly one CRTC.
     unsigned long output_id; // XRandR output ID — represents the physical connector
                              // (HDMI port, DisplayPort, etc.)
+
+    // ── Per-output HiDPI scale (CopyCatOS HiDPI mandate) ──
+    //
+    // Every output carries its own scale factor. The public MoonBase API
+    // measures in points — MoonRock converts points to physical pixels
+    // per-output using this scale. Fractional scales (1.25, 1.5, 1.75,
+    // …) are first-class — no integer rounding anywhere.
+    //
+    // edid_hash   — 64-bit FNV-1a hash of the raw EDID blob. Stable
+    //               across reboots and cable swaps. The persistence
+    //               file keys per-output overrides on this hash, so the
+    //               same monitor gets the same scale when plugged back
+    //               in, regardless of which port it lands on.
+    // mm_width/mm_height — physical panel size in millimeters, as
+    //               reported by the EDID (X server parses this into
+    //               XRROutputInfo->mm_width / mm_height). Combined with
+    //               pixel resolution, gives PPI.
+    // default_scale — picked from PPI bands during enumeration. The
+    //               fallback the system chooses when the user hasn't
+    //               set anything for this particular monitor.
+    // user_scale — user's persisted override for this EDID hash, or
+    //               0.0 if no override exists. Set from the Displays
+    //               pane in SysPrefs (later slice) and written out via
+    //               display_set_scale_for_output().
+    // scale      — the effective scale to use right now (user_scale if
+    //               non-zero, otherwise default_scale). This is the
+    //               value window_create replies, backing-scale queries,
+    //               and chrome rendering all consult.
+    uint8_t       edid_hash[8];
+    int           mm_width, mm_height;
+    float         default_scale;
+    float         user_scale;
+    float         scale;
 } MROutput;
 
 
@@ -248,6 +282,31 @@ int display_get_target_frame_time(void);
 // Parameters:
 //   dpy — The X display connection.
 void display_handle_hotplug(Display *dpy);
+
+// ============================================================================
+//  Per-output scale (HiDPI)
+// ============================================================================
+//
+// Apps measure in points. MoonRock maps points -> physical pixels per output
+// using the scale returned here. Backing scale for a MoonBase window is the
+// scale of the output currently hosting it.
+
+// Effective scale for the given output (user override if set, otherwise the
+// default picked from EDID-derived PPI during enumeration). Returns 1.0 if
+// output is NULL so callers never have to null-check.
+float display_get_scale_for_output(const MROutput *output);
+
+// Effective scale for the primary output — shortcut for the common case where
+// a brand-new window lands on the primary display.
+float display_get_primary_scale(void);
+
+// Persist a user-override scale for the output's EDID. Updates the in-memory
+// user_scale + scale of every connected output that shares that EDID hash,
+// then rewrites the persistence file at
+// ~/.local/share/moonrock/display-scales.conf. A scale of 0.0 clears the
+// override (reverts to the default). Returns true on a successful write.
+bool display_set_scale_for_output(MROutput *output, float scale);
+
 
 // Get the viewport rectangle for a specific output.
 //

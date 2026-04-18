@@ -102,6 +102,7 @@ moonbase_ipc_sources = [
 moonbase_includes = include_directories(
   '../moonbase/include',
   '../moonbase/src',
+  '../moonbase/src/ipc',
   '../moonbase/src/server',
 )
 

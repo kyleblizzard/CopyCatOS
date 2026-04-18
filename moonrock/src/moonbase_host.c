@@ -17,6 +17,7 @@
 #include "server.h"
 #include "cbor.h"
 #include "moonbase/ipc/kinds.h"
+#include "moonrock_display.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -116,9 +117,10 @@ static uint8_t *build_window_create_reply(uint32_t window_id,
 }
 
 // Handle a WINDOW_CREATE request. Allocates a window_id and replies.
-// Slice 3a stubs the real X-window allocation — scale=1.0, output=0,
-// dimensions echoed unchanged. Slice 3b lands per-output scale by
-// EDID. Slice 3c reparents a real X window.
+// Slice 3a stubbed the scale at 1.0; slice 3b (this code) looks up the
+// real scale of the target output — primary for now, since we don't yet
+// have placement hints on the request. Slice 3c reparents a real X
+// window.
 static void handle_window_create(mb_server_t *s, mb_client_id_t client,
                                  const uint8_t *body, size_t body_len) {
     window_create_req_t req;
@@ -130,19 +132,37 @@ static void handle_window_create(mb_server_t *s, mb_client_id_t client,
         return;
     }
     uint32_t window_id = g_next_window_id++;
+
+    // Target the primary output for now. Future slice lets the client
+    // request a specific output, or moonrock picks based on cursor /
+    // focus / last-used-output state.
+    MROutput *target = display_get_primary();
+    uint32_t output_id  = 0;
+    float    init_scale = 1.0f;
+    if (target) {
+        // output_id on the wire is an opaque handle the compositor owns.
+        // We use the RandR output_id directly so later slices can route
+        // per-output messages back to the right output without a lookup
+        // table. u32 truncation is safe — RandR IDs fit in 32 bits.
+        output_id  = (uint32_t)target->output_id;
+        init_scale = display_get_scale_for_output(target);
+    }
+
     fprintf(stderr,
             "[moonrock] moonbase client %u WINDOW_CREATE: "
-            "%s %dx%d pt render=%u flags=0x%x -> window_id=%u\n",
+            "%s %dx%d pt render=%u flags=0x%x -> window_id=%u "
+            "(output=%u scale=%.2f)\n",
             client, req.title ? req.title : "(no title)",
             req.width_points, req.height_points,
-            req.render_mode, req.flags, window_id);
+            req.render_mode, req.flags, window_id,
+            output_id, (double)init_scale);
     free(req.title);
 
     size_t reply_len = 0;
     uint8_t *reply = build_window_create_reply(
         window_id,
-        0,                                          // output_id (slice 3b)
-        1.0,                                        // initial_scale (slice 3b)
+        output_id,
+        (double)init_scale,
         (uint32_t)req.width_points,
         (uint32_t)req.height_points,
         &reply_len);
