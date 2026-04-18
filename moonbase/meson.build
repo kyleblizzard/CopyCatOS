@@ -79,6 +79,8 @@ moonbase_lib_sources = files(
   'src/init.c',
   'src/stubs.c',
   'src/window.c',
+  'src/bundle/info_appc.c',
+  'src/bundle/toml_lite.c',
   'src/ipc/cbor.c',
   'src/ipc/debug.c',
   'src/ipc/frame.c',
@@ -348,3 +350,24 @@ mb_leakcheck_loop = executable(
 )
 
 test('leakcheck-loop', mb_leakcheck_loop, timeout: 90)
+
+# ---------------------------------------------------------------------
+# mb-info-appc — Phase D slice 1 Info.appc schema loader test
+# ---------------------------------------------------------------------
+#
+# Pure-unit test over the TOML loader + schema validator. Happy paths
+# (C and web bundles, empty [permissions]) plus every error class the
+# loader reports: missing [bundle], bad id regex, unknown category,
+# unknown permission value, unknown language, web-lang without [web],
+# ipc entry that isn't reverse-DNS, raw parse error, 64 KiB size cap,
+# and unknown-table forward-compat.
+
+mb_info_appc = executable(
+  'mb-info-appc',
+  'tests/info-appc.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('info-appc', mb_info_appc, timeout: 10)
