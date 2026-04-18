@@ -19,6 +19,7 @@
 #include "moonbase/ipc/kinds.h"
 #include "moonrock_display.h"
 #include "moonrock_shaders.h"
+#include "moonbase_chrome.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -94,6 +95,16 @@ typedef struct {
     // ever called from mb_host_render, where the GL context is current.
     GLuint         tex;                // 0 == no texture yet
     uint32_t       tex_w, tex_h;       // dimensions last uploaded to tex
+
+    // Aqua chrome (title bar, borders, traffic lights) painted into a
+    // CPU-side Cairo surface and uploaded to its own GL texture. Managed
+    // by moonbase_chrome.{h,c}. chrome_stale is set whenever content
+    // dimensions, scale, title, or focus change and the chrome needs to
+    // be re-painted and re-uploaded. chrome_uploaded_revision is the
+    // last chrome.revision we copied into chrome.tex.
+    mb_chrome_t    chrome;
+    bool           chrome_stale;
+    uint64_t       chrome_uploaded_revision;
 } mb_surface_t;
 
 static mb_surface_t g_surfaces[MB_MAX_SURFACES];
@@ -107,6 +118,11 @@ static int          g_surface_count = 0;
 static GLuint       g_pending_delete[MB_MAX_SURFACES];
 static int          g_pending_delete_count = 0;
 
+// Adapter so moonbase_chrome.c can enqueue GL deletion without knowing
+// about our pending-delete list. Matches mb_chrome_release's defer_gl_delete
+// callback signature.
+static void chrome_defer_gl_delete(GLuint tex);
+
 static void pending_delete_push(GLuint tex) {
     if (tex == 0) return;
     if (g_pending_delete_count >= MB_MAX_SURFACES) {
@@ -119,6 +135,10 @@ static void pending_delete_push(GLuint tex) {
         return;
     }
     g_pending_delete[g_pending_delete_count++] = tex;
+}
+
+static void chrome_defer_gl_delete(GLuint tex) {
+    pending_delete_push(tex);
 }
 
 // Cascade placement for a new surface. The menu bar is ~22 points tall
@@ -160,6 +180,7 @@ static void surface_release(mb_surface_t *s) {
         munmap(s->map, s->map_size);
     }
     pending_delete_push(s->tex);
+    mb_chrome_release(&s->chrome, chrome_defer_gl_delete);
     free(s->title);
     memset(s, 0, sizeof(*s));
     g_surface_count--;
@@ -328,6 +349,7 @@ static void handle_window_create(mb_server_t *s, mb_client_id_t client,
     surf->flags       = req.flags;
     surf->title       = req.title; // take ownership
     req.title = NULL;               // avoid the free below
+    surf->chrome_stale = true;      // first-paint trigger for mb_host_render
 
     fprintf(stderr,
             "[moonrock] moonbase client %u WINDOW_CREATE: "
@@ -560,6 +582,14 @@ static void handle_window_commit(mb_client_id_t client,
     void  *old_map  = surf->map;
     size_t old_size = surf->map_size;
 
+    // Chrome wraps the content at whatever pixel dimensions the client
+    // last committed. If those dimensions changed, the chrome's outer
+    // rectangle is now wrong — repaint. First-commit also trips this
+    // branch because previous px_w/px_h are zero.
+    if (surf->px_w != req.width_px || surf->px_h != req.height_px) {
+        surf->chrome_stale = true;
+    }
+
     surf->map          = p;
     surf->map_size     = need;
     surf->px_w         = req.width_px;
@@ -741,6 +771,55 @@ static bool surface_upload_texture(mb_surface_t *s) {
     return true;
 }
 
+// Make sure the chrome texture mirrors chrome.pixels for this surface.
+// Returns true if the chrome is ready to draw. Structurally identical to
+// surface_upload_texture but reads from chrome state instead of the shm
+// mapping. The revision counter lets us skip the GL upload on frames
+// where only the content changed (common case: client animating inside
+// a window that hasn't resized or changed focus).
+static bool chrome_upload_texture(mb_surface_t *s) {
+    mb_chrome_t *c = &s->chrome;
+    if (!c->pixels || c->chrome_w == 0 || c->chrome_h == 0) return false;
+
+    if (c->tex == 0) {
+        glGenTextures(1, &c->tex);
+        if (c->tex == 0) return false;
+        glBindTexture(GL_TEXTURE_2D, c->tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE);
+        c->tex_w = c->tex_h = 0;
+    } else {
+        glBindTexture(GL_TEXTURE_2D, c->tex);
+    }
+
+    if (s->chrome_uploaded_revision == c->revision
+            && c->tex_w == c->chrome_w
+            && c->tex_h == c->chrome_h) {
+        return true;
+    }
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(c->stride / 4));
+
+    if (c->tex_w != c->chrome_w || c->tex_h != c->chrome_h) {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+                     (GLsizei)c->chrome_w, (GLsizei)c->chrome_h, 0,
+                     GL_BGRA, GL_UNSIGNED_BYTE, c->pixels);
+        c->tex_w = c->chrome_w;
+        c->tex_h = c->chrome_h;
+    } else {
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                        (GLsizei)c->chrome_w, (GLsizei)c->chrome_h,
+                        GL_BGRA, GL_UNSIGNED_BYTE, c->pixels);
+    }
+
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    s->chrome_uploaded_revision = c->revision;
+    return true;
+}
+
 void mb_host_render(GLuint basic_shader, float *projection) {
     drain_pending_deletes();
 
@@ -758,19 +837,52 @@ void mb_host_render(GLuint basic_shader, float *projection) {
 
         if (!surface_upload_texture(s)) continue;
 
-        if (basic_shader) {
-            shaders_use(basic_shader);
-            shaders_set_projection(basic_shader, projection);
-            shaders_set_texture(basic_shader, 0);
-            shaders_set_alpha(basic_shader, 1.0f);
+        // Repaint the chrome if first frame, dimensions changed, or
+        // focus / title / scale changed (future slices). active=true
+        // for now; real focus routing arrives when pointer + keyboard
+        // input hit MoonBase surfaces.
+        if (s->chrome_stale) {
+            if (mb_chrome_repaint(&s->chrome,
+                                  s->px_w, s->px_h, s->scale,
+                                  s->title, /*active*/ true)) {
+                s->chrome_stale = false;
+            }
+        }
+        bool chrome_ready = chrome_upload_texture(s);
+
+        if (!basic_shader) {
+            // No shaders = X-client path is in its fixed-function
+            // fallback; skip this frame rather than double-failing.
+            continue;
+        }
+
+        shaders_use(basic_shader);
+        shaders_set_projection(basic_shader, projection);
+        shaders_set_texture(basic_shader, 0);
+        shaders_set_alpha(basic_shader, 1.0f);
+
+        // Chrome first so the content quad stamps over it cleanly where
+        // they overlap (border pixels won't, but the chrome has a
+        // transparent content-rect region and cairo emits zero alpha
+        // there — either draw order is fine visually).
+        if (chrome_ready) {
+            glBindTexture(GL_TEXTURE_2D, s->chrome.tex);
+            shaders_draw_quad((float)s->screen_x, (float)s->screen_y,
+                              (float)s->chrome.chrome_w,
+                              (float)s->chrome.chrome_h);
+
+            glBindTexture(GL_TEXTURE_2D, s->tex);
+            shaders_draw_quad(
+                (float)(s->screen_x + (int)s->chrome.content_x_inset),
+                (float)(s->screen_y + (int)s->chrome.content_y_inset),
+                (float)s->px_w, (float)s->px_h);
+        } else {
+            // Chrome unavailable (allocation failure etc.) — still
+            // draw the content so the app is at least visible.
             glBindTexture(GL_TEXTURE_2D, s->tex);
             shaders_draw_quad((float)s->screen_x, (float)s->screen_y,
                               (float)s->px_w,     (float)s->px_h);
         }
-        // Intentionally no fixed-function fallback: MoonBase apps
-        // require a GL-capable compositor. If shaders failed to
-        // compile, the X-client path has already fallen back and the
-        // MoonBase path just skips this tick rather than double-fail.
     }
 }
 
