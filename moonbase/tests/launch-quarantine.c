@@ -228,6 +228,29 @@ static void test_pending_reject(const char *launch, const char *sandbox,
     env_free(&e);
 }
 
+static void test_pending_no_auto_headless(const char *launch,
+                                          const char *sandbox,
+                                          const char *consent) {
+    // With no MOONBASE_CONSENT_AUTO and no TTY, moonbase-consent picks
+    // the safe default (reject). The launcher must persist that and
+    // the script must not run.
+    env_t e = {0};
+    env_build(&e);
+    EXPECT(setxattr(e.bundle, "user.moonbase.quarantine",
+                    "pending", 7, 0) == 0, "mark pending");
+
+    int rc = run_launch(launch, sandbox, consent, NULL, &e);
+    EXPECT(rc == 3, "pending+no-auto+headless: rc=%d want 3", rc);
+    struct stat st;
+    EXPECT(stat(e.ran_marker, &st) != 0,
+           "script did NOT run (headless auto-reject)");
+    char *attr = read_xattr(e.bundle);
+    EXPECT(attr && strcmp(attr, "rejected") == 0,
+           "xattr persisted as rejected (got %s)", attr ? attr : "(null)");
+    free(attr);
+    env_free(&e);
+}
+
 static void test_already_rejected(const char *launch, const char *sandbox,
                                   const char *consent) {
     env_t e = {0};
@@ -287,6 +310,7 @@ int main(int argc, char **argv) {
 
     test_pending_approve(launch, sandbox, consent);
     test_pending_reject(launch, sandbox, consent);
+    test_pending_no_auto_headless(launch, sandbox, consent);
     test_already_rejected(launch, sandbox, consent);
 
     if (fail_count) {

@@ -155,6 +155,8 @@ moonbase_launch = executable(
 moonbase_consent = executable(
   'moonbase-consent',
   'launcher/moonbase-consent.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
   install: true,
   install_dir: get_option('libexecdir'),
 )
