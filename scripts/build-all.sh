@@ -75,14 +75,4 @@ else
 fi
 echo "════════════════════════════════════════"
 
-# Install helper scripts to ~/.local/bin so they are on PATH alongside
-# the component binaries. This makes `game-mode` available for the
-# Blizzard menu action in menubar to launch without needing an absolute path.
-echo ""
-echo "Installing scripts to ~/.local/bin..."
-mkdir -p "$HOME/.local/bin"
-cp "$ROOT/scripts/game-mode.sh" "$HOME/.local/bin/game-mode"
-chmod +x "$HOME/.local/bin/game-mode"
-echo -e "${GREEN}[DONE]${NC} game-mode installed"
-
 exit $FAILED

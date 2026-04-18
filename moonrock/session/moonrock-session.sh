@@ -10,6 +10,14 @@ export XDG_SESSION_TYPE=x11
 export XDG_SESSION_DESKTOP=CopyCatOS
 export XDG_CURRENT_DESKTOP=CopyCatOS
 
+# Clean session-type marker for inputd. A single file at a stable path
+# per user is the only signal inputd reads to pick DESKTOP vs GAME profile.
+# /run/user/$UID/ is tmpfs, owned by the session user, and goes away on
+# logout — exactly the semantics we want.
+if [ -n "$XDG_RUNTIME_DIR" ]; then
+    echo "desktop" > "$XDG_RUNTIME_DIR/copycatos-session-type"
+fi
+
 # Qt styling — force AquaStyle (the Snow Leopard QStyle plugin)
 export QT_QPA_PLATFORMTHEME=kde
 export QT_STYLE_OVERRIDE=AquaStyle
@@ -83,13 +91,6 @@ GTKEOF
 mkdir -p ~/.config/gtk-4.0
 cp ~/.config/gtk-3.0/settings.ini ~/.config/gtk-4.0/settings.ini
 
-# ─── Set the X root cursor before any windows appear ───
-# Without this, the root window shows the ugly X cursor until something else
-# overrides it. setcursor loads the themed cursor from XCURSOR_THEME and
-# applies it to the root window and all children (replaces xsetroot which
-# isn't available on Nobara).
-setcursor 2>/dev/null
-
 # ─── Start the window manager first ───
 # The WM must claim SubstructureRedirect before any other windows appear
 WM=${MOONROCK_WM:-moonrock}
@@ -121,13 +122,6 @@ moonbase &
 
 # ─── Default file viewer window ───
 fileviewer ~ &
-
-# ─── Force the themed cursor after everything has started ───
-# This is the definitive cursor set — runs after all components have created
-# their windows, so nothing can override it. setcursor loads the cursor
-# from XCURSOR_THEME (SnowLeopard) and applies it to root + all children.
-sleep 0.5
-setcursor 2>/dev/null
 
 # ─── Wait for the WM to exit ───
 # When the WM process ends (user logged out or crashed), clean up everything

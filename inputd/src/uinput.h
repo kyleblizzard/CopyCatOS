@@ -12,7 +12,7 @@
 // We create three virtual devices:
 //   1. Mouse    — receives pointer movement and button clicks
 //   2. Keyboard — receives key presses (mapped from gamepad buttons)
-//   3. Gamepad  — forwards raw gamepad events for game-mode passthrough
+//   3. Gamepad  — forwards raw gamepad events in the GAME profile passthrough
 //
 
 #ifndef UINPUT_H

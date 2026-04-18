@@ -60,7 +60,7 @@ static int apple_hover = -1;
 // Dynamic "Log Out" label with the actual username
 static char logout_label[128] = "Log Out...";
 
-static const char *apple_items[18] = {
+static const char *apple_items[17] = {
     "About This Mac",
     "---",
     "Software Update...",
@@ -73,13 +73,12 @@ static const char *apple_items[18] = {
     "Force Quit...",
     "---",
     "Sleep",
-    "Game Mode...",      // Switch to Steam Big Picture via gamescope
     "Restart...",
     "Shut Down...",
     "---",
     NULL  // Placeholder for logout_label (set dynamically in apple_init)
 };
-static const int apple_item_count = 17;
+static const int apple_item_count = 16;
 
 // Keyboard shortcuts displayed right-aligned next to menu items.
 // NULL means no shortcut. Uses Mac-style symbols (⌘ ⌥ ⇧).
@@ -96,7 +95,6 @@ static const char *apple_shortcuts[] = {
     "⌥⌘Esc",       // Force Quit...
     NULL,           // ---
     NULL,           // Sleep
-    NULL,           // Game Mode...
     NULL,           // Restart...
     NULL,           // Shut Down...
     NULL,           // ---
@@ -537,27 +535,6 @@ static void apple_execute(MenuBar *mb, int index)
     } else if (strcmp(label, "Sleep") == 0) {
         // Suspend the system (same as power button short press)
         system("systemctl suspend");
-    } else if (strcmp(label, "Game Mode...") == 0) {
-        // Switch to Steam Big Picture via gamescope.
-        // game-mode.sh kills all CopyCatOS shell components (not moonrock),
-        // launches gamescope+steam, then restores the desktop on exit.
-        // We fork + setsid so the script is fully detached — menubar
-        // will be killed by the script moments later without crashing here.
-        if (fork() == 0) {
-            setsid();
-            // Look for the script next to the binary, then fall back to PATH.
-            // execlp searches PATH automatically if the name has no slash.
-            execlp("game-mode", "game-mode", NULL);
-            // Fallback: try the scripts directory relative to $HOME
-            const char *home = getenv("HOME");
-            if (home) {
-                char path[512];
-                snprintf(path, sizeof(path),
-                         "%s/CopyCatOS/scripts/game-mode.sh", home);
-                execl(path, "game-mode.sh", NULL);
-            }
-            _exit(1);
-        }
     } else if (strncmp(label, "Restart", 7) == 0) {
         // Reboot the system
         // TODO: Show confirmation dialog first

@@ -1,15 +1,19 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
-// panes/controller.c — Controller preferences pane (3-tab interface)
+// panes/controller.c — Controller preferences pane (2-tab interface)
 // ============================================================================
 //
-// Full gamepad configuration UI with three tabs matching the inputd
-// operating modes:
+// Gamepad configuration UI with two tabs matching the two inputd profiles
+// that apply inside the Desktop session:
 //
 //   1. Desktop Mode  — button mappings, stick tuning, scroll, triggers
 //   2. Desktop Gaming — passthrough toggle, per-game override list
-//   3. Steam Mode    — "Enter Steam Mode" launcher
+//
+// Steam Mode is its own SDDM session now (`copycatos-gaming.desktop`). There
+// is no "launch gamescope from inside the desktop" button, so there is no
+// Steam Mode tab here. To enter gaming mode, log out and pick the Gaming
+// session from SDDM.
 //
 // Uses config_editor from inputmap to read/write ~/.config/copycatos/input.conf
 // and signals inputd via SIGHUP for live config reload.
@@ -27,9 +31,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <signal.h>
 #include <math.h>
-#include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 
@@ -48,7 +50,7 @@
 #define TAB_BAR_X          30
 #define TAB_BAR_Y_OFFSET   30    // Below "Controller" title
 #define TAB_BAR_H          24    // 20px inner + 2px border top/bottom
-#define TAB_COUNT           3
+#define TAB_COUNT           2
 
 // Tab widths are calculated to fill the available space evenly
 #define TAB_TOTAL_W       540    // Total width of the segmented control
@@ -63,7 +65,6 @@
 
 #define TAB_DESKTOP_MODE    0
 #define TAB_DESKTOP_GAMING  1
-#define TAB_STEAM_MODE      2
 
 // ============================================================================
 //  Slider identifiers
@@ -97,7 +98,6 @@ static int dragging_slider = SLIDER_NONE;
 
 // Button geometry for hit testing
 static double restore_btn_y = 0;
-static double steam_btn_y   = 0;
 
 // Desktop Gaming toggle state
 static bool gaming_mode_enabled = false;
@@ -447,61 +447,16 @@ static void draw_button(cairo_t *cr, double x, double y,
     g_object_unref(layout);
 }
 
-// Draw a large centered button (used for "Enter Steam Mode")
-static void draw_large_button(cairo_t *cr, double cx, double y,
-                               double w, double h, const char *label)
-{
-    double x = cx - w / 2;
-    double r = 6.0;
-
-    // Gradient-like background (slightly blue tinted for emphasis)
-    cairo_set_source_rgb(cr, 0.88, 0.92, 0.98);
-    cairo_new_path(cr);
-    cairo_arc(cr, x + w - r, y + r, r, -M_PI / 2, 0);
-    cairo_arc(cr, x + w - r, y + h - r, r, 0, M_PI / 2);
-    cairo_arc(cr, x + r, y + h - r, r, M_PI / 2, M_PI);
-    cairo_arc(cr, x + r, y + r, r, M_PI, 3 * M_PI / 2);
-    cairo_close_path(cr);
-    cairo_fill(cr);
-
-    // Border (blue-tinted)
-    cairo_set_source_rgb(cr, 0.55, 0.65, 0.78);
-    cairo_set_line_width(cr, 1.0);
-    cairo_new_path(cr);
-    cairo_arc(cr, x + w - r, y + r, r, -M_PI / 2, 0);
-    cairo_arc(cr, x + w - r, y + h - r, r, 0, M_PI / 2);
-    cairo_arc(cr, x + r, y + h - r, r, M_PI / 2, M_PI);
-    cairo_arc(cr, x + r, y + r, r, M_PI, 3 * M_PI / 2);
-    cairo_close_path(cr);
-    cairo_stroke(cr);
-
-    // Centered text
-    PangoLayout *layout = pango_cairo_create_layout(cr);
-    pango_layout_set_text(layout, label, -1);
-    PangoFontDescription *font =
-        pango_font_description_from_string("Lucida Grande Bold 13");
-    pango_layout_set_font_description(layout, font);
-    pango_font_description_free(font);
-
-    int tw, th;
-    pango_layout_get_pixel_size(layout, &tw, &th);
-    cairo_set_source_rgb(cr, 0.15, 0.20, 0.35);
-    cairo_move_to(cr, x + (w - tw) / 2, y + (h - th) / 2);
-    pango_cairo_show_layout(cr, layout);
-    g_object_unref(layout);
-}
-
 // ============================================================================
 //  Tab bar — Snow Leopard NSSegmentedControl style
 // ============================================================================
-// Three segments with rounded ends, selected segment has a darker fill.
+// Two segments with rounded ends, selected segment has a darker fill.
 // HIG: "Use title-style capitalization" for tab names.
 // ============================================================================
 
 static const char *tab_labels[TAB_COUNT] = {
     "Desktop Mode",
-    "Desktop Gaming",
-    "Steam Mode"
+    "Desktop Gaming"
 };
 
 // Draw the segmented tab bar. The selected tab gets a recessed/active look.
@@ -808,44 +763,6 @@ static void paint_desktop_gaming(cairo_t *cr, double base_y)
 }
 
 // ============================================================================
-//  Tab content: Steam Mode
-// ============================================================================
-// Steam Mode launches gamescope + Steam Big Picture. All input handling
-// is delegated to Steam's own controller support.
-// ============================================================================
-
-static void paint_steam_mode(cairo_t *cr, double base_y)
-{
-    double y = base_y;
-
-    draw_body_text(cr, LABEL_X, y, TAB_TOTAL_W,
-        "Steam Mode launches a dedicated gaming session using gamescope "
-        "and Steam Big Picture. All controller input is handled by Steam's "
-        "built-in controller support, including per-game configurations "
-        "from the Steam community.");
-
-    y += 65;
-    draw_separator(cr, y);
-
-    y += 30;
-
-    // Large centered "Enter Steam Mode" button
-    double center_x = LABEL_X + TAB_TOTAL_W / 2;
-    steam_btn_y = y;
-    draw_large_button(cr, center_x, y, 220, 36, "Enter Steam Mode");
-
-    y += 55;
-    draw_body_text(cr, LABEL_X, y, TAB_TOTAL_W,
-        "You can also enter Steam Mode by pressing the Steam button on "
-        "the Legion Go (once detected). To exit Steam Mode, press the "
-        "Steam button again or close Steam Big Picture.");
-
-    y += 55;
-    draw_info_label(cr, LABEL_X, y,
-        "Note: gamescope and Steam must be installed.");
-}
-
-// ============================================================================
 //  Public API — Paint
 // ============================================================================
 
@@ -889,9 +806,6 @@ void controller_pane_paint(SysPrefsState *state)
         break;
     case TAB_DESKTOP_GAMING:
         paint_desktop_gaming(cr, tab_content_y);
-        break;
-    case TAB_STEAM_MODE:
-        paint_steam_mode(cr, tab_content_y);
         break;
     }
 }
@@ -1062,29 +976,6 @@ bool controller_pane_click(SysPrefsState *state, int x, int y)
             y >= cb_y - 2 && y <= cb_y + 18) {
             gaming_mode_enabled = !gaming_mode_enabled;
             // TODO: send mode switch command to inputd
-            return true;
-        }
-        break;
-    }
-
-    case TAB_STEAM_MODE: {
-        // "Enter Steam Mode" button hit test
-        double btn_x = LABEL_X + TAB_TOTAL_W / 2 - 110;
-        if (x >= btn_x && x <= btn_x + 220 &&
-            y >= steam_btn_y && y <= steam_btn_y + 36) {
-            // Launch game-mode (gamescope + Steam Big Picture)
-            // fork+exec so we don't block the UI.
-            // Ignore SIGCHLD so the child doesn't become a zombie.
-            signal(SIGCHLD, SIG_IGN);
-            fprintf(stderr, "[systemcontrol] Launching Steam Mode...\n");
-            pid_t pid = fork();
-            if (pid == 0) {
-                execlp("game-mode", "game-mode", NULL);
-                // If game-mode isn't installed, try gamescope directly
-                execlp("gamescope", "gamescope", "-f", "--",
-                       "steam", "-gamepadui", NULL);
-                _exit(1);
-            }
             return true;
         }
         break;

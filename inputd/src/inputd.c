@@ -47,6 +47,7 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/epoll.h>
+#include <dirent.h>
 #include <linux/input.h>
 
 // ============================================================================
@@ -172,20 +173,45 @@ static void apply_config(InputDaemon *daemon)
 }
 
 // ============================================================================
-//  Helper: Check if CopyCatOS is currently in Game Mode
+//  Helper: Pick the mapper profile from the active SDDM session
 // ============================================================================
-// game-mode.sh writes ~/.local/share/copycatos/gamemode.active when it
-// enters game mode and removes it when the desktop is restored. Checking
-// for this file is cheaper than IPC and works even if the bridge is down.
+// CopyCatOS ships two SDDM sessions — the normal desktop (XLibre + moonrock)
+// and a pure Gamescope gaming session. Each session script writes its
+// identity into $XDG_RUNTIME_DIR/copycatos-session-type ("desktop" or
+// "game") before exec'ing anything. inputd runs as root (systemd service),
+// so we scan /run/user/<uid>/ for that file to pick the profile once at
+// startup. No polling, no marker-file games, no runtime transitions.
 // ============================================================================
 
-static bool game_mode_is_active(void)
+static InputProfile detect_session_profile(void)
 {
-    // Uses /tmp/ instead of /run/copycatos/ because RuntimeDirectory is
-    // cleaned on service restart — that would lose the marker if inputd
-    // crashes or gets restarted while in game mode (gamescope still running).
-    // /tmp/ survives service restarts. game-mode.sh creates and removes this file.
-    return access("/tmp/copycatos-gamemode.active", F_OK) == 0;
+    // Each logged-in user has a tmpfs at /run/user/<uid>/. The session
+    // scripts drop copycatos-session-type there. Walk the directory and
+    // return the first match we find — in practice there is exactly one
+    // graphical session active at a time on the Legion Go S.
+    DIR *d = opendir("/run/user");
+    if (!d) return PROFILE_DESKTOP;
+
+    InputProfile chosen = PROFILE_DESKTOP;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        if (ent->d_name[0] < '0' || ent->d_name[0] > '9') continue;
+        char path[256];
+        snprintf(path, sizeof(path),
+                 "/run/user/%s/copycatos-session-type", ent->d_name);
+        FILE *f = fopen(path, "r");
+        if (!f) continue;
+        char buf[32] = {0};
+        if (fgets(buf, sizeof(buf), f)) {
+            size_t n = strlen(buf);
+            while (n > 0 && (buf[n-1] == '\n' || buf[n-1] == ' ')) buf[--n] = 0;
+            if (strcmp(buf, "game") == 0) chosen = PROFILE_GAME;
+        }
+        fclose(f);
+        break;
+    }
+    closedir(d);
+    return chosen;
 }
 
 // ============================================================================
@@ -237,20 +263,6 @@ static void volume_adjust(const char *wpctl_args)
 static void execute_power_action(InputDaemon *daemon, PowerAction action)
 {
     if (action == POWER_ACTION_NONE) return;
-
-    // ── Game Mode intercept ────────────────────────────────────────────
-    // When in game mode, a short press (suspend) should instead exit
-    // gamescope and return to the CopyCatOS desktop rather than suspend.
-    // game-mode.sh is blocking on gamescope; killing gamescope causes it
-    // to unblock and run the desktop-restore step automatically.
-    //
-    // Long press (restart) is intentional and destructive — we let it
-    // through unchanged so the user always has a hard-reset escape hatch.
-    if (action == POWER_ACTION_SUSPEND && game_mode_is_active()) {
-        fprintf(stderr, "inputd: game mode active — killing gamescope to return to desktop\n");
-        system("pkill -x gamescope");
-        return;
-    }
 
     // Determine the action name string from config
     const char *action_name = NULL;
@@ -574,7 +586,9 @@ int inputd_init(InputDaemon *daemon)
     // back paddles that don't exist in the standard XInput evdev interface.
     // Analog sticks and triggers still come from the XInput evdev node.
     //
-    // For Steam Mode, we'll send the SteamOS command later when needed.
+    // The Gaming session (pure Gamescope via SDDM) is a separate session
+    // that starts its own inputd with profile=GAME — we don't switch modes
+    // at runtime from the Desktop session.
     if (device_init_hid_takeover(daemon->devices) == 0) {
         fprintf(stderr, "inputd: HID takeover mode active — "
                 "reading buttons from %s\n",
@@ -717,7 +731,15 @@ int inputd_init(InputDaemon *daemon)
     // ------------------------------------------------------------------
     daemon->running        = true;
     daemon->reload_pending = 0;
-    daemon->was_game_mode  = false;
+
+    // Pick the mapper profile once, from the active session's marker file.
+    // No runtime flipping — the user changes sessions by logging out and
+    // letting SDDM pick the other entry. The session profile is fixed for
+    // the lifetime of this daemon instance.
+    InputProfile session_profile = detect_session_profile();
+    mapper_set_profile(daemon->mapper, session_profile);
+    fprintf(stderr, "inputd: session profile = %s\n",
+            session_profile == PROFILE_GAME ? "GAME" : "DESKTOP");
 
     fprintf(stderr, "inputd: initialization complete (%d devices found)\n",
             daemon->devices->device_count);
@@ -1046,33 +1068,6 @@ void inputd_run(InputDaemon *daemon)
             }
         }
 
-        // ── Game mode auto-switch ────────────────────────────────────
-        // game-mode.sh creates a marker file when entering game mode and
-        // removes it on exit. We poll for this file each loop iteration
-        // (~100ms via EPOLL_TIMEOUT_MS) and automatically switch between
-        // PROFILE_GAME and PROFILE_DESKTOP on transitions. This avoids
-        // needing the session bridge to be running during game mode.
-        {
-            bool in_game = game_mode_is_active();
-            if (in_game && !daemon->was_game_mode) {
-                // Transition: desktop → game mode
-                fprintf(stderr, "inputd: game mode activated, switching to PROFILE_GAME\n");
-                mapper_set_profile(daemon->mapper, PROFILE_GAME);
-
-                // Zero the mouse emulator's stored stick axes so the cursor
-                // doesn't drift and scroll doesn't continue at whatever
-                // velocity was held when game mode kicked in.
-                mouse_update_axis(daemon->mouse, ABS_RX, 0);
-                mouse_update_axis(daemon->mouse, ABS_RY, 0);
-                mouse_update_scroll_axis(daemon->mouse, ABS_X, 0);
-                mouse_update_scroll_axis(daemon->mouse, ABS_Y, 0);
-            } else if (!in_game && daemon->was_game_mode) {
-                // Transition: game mode → desktop
-                fprintf(stderr, "inputd: game mode deactivated, switching to PROFILE_DESKTOP\n");
-                mapper_set_profile(daemon->mapper, PROFILE_DESKTOP);
-            }
-            daemon->was_game_mode = in_game;
-        }
     }
 
     fprintf(stderr, "inputd: exiting main loop\n");

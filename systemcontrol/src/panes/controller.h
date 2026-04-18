@@ -1,13 +1,15 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
-// panes/controller.h — Controller preferences pane (3-tab interface)
+// panes/controller.h — Controller preferences pane (2-tab interface)
 // ============================================================================
 //
-// Full gamepad configuration with three tabs:
+// Gamepad configuration for the Desktop session:
 //   - Desktop Mode: stick tuning, scroll speed, trigger threshold, mappings
 //   - Desktop Gaming: passthrough toggle, per-game overrides
-//   - Steam Mode: gamescope + Big Picture launcher
+//
+// Gaming session is its own SDDM entry (pure Gamescope), not launched from
+// inside the desktop, so there is no "Steam Mode" tab here.
 //
 // Uses config_editor from inputmap to read/write input.conf and signals
 // inputd via SIGHUP for live config reload.

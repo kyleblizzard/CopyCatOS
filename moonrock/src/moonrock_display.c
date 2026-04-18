@@ -75,11 +75,11 @@ static int output_count = 0;
 #define MAX_OUTPUTS 16
 
 // The current gaming mode — see the GameMode enum in the header.
+// OFF = normal compositing. BYPASS = direct scanout on the primary output
+// for a single fullscreen client (forward-looking for multi-monitor direct
+// scanout). No in-session gamescope path — that's handled by the dedicated
+// gaming SDDM session now.
 static GameMode current_game_mode = GAME_MODE_OFF;
-
-// PID of the gamescope child process (0 if not running).
-// We track this so we can wait for it to exit when returning from gamescope.
-static pid_t gamescope_pid = 0;
 
 // The window currently using direct scanout (None if not active).
 static Window direct_scanout_win = None;
@@ -593,7 +593,7 @@ void display_set_game_mode(GameMode mode)
 {
     if (mode == current_game_mode) return;
 
-    const char *mode_names[] = { "OFF", "BYPASS", "GAMESCOPE" };
+    const char *mode_names[] = { "OFF", "BYPASS" };
     fprintf(stderr, "[display] Game mode: %s -> %s\n",
             mode_names[current_game_mode], mode_names[mode]);
 
@@ -603,13 +603,6 @@ void display_set_game_mode(GameMode mode)
             // Leaving bypass mode — disable direct scanout so the compositor
             // takes over rendering again.
             display_disable_direct_scanout();
-            break;
-
-        case GAME_MODE_GAMESCOPE:
-            // Leaving gamescope mode — make sure the gamescope process is
-            // cleaned up. This is a non-blocking check; if gamescope is still
-            // running, display_return_from_gamescope() will handle it.
-            display_return_from_gamescope();
             break;
 
         case GAME_MODE_OFF:
@@ -863,149 +856,6 @@ bool display_check_direct_scanout(CCWM *wm)
 
 
 // ============================================================================
-//  gamescope integration
-// ============================================================================
-
-bool display_launch_gamescope(const char *game_command)
-{
-    if (!game_command || game_command[0] == '\0') {
-        fprintf(stderr, "[display] ERROR: No game command provided for gamescope\n");
-        return false;
-    }
-
-    // Don't launch a second gamescope if one is already running.
-    if (gamescope_pid > 0) {
-        // Check if the previous gamescope is still alive.
-        int status;
-        pid_t result = waitpid(gamescope_pid, &status, WNOHANG);
-        if (result == 0) {
-            // Still running — refuse to launch another.
-            fprintf(stderr, "[display] gamescope is already running (PID %d)\n",
-                    gamescope_pid);
-            return false;
-        }
-        // It exited — clear the PID so we can launch a new one.
-        gamescope_pid = 0;
-    }
-
-    MROutput *primary = display_get_primary();
-    if (!primary) {
-        fprintf(stderr, "[display] ERROR: No primary output for gamescope\n");
-        return false;
-    }
-
-    // Build the gamescope command line.
-    //
-    // gamescope flags:
-    //   -W <width>    — Output width (match the primary display).
-    //   -H <height>   — Output height (match the primary display).
-    //   -r <rate>     — Refresh rate limit (match the display's max Hz).
-    //   --adaptive-sync — Enable FreeSync/VRR within gamescope.
-    //   -- <command>  — Everything after "--" is the game to launch.
-    // SECURITY: Build argv array instead of passing through a shell.
-    // Using "sh -c" with user-supplied strings is a command injection
-    // vulnerability. Instead, we use execvp() with a proper argv array
-    // where game_command is passed as a single argument, not interpreted
-    // by a shell.
-    char w_str[16], h_str[16], r_str[16];
-    snprintf(w_str, sizeof(w_str), "%d", primary->width);
-    snprintf(h_str, sizeof(h_str), "%d", primary->height);
-    snprintf(r_str, sizeof(r_str), "%d", primary->refresh_hz);
-
-    fprintf(stderr, "[display] Launching gamescope: -W %s -H %s -r %s --adaptive-sync -- %s\n",
-            w_str, h_str, r_str, game_command);
-
-    // Fork a child process to run gamescope.
-    pid_t pid = fork();
-
-    if (pid < 0) {
-        perror("[display] fork failed");
-        return false;
-    }
-
-    if (pid == 0) {
-        // ── Child process ──
-        setsid();
-
-        // SECURITY: Use execvp with an argv array — NO shell interpretation.
-        // game_command is passed as a single argument after "--", so even if
-        // it contains shell metacharacters (;, |, $, etc.), they are treated
-        // as literal characters, not shell commands.
-        execlp("gamescope", "gamescope",
-               "-W", w_str, "-H", h_str, "-r", r_str,
-               "--adaptive-sync", "--", game_command, NULL);
-
-        // If we get here, execlp() failed
-        perror("[display] execlp failed");
-        _exit(1);
-    }
-
-    // ── Parent process ──
-    //
-    // Store the child PID so we can check on it later (waitpid) and so
-    // display_return_from_gamescope() knows what to wait for.
-    gamescope_pid = pid;
-    display_set_game_mode(GAME_MODE_GAMESCOPE);
-
-    fprintf(stderr, "[display] gamescope launched (PID %d)\n", gamescope_pid);
-    return true;
-}
-
-void display_return_from_gamescope(void)
-{
-    if (gamescope_pid <= 0) return;
-
-    // Check if gamescope has already exited.
-    // WNOHANG means "don't block — just check and return immediately."
-    int status;
-    pid_t result = waitpid(gamescope_pid, &status, WNOHANG);
-
-    if (result == 0) {
-        // gamescope is still running. Send it SIGTERM (polite shutdown request)
-        // and wait for it to exit gracefully.
-        fprintf(stderr, "[display] Asking gamescope (PID %d) to exit...\n",
-                gamescope_pid);
-        kill(gamescope_pid, SIGTERM);
-
-        // Wait up to 5 seconds for gamescope to shut down.
-        // We check every 100ms to avoid blocking the WM for too long.
-        for (int i = 0; i < 50; i++) {
-            usleep(100000);  // 100ms
-            result = waitpid(gamescope_pid, &status, WNOHANG);
-            if (result != 0) break;
-        }
-
-        // If it still hasn't exited after 5 seconds, force-kill it.
-        if (result == 0) {
-            fprintf(stderr, "[display] gamescope did not exit — sending SIGKILL\n");
-            kill(gamescope_pid, SIGKILL);
-            waitpid(gamescope_pid, &status, 0);  // Block until dead
-        }
-    }
-
-    // Log the exit status for debugging.
-    if (WIFEXITED(status)) {
-        fprintf(stderr, "[display] gamescope exited with code %d\n",
-                WEXITSTATUS(status));
-    } else if (WIFSIGNALED(status)) {
-        fprintf(stderr, "[display] gamescope killed by signal %d\n",
-                WTERMSIG(status));
-    }
-
-    gamescope_pid = 0;
-
-    // Switch back to normal compositing mode if we were in gamescope mode.
-    // Note: we set current_game_mode directly here instead of calling
-    // display_set_game_mode() to avoid infinite recursion (set_game_mode
-    // calls return_from_gamescope when transitioning out of GAMESCOPE mode).
-    if (current_game_mode == GAME_MODE_GAMESCOPE) {
-        current_game_mode = GAME_MODE_OFF;
-        fprintf(stderr, "[display] Resumed MoonRock compositing\n");
-    }
-}
-
-
-// ============================================================================
 //  PipeWire screencast (stubs)
 // ============================================================================
 //
@@ -1074,8 +924,6 @@ void display_shutdown(void)
     // Clean up any active gaming mode state.
     if (current_game_mode == GAME_MODE_BYPASS) {
         display_disable_direct_scanout();
-    } else if (current_game_mode == GAME_MODE_GAMESCOPE) {
-        display_return_from_gamescope();
     }
     current_game_mode = GAME_MODE_OFF;
 
@@ -1093,7 +941,6 @@ void display_shutdown(void)
     display_dpy = NULL;
     display_root = None;
     direct_scanout_win = None;
-    gamescope_pid = 0;
 
     // Reset frame timing state.
     frame_start = 0.0;

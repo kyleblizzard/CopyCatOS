@@ -13,6 +13,12 @@ export XDG_SESSION_TYPE=x11
 export XDG_SESSION_DESKTOP=CopyCatOS-Gaming
 export XDG_CURRENT_DESKTOP=CopyCatOS-Gaming
 
+# Clean session-type marker for inputd. Single file at a stable path
+# per user — inputd reads this once at startup to choose GAME profile.
+if [ -n "$XDG_RUNTIME_DIR" ]; then
+    echo "game" > "$XDG_RUNTIME_DIR/copycatos-session-type"
+fi
+
 # DBus session bus
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
     eval $(dbus-launch --sh-syntax)
