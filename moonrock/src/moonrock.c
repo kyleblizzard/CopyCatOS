@@ -38,6 +38,7 @@
 #include "moonrock_anim.h"
 #include "moonrock_mission_control.h"
 #include "moonrock_touch.h"
+#include "moonbase_host.h"
 #include "ewmh.h"
 
 // Forward declaration removed — compositor.c is no longer linked.
@@ -1813,6 +1814,17 @@ void mr_composite(CCWM *wm)
     // top, and normal windows are sandwiched between them.
 
     for (int pass = 0; pass < 3; pass++) {
+        // ── MoonBase surfaces ──
+        // MoonBase windows are compositor-internal surfaces (not X
+        // windows), so they don't appear in mr.windows[]. We render
+        // them alongside normal X application windows — between the
+        // desktop pass and the dock/panel pass — so that Aqua chrome
+        // drawn by moonrock still lands above them in slice 3c.2b and
+        // panels stay on top.
+        if (pass == 1) {
+            mb_host_render(mr.shaders.basic, mr.projection);
+        }
+
         for (int i = 0; i < mr.window_count; i++) {
             struct WindowTexture *wt = &mr.windows[i];
 

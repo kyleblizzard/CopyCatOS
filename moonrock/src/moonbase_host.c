@@ -18,6 +18,7 @@
 #include "cbor.h"
 #include "moonbase/ipc/kinds.h"
 #include "moonrock_display.h"
+#include "moonrock_shaders.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -25,6 +26,8 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#include <GL/gl.h>
 
 static mb_server_t *g_server = NULL;
 static char        *g_default_path = NULL;   // owned, only used when we built it
@@ -63,17 +66,71 @@ typedef struct {
     uint32_t       flags;              // window flags from the request
     char          *title;              // owned copy, or NULL
 
-    // Pixel-state of the most recently committed frame. Slice 3c.1 only
-    // records these; slice 3c.2 uploads the shm buffer to a GL texture
-    // and keeps the fd/mmap alive across frames.
-    uint32_t       px_w, px_h;         // physical-pixel size of last commit
-    uint32_t       stride;             // bytes per row of last commit
+    // Screen placement in physical pixels. 3c.2a uses a simple cascade
+    // seeded at create time; future slices let the compositor choose
+    // based on focus / cursor / last-used-output / Info.appc hints.
+    int            screen_x, screen_y;
+
+    // Pixel-state of the most recently committed frame.
+    uint32_t       px_w, px_h;         // physical-pixel size
+    uint32_t       stride;             // bytes per row (ARGB32 aligned)
     uint32_t       pixel_format;       // 0 = ARGB32 premultiplied
     uint64_t       commit_count;       // frames received (debug/throughput)
+
+    // Shared-memory backing of the last-committed frame. The memfd
+    // itself is owned by the server (closed after the callback returns);
+    // we keep our mapping instead — Linux mmap survives fd close because
+    // the kernel holds its own reference to the memfd's pages until
+    // every mapping unmaps.
+    void          *map;                // NULL == no frame yet (or released)
+    size_t         map_size;           // size of the mapping in bytes
+    bool           has_frame;          // any commit has arrived
+    bool           dirty;              // new commit since last GL upload
+
+    // GL texture that mirrors the current shm buffer. Lazy-created on
+    // the first render. When the surface's pixel dimensions change we
+    // re-glTexImage2D; otherwise we glTexSubImage2D on each dirty flip.
+    // Deleted via the pending-delete list so glDeleteTextures is only
+    // ever called from mb_host_render, where the GL context is current.
+    GLuint         tex;                // 0 == no texture yet
+    uint32_t       tex_w, tex_h;       // dimensions last uploaded to tex
 } mb_surface_t;
 
 static mb_surface_t g_surfaces[MB_MAX_SURFACES];
 static int          g_surface_count = 0;
+
+// Pending GL texture deletes. surface_release may run from any path the
+// event loop reaches (including DISCONNECTED inside mb_host_tick, where
+// the GL context is NOT guaranteed current). We never call
+// glDeleteTextures directly from those paths — we push here, and
+// mb_host_render drains the queue while the GL context is current.
+static GLuint       g_pending_delete[MB_MAX_SURFACES];
+static int          g_pending_delete_count = 0;
+
+static void pending_delete_push(GLuint tex) {
+    if (tex == 0) return;
+    if (g_pending_delete_count >= MB_MAX_SURFACES) {
+        // Queue is sized to match the surface table, so overflow means
+        // something is structurally wrong — leaking one texture is a
+        // strictly better outcome than a silent OOB write.
+        fprintf(stderr,
+                "[moonrock] moonbase pending-delete queue overflow — "
+                "leaking texture %u\n", tex);
+        return;
+    }
+    g_pending_delete[g_pending_delete_count++] = tex;
+}
+
+// Cascade placement for a new surface. The menu bar is ~22 points tall
+// and windows should open clear of it; at scale 1.5 that's ~33 px, so
+// seed the cascade at y=60 to stay clear at every sensible scale. The
+// modulo keeps us from marching off the right edge of a small panel.
+static void surface_assign_cascade(mb_surface_t *s) {
+    static int slot = 0;
+    s->screen_x = 80 + (slot % 8) * 30;
+    s->screen_y = 60 + (slot % 8) * 30;
+    slot++;
+}
 
 static mb_surface_t *surface_alloc(void) {
     for (int i = 0; i < MB_MAX_SURFACES; i++) {
@@ -81,6 +138,7 @@ static mb_surface_t *surface_alloc(void) {
             memset(&g_surfaces[i], 0, sizeof(g_surfaces[i]));
             g_surfaces[i].in_use = true;
             g_surface_count++;
+            surface_assign_cascade(&g_surfaces[i]);
             return &g_surfaces[i];
         }
     }
@@ -98,6 +156,10 @@ static mb_surface_t *surface_find(uint32_t window_id) {
 
 static void surface_release(mb_surface_t *s) {
     if (!s || !s->in_use) return;
+    if (s->map) {
+        munmap(s->map, s->map_size);
+    }
+    pending_delete_push(s->tex);
     free(s->title);
     memset(s, 0, sizeof(*s));
     g_surface_count--;
@@ -414,13 +476,18 @@ static bool parse_window_commit(const uint8_t *body, size_t body_len,
 }
 
 // Handle a WINDOW_COMMIT from a client. The client has rendered a frame
-// into an shm-backed buffer and is handing us the memfd. Slice 3c.1
-// validates the fd (size matches stride * height) and records the pixel
-// state on the surface. Slice 3c.2 will keep the mapping alive, upload
-// to a GL texture, and stitch the frame into moonrock's composited scene.
+// into an shm-backed buffer and is handing us the memfd. We validate the
+// fd, mmap it, and keep the mapping alive for mb_host_render to upload
+// on the next frame.
 //
-// The server owns the fd and closes it when the callback returns, which
-// is exactly what we want here: we don't hold anything yet.
+// Ownership: the server closes the passed-in fd after the callback
+// returns. That's fine because Linux mmap keeps its own reference to the
+// underlying memfd's pages — the mapping survives the fd close. We only
+// lose access when we munmap (surface_release or next commit).
+//
+// If a previous frame's mapping was still live, we drop it here before
+// installing the new one. The GL texture is kept across commits — it's
+// only re-uploaded (or resized via glTexImage2D) on the next render.
 static void handle_window_commit(mb_client_id_t client,
                                  const uint8_t *body, size_t body_len,
                                  const int *fds, size_t nfds) {
@@ -474,9 +541,11 @@ static void handle_window_commit(mb_client_id_t client,
         return;
     }
 
-    // Probe-map the buffer read-only to confirm the fd is actually a
-    // readable shm object. Slice 3c.2 keeps the mapping alive for the
-    // GL upload; here we unmap immediately.
+    // Map the new buffer read-only. MAP_SHARED so we see any future
+    // writes the client makes — in practice the client does one draw
+    // and unmaps, so the buffer contents are stable by the time we
+    // upload, but MAP_SHARED is the semantically correct mode for a
+    // buffer whose ownership is about to be shared.
     void *p = mmap(NULL, need, PROT_READ, MAP_SHARED, fd, 0);
     if (p == MAP_FAILED) {
         fprintf(stderr,
@@ -484,13 +553,26 @@ static void handle_window_commit(mb_client_id_t client,
                 "mmap failed\n", client, req.window_id);
         return;
     }
-    munmap(p, need);
 
+    // Drop the old mapping only after the new one is installed — this
+    // ensures mb_host_render can run between two commits without racing
+    // on a half-installed surface.
+    void  *old_map  = surf->map;
+    size_t old_size = surf->map_size;
+
+    surf->map          = p;
+    surf->map_size     = need;
     surf->px_w         = req.width_px;
     surf->px_h         = req.height_px;
     surf->stride       = req.stride;
     surf->pixel_format = req.pixel_format;
+    surf->has_frame    = true;
+    surf->dirty        = true;
     surf->commit_count++;
+
+    if (old_map) {
+        munmap(old_map, old_size);
+    }
 
     fprintf(stderr,
             "[moonrock] moonbase client %u WINDOW_COMMIT window_id=%u: "
@@ -593,6 +675,103 @@ size_t mb_host_collect_pollfds(struct pollfd *out_fds, size_t max) {
 void mb_host_tick(const struct pollfd *fds, size_t nfds) {
     if (!g_server) return;
     mb_server_tick(g_server, fds, nfds);
+}
+
+// Drain the deferred-delete queue. Must run with a current GL context,
+// which is the contract of mb_host_render.
+static void drain_pending_deletes(void) {
+    if (g_pending_delete_count == 0) return;
+    glDeleteTextures((GLsizei)g_pending_delete_count, g_pending_delete);
+    g_pending_delete_count = 0;
+}
+
+// Upload the committed shm buffer into a GL texture. Returns true if
+// the surface is ready to draw after this call, false on any GL error
+// path (in which case the surface simply isn't rendered this frame).
+//
+// Cairo's CAIRO_FORMAT_ARGB32 is native-endian uint32 per pixel with
+// premultiplied alpha. On every CopyCatOS target (x86_64, aarch64, both
+// little-endian) that lays out as BGRA bytes, which matches GL_BGRA +
+// GL_UNSIGNED_BYTE one-to-one — no swizzling, no shader format shim.
+//
+// Stride-vs-width: Cairo guarantees stride is a multiple of 4 and at
+// least width*4. GL_UNPACK_ROW_LENGTH lets us feed that stride directly
+// as a pixel-count so partial-row buffers upload correctly.
+static bool surface_upload_texture(mb_surface_t *s) {
+    if (!s->has_frame || !s->map) return false;
+    if (s->tex == 0) {
+        glGenTextures(1, &s->tex);
+        if (s->tex == 0) return false;
+        glBindTexture(GL_TEXTURE_2D, s->tex);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE);
+        // Force a first upload below even if dirty wasn't set (it always
+        // is on the commit that created the surface, but belt-and-braces).
+        s->tex_w = s->tex_h = 0;
+    } else {
+        glBindTexture(GL_TEXTURE_2D, s->tex);
+    }
+
+    if (!s->dirty && s->tex_w == s->px_w && s->tex_h == s->px_h) {
+        return true;
+    }
+
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(s->stride / 4));
+
+    if (s->tex_w != s->px_w || s->tex_h != s->px_h) {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
+                     (GLsizei)s->px_w, (GLsizei)s->px_h, 0,
+                     GL_BGRA, GL_UNSIGNED_BYTE, s->map);
+        s->tex_w = s->px_w;
+        s->tex_h = s->px_h;
+    } else {
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
+                        (GLsizei)s->px_w, (GLsizei)s->px_h,
+                        GL_BGRA, GL_UNSIGNED_BYTE, s->map);
+    }
+
+    // Reset the row-length override so later X-client texture uploads
+    // and blur captures don't inherit our setting.
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+
+    s->dirty = false;
+    return true;
+}
+
+void mb_host_render(GLuint basic_shader, float *projection) {
+    drain_pending_deletes();
+
+    if (g_surface_count == 0) return;
+
+    // Premultiplied-alpha blending matches the rest of mr_composite's
+    // window pass. mr_composite already sets this mode up for the X
+    // clients; we don't touch the global blend state on exit because
+    // the caller's pass continues with the same mode.
+
+    for (int i = 0; i < MB_MAX_SURFACES; i++) {
+        mb_surface_t *s = &g_surfaces[i];
+        if (!s->in_use || !s->has_frame) continue;
+        if (s->px_w == 0 || s->px_h == 0)  continue;
+
+        if (!surface_upload_texture(s)) continue;
+
+        if (basic_shader) {
+            shaders_use(basic_shader);
+            shaders_set_projection(basic_shader, projection);
+            shaders_set_texture(basic_shader, 0);
+            shaders_set_alpha(basic_shader, 1.0f);
+            glBindTexture(GL_TEXTURE_2D, s->tex);
+            shaders_draw_quad((float)s->screen_x, (float)s->screen_y,
+                              (float)s->px_w,     (float)s->px_h);
+        }
+        // Intentionally no fixed-function fallback: MoonBase apps
+        // require a GL-capable compositor. If shaders failed to
+        // compile, the X-client path has already fallen back and the
+        // MoonBase path just skips this tick rather than double-fail.
+    }
 }
 
 void mb_host_shutdown(void) {

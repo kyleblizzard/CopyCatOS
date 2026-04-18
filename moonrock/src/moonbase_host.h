@@ -18,6 +18,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include <GL/gl.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -36,6 +38,14 @@ size_t mb_host_collect_pollfds(struct pollfd *out_fds, size_t max);
 
 // Process I/O that poll() flagged ready. Safe to call with nfds==0.
 void mb_host_tick(const struct pollfd *fds, size_t nfds);
+
+// Render every live MoonBase surface into the current GL context. Called
+// from mr_composite during the normal-window pass. The caller supplies
+// the same basic-shader / ortho-projection pair the X-client draw uses,
+// so MoonBase windows pixel-match X windows in the output. No-ops if
+// there are no live surfaces. Must be called with the compositor's GL
+// context current (mr_composite guarantees this).
+void mb_host_render(GLuint basic_shader, float *projection);
 
 // Close the listener, tear down every connected client, unlink the
 // socket path, and free server state. Safe to call when never
