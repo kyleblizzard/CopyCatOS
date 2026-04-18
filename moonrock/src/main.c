@@ -60,7 +60,7 @@ int main(int argc, char *argv[])
     // can't be opened (missing XDG_RUNTIME_DIR, permission denied,
     // etc.) moonrock still runs as a pure X11 compositor — MoonBase
     // apps just can't connect until the path is resolved.
-    if (!mb_host_init(NULL)) {
+    if (!mb_host_init(NULL, wm.dpy, wm.root)) {
         fprintf(stderr, "[moonrock] MoonBase host unavailable — no .appc support\n");
     }
 

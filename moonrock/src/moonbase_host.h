@@ -19,6 +19,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <X11/Xlib.h>
 #include <GL/gl.h>
 
 #ifdef __cplusplus
@@ -26,10 +27,16 @@ extern "C" {
 #endif
 
 // Start the MoonBase IPC server. Resolves the socket path as
-// `$XDG_RUNTIME_DIR/moonbase.sock` if `path` is NULL. Returns true on
-// success. On failure, logs why and returns false — moonrock runs
-// happily without MoonBase apps, just with no way to host them.
-bool mb_host_init(const char *path);
+// `$XDG_RUNTIME_DIR/moonbase.sock` if `path` is NULL. `dpy` and `root`
+// are borrowed (not retained by the server, but must outlive every
+// call through this module) — they're used to create per-surface
+// InputOnly X proxies so clicks on MoonBase chrome reach moonrock.
+// Pass a NULL `dpy` to skip proxy creation (headless / test mode);
+// pointer routing is disabled in that case.
+// Returns true on success. On failure, logs why and returns false —
+// moonrock runs happily without MoonBase apps, just with no way to
+// host them.
+bool mb_host_init(const char *path, Display *dpy, Window root);
 
 // Populate `out_fds` with every fd moonrock should poll on behalf of
 // MoonBase apps (listener + per-client). Returns the number written,
@@ -45,6 +52,15 @@ void mb_host_tick(const struct pollfd *fds, size_t nfds);
 // pointer event: if focus is on an X client instead, the event takes
 // the normal X dispatch path.
 bool mb_host_has_focus(void);
+
+// Handle an X ButtonPress that may have landed on a MoonBase surface's
+// input proxy. `win` is the XButtonEvent.window; `x` and `y` are the
+// proxy-relative click coordinates; `button` is the X button number
+// (1 = left). Returns true if the click was consumed by the MoonBase
+// host (focus-on-click, close / minimize / zoom press, title drag,
+// content click passthrough). When this returns true the caller must
+// not dispatch the event to any other handler.
+bool mb_host_handle_button_press(Window win, int x, int y, unsigned int button);
 
 // Deliver a keyboard event to the currently-focused MoonBase surface.
 // `keycode` is an X11 keysym (XK_*); `modifiers` is an MB_MOD_* mask;

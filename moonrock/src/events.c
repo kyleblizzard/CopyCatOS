@@ -417,6 +417,16 @@ static bool in_button_region(int fx, int fy)
 static void on_button_press(CCWM *wm, XEvent *e)
 {
     Window w = e->xbutton.window;
+
+    // MoonBase surfaces have an InputOnly proxy at the chrome rect.
+    // If this click is on one, MoonBase handles it (focus-on-click,
+    // close button, etc.) and we must not fall through to the X-client
+    // dispatch below.
+    if (mb_host_handle_button_press(w, e->xbutton.x, e->xbutton.y,
+                                    e->xbutton.button)) {
+        return;
+    }
+
     Client *c = wm_find_client_by_frame(wm, w);
 
     if (!c) return;

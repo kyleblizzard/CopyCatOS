@@ -20,6 +20,7 @@
 #include "moonrock_display.h"
 #include "moonrock_shaders.h"
 #include "moonbase_chrome.h"
+#include "wm.h"   // TITLEBAR_HEIGHT, BORDER_WIDTH, BUTTON_* (point-space)
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,6 +35,13 @@
 static mb_server_t *g_server = NULL;
 static char        *g_default_path = NULL;   // owned, only used when we built it
 static uint32_t     g_next_window_id = 1;    // opaque window_id counter
+
+// Borrowed X handles used for the per-surface InputOnly click proxies.
+// NULL dpy means no proxies are created (test / headless mode) and
+// pointer-based close / focus-on-click won't fire — the key-routing
+// path still works fine.
+static Display     *g_dpy  = NULL;
+static Window       g_root = 0;
 
 // Focused MoonBase window. 0 means no MoonBase surface currently has the
 // input focus — either because nothing has ever focused (pre-first-
@@ -115,6 +123,16 @@ typedef struct {
     mb_chrome_t    chrome;
     bool           chrome_stale;
     uint64_t       chrome_uploaded_revision;
+
+    // InputOnly X window parked at the same physical-pixel footprint as
+    // the composited chrome. X routes ButtonPress events on the proxy to
+    // moonrock, which hit-tests against chrome regions (close button,
+    // title-bar drag, content passthrough). 0 == no proxy (headless
+    // init). chrome_w_px / chrome_h_px cache the proxy's current size in
+    // physical pixels so we only reconfigure the X window when it
+    // actually changes.
+    Window         input_proxy;
+    uint32_t       chrome_w_px, chrome_h_px;
 } mb_surface_t;
 
 static mb_surface_t g_surfaces[MB_MAX_SURFACES];
@@ -186,6 +204,13 @@ static mb_surface_t *surface_find(uint32_t window_id) {
 
 static void surface_release(mb_surface_t *s) {
     if (!s || !s->in_use) return;
+    if (s->input_proxy && g_dpy) {
+        // XDestroyWindow is a one-way request; the server free-lists the
+        // XID. No reply check — a dead display handle would already have
+        // broken the WM loop.
+        XDestroyWindow(g_dpy, s->input_proxy);
+        s->input_proxy = 0;
+    }
     if (s->map) {
         munmap(s->map, s->map_size);
     }
@@ -194,6 +219,53 @@ static void surface_release(mb_surface_t *s) {
     free(s->title);
     memset(s, 0, sizeof(*s));
     g_surface_count--;
+}
+
+// Compute the chrome's physical-pixel footprint from the client-declared
+// points size plus the current backing scale. This is the initial /
+// pre-commit estimate we use to size the InputOnly proxy. Once a commit
+// arrives, handle_window_commit recomputes from real content pixels and
+// reconfigures the proxy if the footprint changed.
+//
+// Must match the math in moonbase_chrome.c's layout so the click region
+// lines up with the painted pixels.
+static void chrome_px_from_points(int points_w, int points_h, float scale,
+                                  uint32_t *out_w, uint32_t *out_h) {
+    int content_w_px = (int)(points_w * scale + 0.5f);
+    int content_h_px = (int)(points_h * scale + 0.5f);
+    int border_px    = (int)(BORDER_WIDTH    * scale + 0.5f);
+    if (border_px < 1) border_px = 1;
+    int titlebar_px  = (int)(TITLEBAR_HEIGHT * scale + 0.5f);
+    *out_w = (uint32_t)(content_w_px + 2 * border_px);
+    *out_h = (uint32_t)(content_h_px + titlebar_px + border_px);
+}
+
+// Create the InputOnly click proxy for a newly-created surface.
+// Returns the proxy XID, or 0 if proxies are disabled (headless init).
+static Window create_input_proxy(int screen_x, int screen_y,
+                                 uint32_t chrome_w, uint32_t chrome_h) {
+    if (!g_dpy || g_root == 0) return 0;
+    XSetWindowAttributes attr;
+    attr.event_mask        = ButtonPressMask | ButtonReleaseMask;
+    // override_redirect keeps the WM's MapRequest handler from framing
+    // this as a client window. It is a helper, not a client.
+    attr.override_redirect = True;
+    Window w = XCreateWindow(g_dpy, g_root,
+                             screen_x, screen_y,
+                             chrome_w ? chrome_w : 1,
+                             chrome_h ? chrome_h : 1,
+                             0,                 // border width
+                             0,                 // depth (CopyFromParent for InputOnly)
+                             InputOnly,
+                             CopyFromParent,
+                             CWEventMask | CWOverrideRedirect,
+                             &attr);
+    if (!w) return 0;
+    // Raise so the proxy sits above reparented X client windows — GL
+    // composites MoonBase surfaces on top visually, and the click
+    // region has to agree with the pixels.
+    XMapRaised(g_dpy, w);
+    return w;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -431,6 +503,14 @@ static void handle_window_create(mb_server_t *s, mb_client_id_t client,
     surf->title       = req.title; // take ownership
     req.title = NULL;               // avoid the free below
     surf->chrome_stale = true;      // first-paint trigger for mb_host_render
+
+    // Compute chrome footprint from the declared points size and build
+    // an InputOnly proxy so clicks on the chrome reach moonrock.
+    chrome_px_from_points(surf->points_w, surf->points_h, surf->scale,
+                          &surf->chrome_w_px, &surf->chrome_h_px);
+    surf->input_proxy = create_input_proxy(surf->screen_x, surf->screen_y,
+                                           surf->chrome_w_px,
+                                           surf->chrome_h_px);
 
     fprintf(stderr,
             "[moonrock] moonbase client %u WINDOW_CREATE: "
@@ -682,6 +762,24 @@ static void handle_window_commit(mb_client_id_t client,
     // branch because previous px_w/px_h are zero.
     if (surf->px_w != req.width_px || surf->px_h != req.height_px) {
         surf->chrome_stale = true;
+
+        // Re-derive the proxy footprint from the real content pixels
+        // (more accurate than the pre-commit points-×-scale estimate)
+        // and resize the InputOnly proxy if it changed.
+        int border_px   = (int)(BORDER_WIDTH    * surf->scale + 0.5f);
+        if (border_px < 1) border_px = 1;
+        int titlebar_px = (int)(TITLEBAR_HEIGHT * surf->scale + 0.5f);
+        uint32_t new_cw = req.width_px  + (uint32_t)(2 * border_px);
+        uint32_t new_ch = req.height_px + (uint32_t)(titlebar_px + border_px);
+        if (surf->input_proxy && g_dpy
+                && (new_cw != surf->chrome_w_px
+                    || new_ch != surf->chrome_h_px)) {
+            XMoveResizeWindow(g_dpy, surf->input_proxy,
+                              surf->screen_x, surf->screen_y,
+                              new_cw, new_ch);
+        }
+        surf->chrome_w_px = new_cw;
+        surf->chrome_h_px = new_ch;
     }
 
     surf->map          = p;
@@ -762,11 +860,14 @@ static char *default_socket_path(void) {
     return p;
 }
 
-bool mb_host_init(const char *path) {
+bool mb_host_init(const char *path, Display *dpy, Window root) {
     if (g_server) {
         fprintf(stderr, "[moonrock] moonbase host already running\n");
         return true;
     }
+
+    g_dpy  = dpy;
+    g_root = root;
 
     const char *use_path = path;
     if (!use_path) {
@@ -812,6 +913,83 @@ static uint64_t ts_us(void) {
     struct timespec t;
     clock_gettime(CLOCK_MONOTONIC, &t);
     return (uint64_t)t.tv_sec * 1000000u + (uint64_t)t.tv_nsec / 1000u;
+}
+
+// Send MB_IPC_WINDOW_CLOSED to `surf`'s owning client so the app's
+// event loop can observe the close request and decide how to respond
+// (save-on-quit, put up a confirmation sheet, etc.). We do NOT tear the
+// surface down here — that waits for the client to send back
+// MB_IPC_WINDOW_CLOSE or to disconnect.
+static void send_window_closed_event(mb_surface_t *surf) {
+    if (!surf || !g_server) return;
+    mb_cbor_w_t w;
+    mb_cbor_w_init_grow(&w, 16);
+    mb_cbor_w_map_begin(&w, 1);
+    mb_cbor_w_key(&w, 1); mb_cbor_w_uint(&w, surf->window_id);
+    if (!mb_cbor_w_ok(&w)) { mb_cbor_w_drop(&w); return; }
+    size_t len = 0;
+    uint8_t *body = mb_cbor_w_finish(&w, &len);
+    if (!body) return;
+    (void)mb_server_send(g_server, surf->client,
+                         MB_IPC_WINDOW_CLOSED,
+                         body, len, NULL, 0);
+    free(body);
+}
+
+// Locate the surface whose input_proxy is `win`. Linear scan — the
+// table is small (≤256 entries) and click events are infrequent.
+static mb_surface_t *surface_find_by_proxy(Window win) {
+    if (win == 0) return NULL;
+    for (int i = 0; i < MB_MAX_SURFACES; i++) {
+        if (g_surfaces[i].in_use && g_surfaces[i].input_proxy == win) {
+            return &g_surfaces[i];
+        }
+    }
+    return NULL;
+}
+
+// Hit-test the close button inside a chrome rect at the current scale.
+// Returns true if (x, y) falls on the red dot. x/y are proxy-relative
+// pixel coordinates (i.e. chrome-relative, since the proxy and chrome
+// share an origin).
+static bool chrome_hit_close_button(mb_surface_t *s, int x, int y) {
+    int left_pad   = (int)(BUTTON_LEFT_PAD  * s->scale + 0.5f);
+    int top_pad    = (int)(BUTTON_TOP_PAD   * s->scale + 0.5f);
+    int diameter   = (int)(BUTTON_DIAMETER  * s->scale + 0.5f);
+    if (diameter < 1) diameter = 1;
+    return x >= left_pad && x <= left_pad + diameter
+        && y >= top_pad  && y <= top_pad  + diameter;
+}
+
+bool mb_host_handle_button_press(Window win, int x, int y, unsigned int button) {
+    mb_surface_t *surf = surface_find_by_proxy(win);
+    if (!surf) return false;
+
+    // Any click on a MoonBase surface's chrome or content passes focus
+    // to that surface — matches X click-to-focus behavior on reparented
+    // clients, which also run through wm_focus_client in on_button_press.
+    focus_set(surf->window_id);
+
+    // Left-click only for button-dispatch in this slice. Other buttons
+    // on the chrome are a no-op but still counted as consumed so the WM
+    // doesn't double-handle them.
+    if (button != Button1) return true;
+
+    // Close button → emit WINDOW_CLOSED and leave the surface up. The
+    // client's event loop may elect to quit (closing the socket, which
+    // triggers surface_sweep_client) or to prompt the user first.
+    if (chrome_hit_close_button(surf, x, y)) {
+        fprintf(stderr,
+                "[moonrock] moonbase close-button press on window_id=%u\n",
+                surf->window_id);
+        send_window_closed_event(surf);
+        return true;
+    }
+
+    // Rest of chrome / content is consumed-without-routing in this
+    // slice. Drag-to-move, minimize, zoom, and content pointer events
+    // land in later slices.
+    return true;
 }
 
 bool mb_host_route_key(uint32_t keycode, uint32_t modifiers,
@@ -1028,8 +1206,15 @@ void mb_host_render(GLuint basic_shader, float *projection) {
 
 void mb_host_shutdown(void) {
     if (!g_server) return;
+    // Release every live surface before closing the server — this also
+    // destroys each InputOnly proxy so we don't leak XIDs on the way out.
+    for (int i = 0; i < MB_MAX_SURFACES; i++) {
+        if (g_surfaces[i].in_use) surface_release(&g_surfaces[i]);
+    }
     mb_server_close(g_server);
     g_server = NULL;
+    g_dpy  = NULL;
+    g_root = 0;
     free(g_default_path);
     g_default_path = NULL;
 }
