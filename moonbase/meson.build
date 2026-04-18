@@ -1,50 +1,154 @@
 # CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-# moonbase — CopyCatOS application framework
+# moonbase — CopyCatOS application framework library
 #
-# Native C host that loads apps written in other languages and embeds them
-# inside a CopyCatOS window. Scope for v0.1 scaffold:
+# Phase B skeleton: builds libmoonbase.so.1 with every public symbol
+# from the Phase A headers defined. Three symbols are real
+# (moonbase_last_error, moonbase_error_string, moonbase_release);
+# the other 41 are stubs that return MB_ENOSYS or set last-error
+# and return a null-sentinel. Phase C replaces the stub bodies with
+# real IPC to MoonRock — the ABI surface does not change.
 #
-#   - Launch the host process, discover .appc bundles under the user's
-#     Applications directory, open the bundle specified on the command line
-#     (if any). That is all main.c does today.
+# Targets:
+#   libmoonbase.so.1.0.0 / libmoonbase.so.1 / libmoonbase.so
+#   moonbase-launch      -- bwrap-based bundle launcher scaffold
+#   mb-hello             -- tests/hello.c, exercises init+quit symbols
 #
-# Language hosts get added in follow-up milestones:
-#   - Swift     (via libSwiftCore runtime shim)
-#   - Python    (via embedded CPython)
-#   - Web (HTML/JS/CSS, via an embedded browser — WebKitGTK or CEF)
-#
-# Long-term vision: a local LLM runs on-device and generates .appc bundles
-# for the user in response to natural-language prompts. moonbase is the
-# execution environment those generated apps live in.
+# Generated:
+#   moonbase.pc          -- pkg-config file for third-party consumers
 #
 # Build:
-#   meson setup build && meson compile -C build
+#   meson setup build
+#   meson compile -C build
 #
 # Install:
 #   meson install -C build
-#   (installs /usr/local/bin/moonbase)
 
 project('moonbase', 'c',
-  version: '0.1.0',
-  default_options: ['c_std=c11', 'warning_level=2'],
+  version: '1.0.0',
+  default_options: [
+    'c_std=c11',
+    'warning_level=3',
+    'werror=true',
+  ],
 )
 
-# _GNU_SOURCE for realpath(3) and similar POSIX extensions used in
-# bundle resolution.
+# _GNU_SOURCE unlocks realpath(3) and the other POSIX extensions
+# Phase C+ will lean on (memfd_create, pidfd_open, getentropy, etc.).
 add_project_arguments('-D_GNU_SOURCE', language: 'c')
 
-# At scaffold stage we only need libc. As language hosts get added:
-#   - Swift host: will need libSwiftCore, libobjc
-#   - Python host: will need python3-embed pkg-config module
-#   - Web host: will need webkit2gtk-4.1 or cef
+# ---------------------------------------------------------------------
+# Public headers
+# ---------------------------------------------------------------------
+#
+# Phase A froze this set. Every app linking libmoonbase.so.1 includes
+# through <moonbase.h> + one or more companions. All companion
+# headers ship even in Phase B so downstream compile-gates against
+# their MOONBASE_<DOMAIN>_API_VERSION macros resolve today.
 
-sources = files(
-  'src/main.c',
-  'src/bundle.c',
+public_headers = files(
+  'include/moonbase.h',
+  'include/moonbase_keychain.h',
+  'include/moonbase_a11y.h',
+  'include/moonbase_notifications.h',
+  'include/moonbase_power.h',
+  'include/moonbase_controller.h',
+  'include/moonbase_clipboard.h',
+  'include/moonbase_display.h',
+  'include/moonbase_services.h',
+  'include/moonbase_share.h',
+  'include/moonbase_print.h',
+  'include/moonbase_quicklook.h',
+  'include/moonbase_spotlight.h',
 )
 
-executable('moonbase', sources,
+ipc_headers = files(
+  'include/moonbase/ipc/kinds.h',
+)
+
+install_headers(public_headers)
+install_headers(ipc_headers, subdir: 'moonbase/ipc')
+
+# ---------------------------------------------------------------------
+# libmoonbase.so.1
+# ---------------------------------------------------------------------
+
+moonbase_lib_sources = files(
+  'src/error.c',
+  'src/stubs.c',
+)
+
+# Phase B library links no external deps on purpose — the stubs
+# never call into Cairo, EGL, libsecret, AT-SPI, etc. Threads is
+# listed anyway because the TLS last-error slot assumes libpthread
+# is present at load time on glibc.
+threads_dep = dependency('threads')
+
+libmoonbase = shared_library(
+  'moonbase',
+  moonbase_lib_sources,
+  include_directories: include_directories('include', 'src'),
+  version: '1.0.0',
+  soversion: '1',
+  dependencies: [threads_dep],
   install: true,
-  install_dir: get_option('bindir'),
+)
+
+# pkg-config so third-party code can `pkg-config --cflags --libs moonbase`.
+# subdirs: the generated .pc adds -I${includedir} so top-level
+# headers resolve as <moonbase.h>; the `moonbase/ipc` subdir makes
+# <moonbase/ipc/kinds.h> resolve the same way.
+pkg = import('pkgconfig')
+pkg.generate(
+  libmoonbase,
+  name: 'moonbase',
+  description: 'CopyCatOS application framework (libmoonbase.so.1)',
+  version: meson.project_version(),
+  subdirs: ['.'],
+)
+
+# ---------------------------------------------------------------------
+# moonbase-launch — bwrap launcher scaffold
+# ---------------------------------------------------------------------
+#
+# No library link — the launcher is a bwrap wrapper, it does not
+# embed libmoonbase. Phase D grows this into the real Info.appc
+# reader + quarantine-aware launcher.
+
+executable(
+  'moonbase-launch',
+  'launcher/moonbase-launch.c',
+  install: true,
+)
+
+# ---------------------------------------------------------------------
+# Sandbox profiles
+# ---------------------------------------------------------------------
+#
+# Bash arg-string generators for bwrap. Installed under
+# ${datadir}/moonbase/sandbox/ so moonbase-launch can find them by
+# well-known path. install_mode keeps them executable after install.
+
+install_data(
+  'sandbox/native.profile',
+  'sandbox/webview.profile',
+  install_dir: join_paths(get_option('datadir'), 'moonbase', 'sandbox'),
+  install_mode: 'rwxr-xr-x',
+)
+
+# ---------------------------------------------------------------------
+# mb-hello — minimum link test
+# ---------------------------------------------------------------------
+#
+# Links libmoonbase and calls moonbase_init / moonbase_quit. Passing
+# build == proof that every symbol from moonbase.h resolves, that
+# the stub convention doesn't crash, and that the build system
+# produces the right soname. Not installed.
+
+executable(
+  'mb-hello',
+  'tests/hello.c',
+  include_directories: include_directories('include'),
+  link_with: libmoonbase,
+  install: false,
 )
