@@ -284,3 +284,23 @@ mb_window_commit = executable(
 )
 
 test('window-commit', mb_window_commit, timeout: 10)
+
+# ---------------------------------------------------------------------
+# mb-input-route — Phase C slice 3c.3 focus + key-event pump test
+# ---------------------------------------------------------------------
+#
+# Parent replies to WINDOW_CREATE then sends WINDOW_FOCUSED, KEY_DOWN,
+# and KEY_UP frames in order. Child asserts moonbase_wait_event
+# delivers them as MB_EV_WINDOW_FOCUSED, MB_EV_KEY_DOWN, MB_EV_KEY_UP
+# with the right ev.focus.has_focus, ev.key.keycode, modifiers, and
+# is_repeat fields. Pins the full input-routing translator.
+
+mb_input_route = executable(
+  'mb-input-route',
+  'tests/input-route.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('input-route', mb_input_route, timeout: 10)

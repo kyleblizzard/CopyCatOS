@@ -17,6 +17,7 @@
 #include <poll.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include <GL/gl.h>
 
@@ -38,6 +39,15 @@ size_t mb_host_collect_pollfds(struct pollfd *out_fds, size_t max);
 
 // Process I/O that poll() flagged ready. Safe to call with nfds==0.
 void mb_host_tick(const struct pollfd *fds, size_t nfds);
+
+// Deliver a keyboard event to the currently-focused MoonBase surface.
+// `keycode` is an X11 keysym (XK_*); `modifiers` is an MB_MOD_* mask;
+// `is_down` chooses MB_IPC_KEY_DOWN vs MB_IPC_KEY_UP. Returns true if a
+// frame was queued, false when no MoonBase surface currently holds
+// focus (the caller should let the event fall through to its regular
+// X-client dispatch in that case).
+bool mb_host_route_key(uint32_t keycode, uint32_t modifiers,
+                       bool is_down, bool is_repeat);
 
 // Render every live MoonBase surface into the current GL context. Called
 // from mr_composite during the normal-window pass. The caller supplies

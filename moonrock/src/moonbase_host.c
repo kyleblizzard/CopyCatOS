@@ -26,6 +26,7 @@
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <GL/gl.h>
@@ -33,6 +34,15 @@
 static mb_server_t *g_server = NULL;
 static char        *g_default_path = NULL;   // owned, only used when we built it
 static uint32_t     g_next_window_id = 1;    // opaque window_id counter
+
+// Focused MoonBase window. 0 means no MoonBase surface currently has the
+// input focus — either because nothing has ever focused (pre-first-
+// window), because every MoonBase window was closed, or because focus is
+// currently on a reparented X window and the shell has dispatched it
+// elsewhere. Set from handle_window_create (new window auto-focuses for
+// now — focus-on-click routing is a later slice) and from the focus
+// sweep in handle_window_close / surface_sweep_client.
+static uint32_t g_focused_window_id = 0;
 
 // ─────────────────────────────────────────────────────────────────────
 // Surface table — one entry per live MoonBase window
@@ -186,17 +196,88 @@ static void surface_release(mb_surface_t *s) {
     g_surface_count--;
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Focus + input routing
+// ─────────────────────────────────────────────────────────────────────
+//
+// Each focus transition sends MB_IPC_WINDOW_FOCUSED to the affected
+// surface's client — `focused=false` to the outgoing surface first,
+// then `focused=true` to the incoming one. Only one MoonBase surface
+// holds focus at a time; routing to X windows is handled by the rest
+// of CCWM and is invisible to this layer.
+
+// Send WINDOW_FOCUSED to the client owning `surf`.
+static void send_focus_event(mb_surface_t *surf, bool focused) {
+    if (!surf || !g_server) return;
+    mb_cbor_w_t w;
+    mb_cbor_w_init_grow(&w, 16);
+    mb_cbor_w_map_begin(&w, 2);
+    mb_cbor_w_key(&w, 1); mb_cbor_w_uint(&w, surf->window_id);
+    mb_cbor_w_key(&w, 2); mb_cbor_w_bool(&w, focused);
+    if (!mb_cbor_w_ok(&w)) {
+        mb_cbor_w_drop(&w);
+        return;
+    }
+    size_t len = 0;
+    uint8_t *body = mb_cbor_w_finish(&w, &len);
+    if (body) {
+        (void)mb_server_send(g_server, surf->client,
+                             MB_IPC_WINDOW_FOCUSED,
+                             body, len, NULL, 0);
+        free(body);
+    }
+}
+
+// Transition focus to the given window_id (0 == no MoonBase focus).
+// Emits the outgoing-false + incoming-true pair of events as needed.
+static void focus_set(uint32_t new_id) {
+    if (g_focused_window_id == new_id) return;
+
+    if (g_focused_window_id != 0) {
+        mb_surface_t *prev = surface_find(g_focused_window_id);
+        if (prev) send_focus_event(prev, false);
+    }
+    g_focused_window_id = new_id;
+    if (new_id != 0) {
+        mb_surface_t *next = surface_find(new_id);
+        if (next) send_focus_event(next, true);
+    }
+}
+
+// Find the newest live surface (highest window_id) to take focus when
+// the currently-focused one goes away. Returns 0 if the table is empty.
+static uint32_t focus_pick_successor(void) {
+    uint32_t best = 0;
+    for (int i = 0; i < MB_MAX_SURFACES; i++) {
+        if (g_surfaces[i].in_use
+                && g_surfaces[i].window_id != g_focused_window_id
+                && g_surfaces[i].window_id > best) {
+            best = g_surfaces[i].window_id;
+        }
+    }
+    return best;
+}
+
 // Sweep every surface belonging to a given client. Called when that
 // client disconnects (graceful BYE or abrupt EOF both route here).
 static void surface_sweep_client(mb_client_id_t client) {
-    int freed = 0;
+    int  freed = 0;
+    bool lost_focus = false;
     for (int i = 0; i < MB_MAX_SURFACES; i++) {
         if (g_surfaces[i].in_use && g_surfaces[i].client == client) {
-            uint32_t wid = g_surfaces[i].window_id;
+            if (g_surfaces[i].window_id == g_focused_window_id) {
+                lost_focus = true;
+            }
             surface_release(&g_surfaces[i]);
             freed++;
-            (void)wid; // reserved for a compositor damage call in 3c.2
         }
+    }
+    if (lost_focus) {
+        // The focused client is gone — don't try to send a "lost focus"
+        // event to it. Pick a successor silently and only announce the
+        // "gained focus" side.
+        g_focused_window_id = 0;
+        focus_set(focus_pick_successor());
     }
     if (freed > 0) {
         fprintf(stderr,
@@ -382,7 +463,13 @@ static void handle_window_create(mb_server_t *s, mb_client_id_t client,
         fprintf(stderr,
                 "[moonrock] moonbase client %u: send reply failed (%d)\n",
                 client, rc);
+        return;
     }
+
+    // Newly-created MoonBase windows auto-focus until click-to-focus and
+    // X-focus arbitration land. Sends a "lost focus" to any previous
+    // MoonBase surface and a "gained focus" to this one.
+    focus_set(window_id);
 }
 
 // Parse a WINDOW_CLOSE body: { 1: uint window_id }.
@@ -442,7 +529,14 @@ static void handle_window_close(mb_client_id_t client,
             "(%dx%d pt, live=%d)\n",
             client, window_id, surf->points_w, surf->points_h,
             g_surface_count - 1);
+    bool was_focused = (window_id == g_focused_window_id);
     surface_release(surf);
+    if (was_focused) {
+        // App closed its own focused window — no "lost focus" event
+        // needed (the window_id is gone). Pick a successor.
+        g_focused_window_id = 0;
+        focus_set(focus_pick_successor());
+    }
 }
 
 // Parse a WINDOW_COMMIT body. Schema:
@@ -705,6 +799,47 @@ size_t mb_host_collect_pollfds(struct pollfd *out_fds, size_t max) {
 void mb_host_tick(const struct pollfd *fds, size_t nfds) {
     if (!g_server) return;
     mb_server_tick(g_server, fds, nfds);
+}
+
+// Timestamp for outgoing input events. Monotonic microseconds since
+// boot — matches mb_event_t.timestamp_us semantics on the client side.
+static uint64_t ts_us(void) {
+    struct timespec t;
+    clock_gettime(CLOCK_MONOTONIC, &t);
+    return (uint64_t)t.tv_sec * 1000000u + (uint64_t)t.tv_nsec / 1000u;
+}
+
+bool mb_host_route_key(uint32_t keycode, uint32_t modifiers,
+                       bool is_down, bool is_repeat) {
+    if (!g_server || g_focused_window_id == 0) return false;
+    mb_surface_t *surf = surface_find(g_focused_window_id);
+    if (!surf) {
+        // Focused id points at a gone-away surface. Clear and bail.
+        g_focused_window_id = 0;
+        return false;
+    }
+
+    mb_cbor_w_t w;
+    mb_cbor_w_init_grow(&w, 32);
+    mb_cbor_w_map_begin(&w, 5);
+    mb_cbor_w_key(&w, 1); mb_cbor_w_uint(&w, surf->window_id);
+    mb_cbor_w_key(&w, 2); mb_cbor_w_uint(&w, keycode);
+    mb_cbor_w_key(&w, 3); mb_cbor_w_uint(&w, modifiers);
+    mb_cbor_w_key(&w, 4); mb_cbor_w_bool(&w, is_repeat);
+    mb_cbor_w_key(&w, 5); mb_cbor_w_uint(&w, ts_us());
+    if (!mb_cbor_w_ok(&w)) {
+        mb_cbor_w_drop(&w);
+        return false;
+    }
+    size_t len = 0;
+    uint8_t *body = mb_cbor_w_finish(&w, &len);
+    if (!body) return false;
+
+    int rc = mb_server_send(g_server, surf->client,
+                            is_down ? MB_IPC_KEY_DOWN : MB_IPC_KEY_UP,
+                            body, len, NULL, 0);
+    free(body);
+    return rc == 0;
 }
 
 // Drain the deferred-delete queue. Must run with a current GL context,

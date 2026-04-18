@@ -136,11 +136,109 @@ static void translate_window_closed(const uint8_t *body, size_t body_len) {
     ring_push(&ev);
 }
 
+// WINDOW_FOCUSED body: { 1: uint window_id, 2: bool has_focus }.
+// Dropped silently if the window_id is unknown (stale reference).
+static void translate_window_focused(const uint8_t *body, size_t body_len) {
+    mb_cbor_r_t r;
+    mb_cbor_r_init(&r, body, body_len);
+    uint64_t pairs = 0;
+    if (!mb_cbor_r_map_begin(&r, &pairs)) return;
+
+    uint32_t window_id = 0;
+    bool     has_focus = false;
+    bool     have_id = false, have_focus = false;
+    for (uint64_t i = 0; i < pairs; i++) {
+        uint64_t key = 0;
+        if (!mb_cbor_r_uint(&r, &key)) return;
+        switch (key) {
+            case 1: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                window_id = (uint32_t)v; have_id = true; break; }
+            case 2: { bool v = false;
+                if (!mb_cbor_r_bool(&r, &v)) return;
+                has_focus = v; have_focus = true; break; }
+            default:
+                if (!mb_cbor_r_skip(&r)) return;
+                break;
+        }
+    }
+    if (!have_id || !have_focus) return;
+
+    mb_event_t ev = {0};
+    ev.kind = MB_EV_WINDOW_FOCUSED;
+    ev.window = mb_internal_window_find(window_id);
+    if (!ev.window) return;
+    ev.timestamp_us = mono_us();
+    ev.focus.has_focus = has_focus;
+    ring_push(&ev);
+}
+
+// KEY_DOWN/KEY_UP body:
+//   { 1: window_id, 2: keycode, 3: modifiers, 4: is_repeat, 5: timestamp_us }
+// Unknown/missing is_repeat defaults to false (schema says optional).
+// Unknown window_ids are silently dropped — the app already closed locally.
+static void translate_key(uint16_t kind,
+                          const uint8_t *body, size_t body_len) {
+    mb_cbor_r_t r;
+    mb_cbor_r_init(&r, body, body_len);
+    uint64_t pairs = 0;
+    if (!mb_cbor_r_map_begin(&r, &pairs)) return;
+
+    uint32_t window_id = 0;
+    uint32_t keycode = 0;
+    uint32_t modifiers = 0;
+    bool     is_repeat = false;
+    uint64_t timestamp_us = 0;
+    bool     have_id = false, have_code = false;
+    for (uint64_t i = 0; i < pairs; i++) {
+        uint64_t key = 0;
+        if (!mb_cbor_r_uint(&r, &key)) return;
+        switch (key) {
+            case 1: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                window_id = (uint32_t)v; have_id = true; break; }
+            case 2: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                keycode = (uint32_t)v; have_code = true; break; }
+            case 3: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                modifiers = (uint32_t)v; break; }
+            case 4: { bool v = false;
+                if (!mb_cbor_r_bool(&r, &v)) return;
+                is_repeat = v; break; }
+            case 5: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                timestamp_us = v; break; }
+            default:
+                if (!mb_cbor_r_skip(&r)) return;
+                break;
+        }
+    }
+    if (!have_id || !have_code) return;
+
+    mb_event_t ev = {0};
+    ev.kind = (kind == MB_IPC_KEY_DOWN) ? MB_EV_KEY_DOWN : MB_EV_KEY_UP;
+    ev.window = mb_internal_window_find(window_id);
+    if (!ev.window) return;
+    ev.timestamp_us = timestamp_us ? timestamp_us : mono_us();
+    ev.key.keycode   = keycode;
+    ev.key.modifiers = modifiers;
+    ev.key.is_repeat = is_repeat;
+    ring_push(&ev);
+}
+
 static void translate_frame(uint16_t kind,
                             const uint8_t *body, size_t body_len) {
     switch (kind) {
         case MB_IPC_WINDOW_CLOSED:
             translate_window_closed(body, body_len);
+            break;
+        case MB_IPC_WINDOW_FOCUSED:
+            translate_window_focused(body, body_len);
+            break;
+        case MB_IPC_KEY_DOWN:
+        case MB_IPC_KEY_UP:
+            translate_key(kind, body, body_len);
             break;
         default:
             // Unmapped kind in this slice. Dropping it on the floor is
