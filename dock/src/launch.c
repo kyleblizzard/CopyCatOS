@@ -30,8 +30,27 @@
 #include <strings.h>
 #include <unistd.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <X11/Xatom.h>
+
+// A .appc bundle is a directory whose name ends in ".appc" and that has
+// a Contents/Info.appc file inside. Used to decide whether a pinned
+// dock item should be execed directly or handed to moonbase-launch so
+// bwrap, entitlements, and the consent flow run.
+static int is_appc_bundle(const char *path)
+{
+    if (!path) return 0;
+    size_t len = strlen(path);
+    if (len < 5 || strcmp(path + len - 5, ".appc") != 0) return 0;
+
+    char info[1024];
+    int n = snprintf(info, sizeof(info), "%s/Contents/Info.appc", path);
+    if (n < 0 || (size_t)n >= sizeof(info)) return 0;
+
+    struct stat st;
+    return stat(info, &st) == 0 && S_ISREG(st.st_mode);
+}
 
 // ---------------------------------------------------------------------------
 // Helper: read an X11 property from a window.
@@ -172,6 +191,15 @@ void launch_app(DockState *state, DockItem *item)
         // Redirect stdout/stderr to /dev/null to avoid cluttering the dock's output
         freopen("/dev/null", "w", stdout);
         freopen("/dev/null", "w", stderr);
+
+        // If this is a MoonBase .appc bundle, route through moonbase-launch
+        // so the bwrap sandbox, entitlement filters, and consent flow run.
+        // Plain commands take the direct execlp path below.
+        if (is_appc_bundle(item->exec_path)) {
+            execlp("moonbase-launch", "moonbase-launch",
+                   item->exec_path, (char *)NULL);
+            _exit(127);
+        }
 
         // Try to exec the application directly
         execlp(item->exec_path, item->exec_path, (char *)NULL);
