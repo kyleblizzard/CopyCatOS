@@ -46,6 +46,8 @@
 
 #include <stdbool.h>
 
+#include "moonbase.h"  // mb_error_t
+
 // What the reader found for (group, value) in consents.toml.
 typedef enum {
     MB_CONSENT_MISSING = 0,  // no section, no file, or decision absent
@@ -61,9 +63,32 @@ mb_consent_status_t mb_consent_query(const char *group, const char *value);
 // Gate helper matching the sandbox §6 transition during the
 // grant-by-default window: returns true on ALLOW or MISSING, false on
 // DENY. When the IPC responder lands, MISSING flips to "false" and the
-// callers don't change. Emits a one-time stderr diagnostic the first
-// time MISSING is observed in a process so the grant-by-default state
-// is visible in logs and not silent.
+// callers don't change. Emits a first-time stderr diagnostic per
+// (group, value) pair so a single process that touches several
+// missing capabilities still surfaces each one in logs.
 bool mb_consent_gate_allows(const char *group, const char *value);
+
+// Record a decision for (group, value) to the caller's consents.toml.
+// `decision` must be MB_CONSENT_ALLOW or MB_CONSENT_DENY —
+// MB_CONSENT_MISSING is rejected with MB_EINVAL (there is no "unset"
+// wire representation, and the reader already treats absent sections
+// as MISSING). Writes land atomically (tmp file → fsync → rename) so
+// a crash mid-write can never leave consents.toml truncated or
+// half-updated. If a section named [<group>.<value>] already exists,
+// it is replaced in place; other sections and ordering are preserved.
+//
+// Returns MB_EOK on success; MB_EINVAL on bad args; MB_EPERM when no
+// bundle id is resolvable (the writer has no idea where to put the
+// file); MB_ENOMEM on allocation failure; MB_EIPC on filesystem I/O
+// failure. The file is mode 0600 and its Preferences/ parent is
+// mode 0700 — the caller's home directory already enforces
+// per-user privacy, but belt-and-suspenders costs nothing.
+//
+// Dead code in this commit: no caller in libmoonbase yet. The IPC
+// responder (`moonbase-consent` growing MB_IPC_CONSENT_REQUEST
+// handling) wires this up in a follow-up.
+mb_error_t mb_consent_record(const char *group,
+                             const char *value,
+                             mb_consent_status_t decision);
 
 #endif // MOONBASE_CONSENTS_H

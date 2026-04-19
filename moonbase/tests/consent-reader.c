@@ -1,6 +1,6 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// mb-consent-reader — consents.toml reader unit test.
+// mb-consent-reader — consents.toml reader + writer unit test.
 //
 // Seeds a hand-written consents.toml under a per-test tmpdir
 // ($XDG_DATA_HOME/moonbase/<bundle-id>/Preferences/consents.toml),
@@ -10,10 +10,14 @@
 // the new state without fork churn — but each phase still leaves the
 // tree clean for the next.
 //
+// The writer phases (mb_consent_record) round-trip: record a decision,
+// read it back. They also verify atomic rewrite preserves unrelated
+// sections, rejects bad inputs, and lands the file at mode 0600.
+//
 // The gate helper's "first missing warns on stderr" behavior is
-// process-wide (single static bool). That's observable only in stderr
-// output; the bool return value is what callers branch on, so we
-// assert the bool and let the warning noise through.
+// per-(group,value). That's observable only in stderr output; the
+// bool return value is what callers branch on, so we assert the bool
+// and let the warning noise through.
 
 #include "consents.h"
 
@@ -204,6 +208,101 @@ static void phase_no_bundle_id(void) {
 }
 
 // ---------------------------------------------------------------------
+// Writer phases — mb_consent_record round-trip
+// ---------------------------------------------------------------------
+
+// Fresh write: no prior file, record ALLOW, read back ALLOW.
+static void phase_record_allow_round_trip(void) {
+    set_consents(NULL);
+    CHECK(mb_consent_record("system", "keychain", MB_CONSENT_ALLOW) == MB_EOK,
+          "record allow -> EOK");
+    CHECK(mb_consent_query("system", "keychain") == MB_CONSENT_ALLOW,
+          "record allow -> query ALLOW");
+    CHECK(mb_consent_gate_allows("system", "keychain") == true,
+          "record allow -> gate allows");
+}
+
+// Overwrite: ALLOW then DENY for the same section, last write wins.
+static void phase_record_deny_overwrites(void) {
+    set_consents(NULL);
+    CHECK(mb_consent_record("system", "keychain", MB_CONSENT_ALLOW) == MB_EOK,
+          "seed allow");
+    CHECK(mb_consent_record("system", "keychain", MB_CONSENT_DENY) == MB_EOK,
+          "overwrite with deny -> EOK");
+    CHECK(mb_consent_query("system", "keychain") == MB_CONSENT_DENY,
+          "overwrite deny -> query DENY");
+    CHECK(mb_consent_gate_allows("system", "keychain") == false,
+          "deny overwrite -> gate refuses");
+}
+
+// Preserve neighbors: file has an existing [hardware.camera] section;
+// recording [system.keychain] must not touch it.
+static void phase_record_preserves_neighbors(void) {
+    set_consents(
+        "# pre-existing file\n"
+        "[hardware.camera]\n"
+        "decision = \"allow\"\n");
+    CHECK(mb_consent_record("system", "keychain", MB_CONSENT_DENY) == MB_EOK,
+          "record into file with neighbor -> EOK");
+    CHECK(mb_consent_query("system", "keychain") == MB_CONSENT_DENY,
+          "new section -> DENY");
+    CHECK(mb_consent_query("hardware", "camera") == MB_CONSENT_ALLOW,
+          "neighbor section untouched -> ALLOW");
+}
+
+// Same-section rewrite with a neighbor: only target body changes.
+static void phase_record_in_place_keeps_neighbors(void) {
+    set_consents(
+        "[hardware.camera]\n"
+        "decision = \"allow\"\n"
+        "\n"
+        "[system.keychain]\n"
+        "decision = \"allow\"\n");
+    CHECK(mb_consent_record("system", "keychain", MB_CONSENT_DENY) == MB_EOK,
+          "in-place rewrite -> EOK");
+    CHECK(mb_consent_query("system", "keychain") == MB_CONSENT_DENY,
+          "target flipped -> DENY");
+    CHECK(mb_consent_query("hardware", "camera") == MB_CONSENT_ALLOW,
+          "neighbor still ALLOW after in-place rewrite");
+}
+
+// Bad inputs: NULLs, empty strings, MISSING decision all rejected.
+static void phase_record_rejects_bad_inputs(void) {
+    set_consents(NULL);
+    CHECK(mb_consent_record(NULL, "keychain", MB_CONSENT_ALLOW) == MB_EINVAL,
+          "NULL group -> EINVAL");
+    CHECK(mb_consent_record("system", NULL, MB_CONSENT_ALLOW) == MB_EINVAL,
+          "NULL value -> EINVAL");
+    CHECK(mb_consent_record("", "keychain", MB_CONSENT_ALLOW) == MB_EINVAL,
+          "empty group -> EINVAL");
+    CHECK(mb_consent_record("system", "keychain", MB_CONSENT_MISSING) == MB_EINVAL,
+          "MISSING decision -> EINVAL");
+}
+
+// No bundle id: writer has nowhere to put the file.
+static void phase_record_requires_bundle_id(void) {
+    unsetenv("MOONBASE_BUNDLE_ID");
+    CHECK(mb_consent_record("system", "keychain", MB_CONSENT_ALLOW) == MB_EPERM,
+          "no bundle id -> EPERM");
+    setenv("MOONBASE_BUNDLE_ID", g_bundle_id, 1);
+}
+
+// Mode check: file must land at 0600.
+static void phase_record_file_mode_0600(void) {
+    set_consents(NULL);
+    CHECK(mb_consent_record("system", "keychain", MB_CONSENT_ALLOW) == MB_EOK,
+          "record -> EOK");
+    struct stat st;
+    if (stat(g_consents_path, &st) != 0) {
+        fprintf(stderr, "FAIL: stat consents.toml: %s\n", strerror(errno));
+        failures++;
+        return;
+    }
+    mode_t perm = st.st_mode & 0777;
+    CHECK(perm == 0600, "file mode is 0600");
+}
+
+// ---------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------
 
@@ -219,6 +318,14 @@ int main(void) {
     phase_unknown_decision_value();
     phase_null_inputs();
     phase_no_bundle_id();
+
+    phase_record_allow_round_trip();
+    phase_record_deny_overwrites();
+    phase_record_preserves_neighbors();
+    phase_record_in_place_keeps_neighbors();
+    phase_record_rejects_bad_inputs();
+    phase_record_requires_bundle_id();
+    phase_record_file_mode_0600();
 
     teardown();
 
