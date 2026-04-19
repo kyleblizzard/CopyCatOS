@@ -22,12 +22,14 @@
 // originated strings go through secret_password_free, which does the
 // same thing inside libsecret's allocator.
 //
-// Entitlement: every public CRUD + list call below returns MB_EPERM
-// unless the bundle declared `system:"keychain"` in Info.appc. The
-// gate is enforced here, at the API boundary, by mb_has_entitlement —
-// cheap, deterministic, and closes the v1 "advisory-only" gap.
-// generate_password and secret_free don't touch the keychain and
-// stay ungated.
+// Entitlement + consent: every public CRUD + list call below walks
+// the two gates from sandbox.md §6. Entitlement first — the bundle
+// must have declared `system:"keychain"` in Info.appc, else MB_EPERM
+// without prompting. Consent second — the user's recorded decision
+// in consents.toml wins; a `deny` entry turns into MB_EPERM, an
+// `allow` entry (or, during the pre-IPC grant-by-default window, a
+// missing entry) lets the call through. generate_password and
+// secret_free don't touch the keychain and stay ungated.
 //
 // D-Bus reachability: the session bus socket lives under
 // $XDG_RUNTIME_DIR, which moonbase-launch binds into every sandbox.
@@ -37,6 +39,7 @@
 
 #include "moonbase.h"
 #include "moonbase_keychain.h"
+#include "consents.h"
 #include "entitlements.h"
 #include "internal.h"
 
@@ -139,6 +142,10 @@ mb_error_t moonbase_keychain_store(const char *service,
         mb_internal_set_last_error(MB_EPERM);
         return MB_EPERM;
     }
+    if (!mb_consent_gate_allows("system", "keychain")) {
+        mb_internal_set_last_error(MB_EPERM);
+        return MB_EPERM;
+    }
     if (!label || !label[0] || !account || !account[0] || !secret) {
         mb_internal_set_last_error(MB_EINVAL);
         return MB_EINVAL;
@@ -174,6 +181,10 @@ mb_error_t moonbase_keychain_fetch(const char *service,
 {
     if (out_secret) *out_secret = NULL;
     if (!mb_has_entitlement("system", "keychain")) {
+        mb_internal_set_last_error(MB_EPERM);
+        return MB_EPERM;
+    }
+    if (!mb_consent_gate_allows("system", "keychain")) {
         mb_internal_set_last_error(MB_EPERM);
         return MB_EPERM;
     }
@@ -226,6 +237,10 @@ mb_error_t moonbase_keychain_delete(const char *service,
                                     const char *account)
 {
     if (!mb_has_entitlement("system", "keychain")) {
+        mb_internal_set_last_error(MB_EPERM);
+        return MB_EPERM;
+    }
+    if (!mb_consent_gate_allows("system", "keychain")) {
         mb_internal_set_last_error(MB_EPERM);
         return MB_EPERM;
     }
@@ -283,6 +298,10 @@ static char *dup_attr(GHashTable *attrs, const char *key) {
 mb_error_t moonbase_keychain_list(mb_keychain_list_t **out) {
     if (out) *out = NULL;
     if (!mb_has_entitlement("system", "keychain")) {
+        mb_internal_set_last_error(MB_EPERM);
+        return MB_EPERM;
+    }
+    if (!mb_consent_gate_allows("system", "keychain")) {
         mb_internal_set_last_error(MB_EPERM);
         return MB_EPERM;
     }

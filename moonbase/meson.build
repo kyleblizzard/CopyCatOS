@@ -74,6 +74,7 @@ install_headers(ipc_headers, subdir: 'moonbase/ipc')
 # ---------------------------------------------------------------------
 
 moonbase_lib_sources = files(
+  'src/consents.c',
   'src/entitlements.c',
   'src/error.c',
   'src/eventloop.c',
@@ -481,6 +482,28 @@ mb_entitlement_gate = executable(
 )
 
 test('entitlement-gate', mb_entitlement_gate, timeout: 15)
+
+# ---------------------------------------------------------------------
+# mb-consent-reader — consents.toml reader unit test
+# ---------------------------------------------------------------------
+#
+# Seeds a hand-written consents.toml under a per-test tmpdir and
+# drives mb_consent_query + mb_consent_gate_allows against every
+# schema shape we expect in production: missing file, allow, deny,
+# different section, section without decision, comments + blanks,
+# unknown decision value, NULL inputs, and missing bundle id. Does
+# not fork — the reader has no cache so rewriting the file between
+# phases is enough.
+
+mb_consent_reader = executable(
+  'mb-consent-reader',
+  'tests/consent-reader.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('consent-reader', mb_consent_reader, timeout: 10)
 
 # ---------------------------------------------------------------------
 # mb-info-appc — Phase D slice 1 Info.appc schema loader test
