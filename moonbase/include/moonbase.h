@@ -49,6 +49,20 @@ extern "C" {
 
 #define MOONBASE_API_VERSION 10000
 
+// moonbase_runtime_version — the API version of the libmoonbase.so
+// the process actually loaded. MOONBASE_API_VERSION is the version
+// the app was compiled against; this is the version it's running on.
+//
+// The two can diverge once the SDK ships separately from the host OS
+// image — e.g. an app built against 1.0.1 headers running on a host
+// with libmoonbase.so.1.0.5. Majors are still protected by soname
+// (libmoonbase.so.2 may coexist with .so.1 on disk), so the value
+// this returns always shares a major with MOONBASE_API_VERSION.
+//
+// Intended use: a diagnostic "About" surface, or a startup compat
+// check that refuses to run against a runtime older than the app.
+uint32_t moonbase_runtime_version(void);
+
 // ---------------------------------------------------------------------
 // Error codes
 // ---------------------------------------------------------------------

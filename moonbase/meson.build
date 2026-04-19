@@ -90,6 +90,7 @@ moonbase_lib_sources = files(
   'src/gl_path.c',
   'src/init.c',
   'src/stubs.c',
+  'src/version.c',
   'src/window.c',
   'src/bundle/bundle.c',
   'src/bundle/info_appc.c',
@@ -233,6 +234,27 @@ executable(
   link_with: libmoonbase,
   install: false,
 )
+
+# ---------------------------------------------------------------------
+# mb-runtime-version — moonbase_runtime_version() symbol test
+# ---------------------------------------------------------------------
+#
+# Links libmoonbase and asserts the runtime version query echoes
+# MOONBASE_API_VERSION and shares a major with it. Proves the symbol
+# is exported, callable, and returns a sane value — the prerequisite
+# for any eventual "About CopyCatOS" / "About MoonBase" surface that
+# wants to show the live runtime version instead of the app's
+# compile-time macro.
+
+mb_runtime_version = executable(
+  'mb-runtime-version',
+  'tests/runtime-version.c',
+  include_directories: include_directories('include'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('runtime-version', mb_runtime_version, timeout: 5)
 
 # ---------------------------------------------------------------------
 # mb-hello-handshake — Phase C slice 1 end-to-end test
