@@ -1,32 +1,40 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// moonbase-consent — first-launch consent sheet.
+// moonbase-consent — first-launch consent sheet + per-capability
+// consent recorder.
 //
-// Exec'd by moonbase-launch when a bundle's user.moonbase.quarantine
-// xattr is "pending". Exit 0 = trust, exit 1 = refuse; the launcher
-// persists the choice on the bundle's xattr and proceeds (or aborts).
+// Two surfaces live in this one binary, dispatched by argv[1]:
 //
-// Phase D slice 5 ships two user-facing fronts and one automation shim:
+//   1. First-launch sheet (called by moonbase-launch):
+//        moonbase-consent <bundle-path> <bundle-id>
+//      Exec'd when a bundle's user.moonbase.quarantine xattr is
+//      "pending". Exit 0 = trust, exit 1 = refuse; the launcher
+//      persists the choice on the bundle's xattr and proceeds (or
+//      aborts). Phase D slice 5 ships three fronts here:
+//        a. $MOONBASE_CONSENT_AUTO = "approve" | "reject" always wins.
+//        b. Interactive y/n prompt on stderr when stdin is a TTY.
+//        c. Otherwise print the summary and refuse (safe default).
+//      A follow-up slice plugs in the MoonBase-drawn Aqua sheet here;
+//      once pointer events route to client windows the helper
+//      graduates into its own tiny MoonBase app.
 //
-//   1. $MOONBASE_CONSENT_AUTO = "approve" | "reject"
-//        Deterministic override for tests, CI, and kiosks. Always wins.
-//
-//   2. If stdin is a TTY: interactive text prompt on stderr.
-//        Dev / terminal-launched scenario. Prints the bundle's name,
-//        version, language, rendering mode, and declared entitlements
-//        (the exact same data that the Aqua sheet shows), then reads a
-//        y/n line from stdin. Empty answer = Cancel (safe default).
-//
-//   3. Otherwise: print the summary to stderr and refuse (exit 1).
-//        Headless launch with no automation override and no terminal —
-//        there's no safe way to ask the user, so we default to cancel.
-//        A follow-up slice will plug in the MoonBase-drawn Aqua sheet
-//        here; once pointer events are routed to client windows the
-//        helper graduates into its own tiny MoonBase app.
+//   2. Per-capability consent recorder (admin / repair / seed tool):
+//        moonbase-consent <allow|deny> <group> <value> [bundle-id]
+//      Calls mb_consent_record to grow or rewrite the caller bundle's
+//      consents.toml. The optional fourth arg overrides (or supplies)
+//      MOONBASE_BUNDLE_ID for this invocation — the admin use case
+//      ("moonbase-consent allow system keychain show.blizzard.keychain")
+//      is unambiguous in one line and doesn't require exporting env
+//      vars into the surrounding shell. Useful forever: even after the
+//      IPC grant path lands, this CLI is the `defaults write` of the
+//      MoonBase consent store for tests, CI seeding, and post-incident
+//      repair.
 
 #include "bundle/bundle.h"
 #include "bundle/info_appc.h"
+#include "consents.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -113,11 +121,90 @@ static int prompt_yn(void) {
     return 0;
 }
 
+// Record-consent subcommand: `moonbase-consent <allow|deny> <group>
+// <value> [bundle-id]`. Dispatched from main() whenever argv[1] is one
+// of the literal words "allow" or "deny" — both are reserved, so they
+// can never be mistaken for a bundle-path (paths contain a '/' on any
+// reachable layout; we don't even need to check — the first-launch
+// flow takes argv[1] as a path, and "allow"/"deny" as a bundle path is
+// nonsense no user will type by accident).
+static int cmd_record_consent(int argc, char **argv) {
+    if (argc < 4 || argc > 5) {
+        fprintf(stderr,
+            "moonbase-consent: usage: %s <allow|deny> <group> <value> "
+            "[bundle-id]\n",
+            argv[0]);
+        return 2;
+    }
+
+    mb_consent_status_t decision = (strcmp(argv[1], "allow") == 0)
+        ? MB_CONSENT_ALLOW
+        : MB_CONSENT_DENY;
+
+    const char *group = argv[2];
+    const char *value = argv[3];
+
+    // Optional fourth arg supplies or overrides MOONBASE_BUNDLE_ID for
+    // this process — the writer in libmoonbase reads the env var to
+    // resolve the per-bundle path. overwrite=1 so a stale env var from
+    // the caller can't silently target the wrong bundle.
+    if (argc == 5) {
+        if (setenv("MOONBASE_BUNDLE_ID", argv[4], 1) != 0) {
+            fprintf(stderr,
+                "moonbase-consent: setenv(MOONBASE_BUNDLE_ID) failed: %s\n",
+                strerror(errno));
+            return 1;
+        }
+    }
+
+    mb_error_t rc = mb_consent_record(group, value, decision);
+    if (rc == MB_EOK) {
+        const char *bid = getenv("MOONBASE_BUNDLE_ID");
+        fprintf(stderr,
+            "moonbase-consent: recorded %s for [%s.%s] in %s\n",
+            argv[1], group, value, bid ? bid : "(no bundle id)");
+        return 0;
+    }
+
+    // Map writer errors to operator-legible stderr lines. The writer
+    // returns EPERM when it can't resolve a bundle id, EINVAL on bad
+    // args (including MB_CONSENT_MISSING — unreachable here), ENOMEM
+    // on alloc failure, and EIPC on filesystem I/O failure.
+    if (rc == MB_EPERM) {
+        fprintf(stderr,
+            "moonbase-consent: MOONBASE_BUNDLE_ID is unset — pass a "
+            "bundle id as the fourth argument, or export it in the "
+            "environment.\n");
+    } else if (rc == MB_EINVAL) {
+        fprintf(stderr,
+            "moonbase-consent: refusing — group or value is empty.\n");
+    } else if (rc == MB_ENOMEM) {
+        fprintf(stderr, "moonbase-consent: out of memory.\n");
+    } else {
+        fprintf(stderr,
+            "moonbase-consent: failed to write consents.toml (%s).\n",
+            moonbase_error_string(rc));
+    }
+    return 1;
+}
+
 int main(int argc, char **argv) {
+    // Subcommand dispatch — record-consent surface comes first so the
+    // admin CLI path is noise-free. Falls through to the first-launch
+    // sheet otherwise.
+    if (argc >= 2 && (strcmp(argv[1], "allow") == 0 ||
+                      strcmp(argv[1], "deny")  == 0)) {
+        return cmd_record_consent(argc, argv);
+    }
+
     if (argc < 3) {
         fprintf(stderr,
-            "moonbase-consent: usage: %s <bundle-path> <bundle-id>\n",
-            argv[0]);
+            "moonbase-consent: usage:\n"
+            "  %s <bundle-path> <bundle-id>\n"
+            "      first-launch sheet (called by moonbase-launch)\n"
+            "  %s <allow|deny> <group> <value> [bundle-id]\n"
+            "      record a first-use consent into consents.toml\n",
+            argv[0], argv[0]);
         return 2;
     }
     const char *bundle_path = argv[1];

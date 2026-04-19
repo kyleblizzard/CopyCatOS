@@ -167,14 +167,21 @@ moonbase_launch = executable(
 )
 
 # ---------------------------------------------------------------------
-# moonbase-consent — first-launch consent sheet (stub in this slice)
+# moonbase-consent — first-launch consent sheet + consent-recorder CLI
 # ---------------------------------------------------------------------
 #
-# Phase D slice 4 ships a deterministic stub the launcher execs when a
-# bundle's xattr says "pending". Slice 5 replaces this with a real
-# Aqua consent sheet drawn through MoonBase. Installed to libexecdir so
-# users can't invoke it directly (no good reason to; the helper assumes
-# it's been forked by moonbase-launch).
+# Two surfaces in one binary, dispatched by argv[1]:
+#   * <bundle-path> <bundle-id>
+#       first-launch sheet exec'd by moonbase-launch when a bundle's
+#       user.moonbase.quarantine xattr is "pending". A follow-up slice
+#       replaces the text-mode prompt with a MoonBase-drawn Aqua sheet.
+#   * <allow|deny> <group> <value> [bundle-id]
+#       per-capability consent recorder — the `defaults write` of the
+#       consents.toml store. Direct invocation from a shell is expected
+#       and tested (tests/consent-cli.c).
+# Installed to libexecdir for now since the primary consumer is still
+# moonbase-launch; promotion to bindir can follow once the admin
+# surface stabilizes.
 
 moonbase_consent = executable(
   'moonbase-consent',
@@ -504,6 +511,33 @@ mb_consent_reader = executable(
 )
 
 test('consent-reader', mb_consent_reader, timeout: 10)
+
+# ---------------------------------------------------------------------
+# mb-consent-cli — moonbase-consent allow/deny CLI integration test
+# ---------------------------------------------------------------------
+#
+# Forks the real moonbase-consent binary and drives it through the
+# record-consent subcommand: allow, deny-overwrites-allow, env-only
+# bundle id, missing bundle id, bad argc, and an unknown verb that
+# falls through to the first-launch arm. Each phase points
+# XDG_DATA_HOME at a fresh tmpdir; the test reads back through
+# mb_consent_query to confirm the writer landed the right decision.
+# Pins the CLI surface end-to-end — same-process unit tests can't
+# catch argv parsing or exec/link regressions.
+
+mb_consent_cli = executable(
+  'mb-consent-cli',
+  'tests/consent-cli.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('consent-cli', mb_consent_cli,
+  args: [moonbase_consent],
+  depends: [moonbase_consent],
+  timeout: 15,
+)
 
 # ---------------------------------------------------------------------
 # mb-info-appc — Phase D slice 1 Info.appc schema loader test
