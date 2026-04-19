@@ -143,8 +143,22 @@ typedef struct {
 // flags that control the event loop and animation timers.
 // ---------------------------------------------------------------------------
 typedef struct {
-    // Runtime sizing config (computed from icon_size at startup)
+    // Runtime sizing config (computed from icon_size at startup).
+    // cfg.icon_size is in PHYSICAL PIXELS (= icon_points × hidpi_scale),
+    // so every derived field (shelf_height, dock_height, etc.) is already
+    // in physical pixels — no scaling needed at call sites.
     DockConfig cfg;
+
+    // User's configured icon size in POINTS (from desktop.conf [dock]
+    // icon_size=). The physical-pixel size fed to dock_config_from_icon_size
+    // is icon_points × hidpi_scale so the same user preference produces the
+    // right apparent size on any output.
+    int icon_points;
+
+    // Per-output HiDPI scale published by MoonRock on _MOONROCK_OUTPUT_SCALES
+    // for the dock's hosting output. 1.0 when MoonRock isn't running or the
+    // property is missing (the dock still draws, just without hidpi awareness).
+    float hidpi_scale;
 
     // X11 display and window handles
     Display *dpy;                 // Connection to the X server

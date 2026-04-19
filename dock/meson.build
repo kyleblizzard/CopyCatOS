@@ -29,6 +29,13 @@ libpng_dep = dependency('libpng')        # libpng — for loading PNG icon files
 cc = meson.get_compiler('c')
 math_dep = cc.find_library('m', required: true)
 
+# MoonRock -> shell scale bridge. The client-side reader lives in
+# ../moonrock/shell-api/ and is compiled directly into the dock binary,
+# same as menubar. It's three tiny C files that change as a set with
+# MoonRock's display module — a standalone library isn't worth the
+# packaging overhead.
+moonrock_shell_api_dir = '../moonrock/shell-api'
+
 # --- Source files ---
 # Every .c file that contains code for the dock. Headers (.h) are found
 # automatically through #include directives.
@@ -47,6 +54,7 @@ sources = [
   'src/poof.c',
   'src/tooltip.c',
   'src/stacks.c',
+  moonrock_shell_api_dir / 'moonrock_scale.c',
 ]
 
 # --- Build the executable ---
@@ -54,6 +62,7 @@ sources = [
 # a single binary called 'dock'. install: true means `meson install`
 # will copy it to the system bin directory (usually /usr/local/bin).
 executable('dock', sources,
+  include_directories: include_directories(moonrock_shell_api_dir),
   dependencies: [x11_dep, cairo_dep, cairo_xlib_dep, pangocairo_dep, libpng_dep, math_dep],
   install: true,
   install_dir: get_option('bindir'),

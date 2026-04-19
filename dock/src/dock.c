@@ -45,9 +45,33 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 
+// MoonRock -> shell scale bridge. MoonRock publishes per-output HiDPI scale
+// on the root window; subscribing lets the dock pick up the scale of its
+// hosting output and keep cfg.icon_size in physical pixels so the bar and
+// icons are the same apparent size on any monitor.
+#include "moonrock_scale.h"
+
 // NOTE: The default dock items list and icon resolution logic have been moved
 // to config.c. See config_set_defaults() for the default item list and
 // config_resolve_and_load_icon() for the icon loading pipeline.
+
+// Live snapshot of every connected output's scale as published by MoonRock
+// on _MOONROCK_OUTPUT_SCALES. Refreshed at startup and on every
+// PropertyNotify for that atom. state->hidpi_scale is derived from this
+// table for the dock's representative point.
+static MoonRockScaleTable g_output_scales;
+
+// The dock lives bottom-center on the root window, so the scale for the
+// output hosting the dock is whatever scale applies at (screen_w/2,
+// screen_h-1). Called both at init and on every PropertyNotify so the same
+// lookup rule is used in both paths.
+static float lookup_hidpi_scale(DockState *state)
+{
+    if (!g_output_scales.valid) return 1.0f;
+    int sx = state->screen_w / 2;
+    int sy = state->screen_h - 1;
+    return moonrock_scale_for_point(&g_output_scales, sx, sy);
+}
 
 // ---------------------------------------------------------------------------
 // Helper: get current monotonic time in seconds.
@@ -178,11 +202,30 @@ bool dock_init(DockState *state)
     state->colormap = XCreateColormap(state->dpy, state->root,
                                        state->visual, AllocNone);
 
+    // --- Subscribe to the MoonRock scale bridge BEFORE loading sizing ---
+    // The dock's initial window must be created at the right physical-pixel
+    // size for the hosting output. If we subscribed after XCreateWindow we'd
+    // have to resize on the first PropertyNotify, causing a visible flicker
+    // at startup. Mirrors the menubar init order.
+    //
+    // moonrock_scale_init's XSelectInput is additive — it ORs PropertyChangeMask
+    // into whatever is already selected on the root, so there's no conflict
+    // with anything else that might already be watching the root window.
+    moonrock_scale_init(state->dpy);
+    moonrock_scale_refresh(state->dpy, &g_output_scales);
+    state->hidpi_scale = lookup_hidpi_scale(state);
+    fprintf(stderr, "[dock] hidpi: host output scale = %.2f "
+                    "(%d output%s known)\n",
+            (double)state->hidpi_scale,
+            g_output_scales.count,
+            g_output_scales.count == 1 ? "" : "s");
+
     // --- Load sizing config from shared desktop.conf ---
     // Reads [dock] section from ~/.config/copycatos/desktop.conf.
-    // If the file doesn't exist, uses defaults (64px icons, auto-hide off).
+    // icon_size is in POINTS — the final physical-pixel size handed to
+    // dock_config_from_icon_size is icon_points × hidpi_scale.
     {
-        int icon_size = DEFAULT_ICON_SIZE;
+        int icon_points = DEFAULT_ICON_SIZE;
         bool auto_hide = false;
         const char *home = getenv("HOME");
         if (home) {
@@ -200,7 +243,7 @@ bool dock_init(DockState *state)
                     if (*p == '[') {
                         in_dock = (strncmp(p, "[dock]", 6) == 0);
                     } else if (in_dock && strncmp(p, "icon_size=", 10) == 0) {
-                        icon_size = atoi(p + 10);
+                        icon_points = atoi(p + 10);
                     } else if (in_dock && strncmp(p, "auto_hide=", 10) == 0) {
                         // auto_hide=1 enables the slide-up-on-hover behavior
                         auto_hide = atoi(p + 10) != 0;
@@ -209,11 +252,18 @@ bool dock_init(DockState *state)
                 fclose(fp);
             }
         }
-        dock_config_from_icon_size(&state->cfg, icon_size);
+        state->icon_points = icon_points;
+        int pixel_size = (int)((double)icon_points
+                               * (double)state->hidpi_scale + 0.5);
+        dock_config_from_icon_size(&state->cfg, pixel_size);
         state->auto_hide = auto_hide;
-        fprintf(stderr, "[dock] Config: icon_size=%d shelf=%d dock=%d spacing=%d auto_hide=%d\n",
+        fprintf(stderr,
+                "[dock] Config: icon_points=%d hidpi=%.2f icon_px=%d "
+                "shelf=%d dock=%d spacing=%d auto_hide=%d\n",
+                icon_points, (double)state->hidpi_scale,
                 state->cfg.icon_size, state->cfg.shelf_height,
-                state->cfg.dock_height, state->cfg.icon_spacing, (int)auto_hide);
+                state->cfg.dock_height, state->cfg.icon_spacing,
+                (int)auto_hide);
     }
 
     // --- Load dock items from config file, or use defaults on first launch ---
@@ -574,6 +624,55 @@ void dock_paint(DockState *state)
     dock_publish_icon_positions(state);
 }
 
+// Recompute dock geometry from the current (icon_points, hidpi_scale) and
+// apply it to the live window. Called after either a SIGHUP config reload
+// (user changed icon_size) or a MoonRock scale-change PropertyNotify
+// (different output, user moved a Displays-pane slider, hotplug). Both
+// paths need the same sequence: rebuild DockConfig at the new physical
+// pixel size, recompute window size/position, XMoveResizeWindow, resize
+// the Cairo surface, and rewrite struts (which depend on shelf_height).
+//
+// Icons stay loaded as-is — the PNGs are density-agnostic and scaled
+// per-paint via cairo_scale(cr, icon_size/src_w, ...), so the new
+// cfg.icon_size automatically draws them at the right apparent size.
+static void apply_dock_resize(DockState *state)
+{
+    // Convert points -> physical pixels using the hosting output's scale,
+    // then feed the product to dock_config_from_icon_size so every
+    // derived field (shelf, spacing, indicator, bounce) matches.
+    int pixel_size = (int)((double)state->icon_points
+                           * (double)state->hidpi_scale + 0.5);
+    dock_config_from_icon_size(&state->cfg, pixel_size);
+
+    // Recompute window geometry. Total width clamped to screen so a very
+    // large icon-size × scale never overflows the monitor.
+    int new_w = dock_calculate_total_width(state) + 2 * SHELF_PADDING;
+    if (new_w > state->screen_w) new_w = state->screen_w;
+    int new_h = DOCK_HEIGHT;
+
+    state->win_w = new_w;
+    state->win_h = new_h;
+    state->win_x = (state->screen_w - new_w) / 2;
+
+    // Y depends on auto-hide: hidden parks at the hot-zone strip; shown
+    // sits flush with the bottom of the screen.
+    if (state->auto_hide && !state->hide_visible) {
+        state->win_y = state->screen_h - HIDE_HOT_ZONE;
+    } else {
+        state->win_y = state->screen_h - new_h;
+    }
+
+    XMoveResizeWindow(state->dpy, state->win,
+                      state->win_x, state->win_y,
+                      state->win_w, state->win_h);
+    cairo_xlib_surface_set_size(state->surface,
+                                state->win_w, state->win_h);
+
+    // Struts embed shelf_height, so they must be rewritten whenever the
+    // config changes — even when auto_hide stays the same.
+    set_struts(state);
+}
+
 // Module-level drag-and-drop state (used across event handlers)
 static DndState _dnd;
 
@@ -779,6 +878,26 @@ void dock_run(DockState *state)
                 state->running_loop = false;
                 break;
 
+            case PropertyNotify:
+                // MoonRock rewrites _MOONROCK_OUTPUT_SCALES on hotplug and
+                // on any Displays-pane change. Ignore every other root-window
+                // property change — there are a lot of them.
+                if (ev.xproperty.window == state->root &&
+                    ev.xproperty.atom == moonrock_scale_atom(state->dpy)) {
+                    moonrock_scale_refresh(state->dpy, &g_output_scales);
+                    float old_scale = state->hidpi_scale;
+                    state->hidpi_scale = lookup_hidpi_scale(state);
+                    if (state->hidpi_scale != old_scale) {
+                        fprintf(stderr,
+                                "[dock] hidpi: %.2f → %.2f (resizing)\n",
+                                (double)old_scale,
+                                (double)state->hidpi_scale);
+                        apply_dock_resize(state);
+                        needs_repaint = true;
+                    }
+                }
+                break;
+
             default:
                 break;
             }
@@ -896,8 +1015,10 @@ void dock_run(DockState *state)
                 g_reload_config = false;
                 fprintf(stderr, "[dock] Reloading config...\n");
 
-                // Re-read [dock] section from desktop.conf
-                int icon_size = DEFAULT_ICON_SIZE;
+                // Re-read [dock] section from desktop.conf. icon_size is
+                // in POINTS; the physical-pixel conversion happens inside
+                // apply_dock_resize via state->hidpi_scale.
+                int icon_points = DEFAULT_ICON_SIZE;
                 bool auto_hide = false;
                 const char *home = getenv("HOME");
                 if (home) {
@@ -913,7 +1034,7 @@ void dock_run(DockState *state)
                             while (*p == ' ' || *p == '\t') p++;
                             if (*p == '[') in_dock = (strncmp(p, "[dock]", 6) == 0);
                             else if (in_dock && strncmp(p, "icon_size=", 10) == 0)
-                                icon_size = atoi(p + 10);
+                                icon_points = atoi(p + 10);
                             else if (in_dock && strncmp(p, "auto_hide=", 10) == 0)
                                 auto_hide = atoi(p + 10) != 0;
                         }
@@ -921,43 +1042,23 @@ void dock_run(DockState *state)
                     }
                 }
 
-                // Recompute all derived sizes
-                dock_config_from_icon_size(&state->cfg, icon_size);
-                state->auto_hide = auto_hide;
+                // Apply the new config. SIGHUP comes from SysPrefs → Apply,
+                // which is a deliberate user action that should snap the
+                // dock to its canonical rest state regardless of whether
+                // the user was mid-hover (same behavior as before this
+                // refactor — callers expect "click Apply, dock settles").
+                state->icon_points    = icon_points;
+                state->auto_hide      = auto_hide;
+                state->hide_visible   = !auto_hide;
+                state->hide_animating = false;
+                state->hide_delay_timer = 0;
 
-                // Resize the dock window (clamp to screen width)
-                int new_w = dock_calculate_total_width(state) + 2 * SHELF_PADDING;
-                if (new_w > state->screen_w) new_w = state->screen_w;
-                int new_h = DOCK_HEIGHT;
-                state->win_w = new_w;
-                state->win_h = new_h;
-                state->win_x = (state->screen_w - new_w) / 2;
+                apply_dock_resize(state);
 
-                // Position depends on auto-hide setting.
-                // If auto_hide just got turned on, park the dock at the hot zone.
-                // If it got turned off, snap fully visible.
-                if (auto_hide) {
-                    state->win_y = state->screen_h - HIDE_HOT_ZONE;
-                    state->hide_visible   = false;
-                    state->hide_animating = false;
-                    state->hide_delay_timer = 0;
-                } else {
-                    state->win_y = state->screen_h - new_h;
-                    state->hide_visible   = true;
-                    state->hide_animating = false;
-                    state->hide_delay_timer = 0;
-                }
-
-                XMoveResizeWindow(state->dpy, state->win,
-                                  state->win_x, state->win_y,
-                                  state->win_w, state->win_h);
-                cairo_xlib_surface_set_size(state->surface,
-                                            state->win_w, state->win_h);
-
-                // Update struts — auto-hide mode uses zero struts
-                set_struts(state);
-
-                fprintf(stderr, "[dock] Resized: icon=%d shelf=%d dock=%d auto_hide=%d\n",
+                fprintf(stderr,
+                        "[dock] Resized: icon_points=%d hidpi=%.2f icon_px=%d "
+                        "shelf=%d dock=%d auto_hide=%d\n",
+                        icon_points, (double)state->hidpi_scale,
                         state->cfg.icon_size, state->cfg.shelf_height,
                         state->cfg.dock_height, (int)auto_hide);
                 needs_repaint = true;
