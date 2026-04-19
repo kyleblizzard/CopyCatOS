@@ -235,7 +235,10 @@ typedef struct {
             bool     is_repeat;
         } key;
 
-        // MB_EV_TEXT_INPUT — composed UTF-8 text (NUL-terminated)
+        // MB_EV_TEXT_INPUT — composed UTF-8 text (NUL-terminated).
+        // Pointer is valid until the next moonbase_poll_event /
+        // moonbase_wait_event call; copy it if you need it to outlive
+        // that.
         struct { const char *text; } text;
 
         // MB_EV_POINTER_* — coords in points, window-local

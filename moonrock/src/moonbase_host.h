@@ -71,6 +71,15 @@ bool mb_host_handle_button_press(Window win, int x, int y, unsigned int button);
 bool mb_host_route_key(uint32_t keycode, uint32_t modifiers,
                        bool is_down, bool is_repeat);
 
+// Deliver a text-input event (UTF-8) to the currently-focused MoonBase
+// surface. Tier 1: the caller is responsible for filtering to printable
+// characters that represent actual text; shortcuts (Command-held) and
+// control bytes should not reach this function. A real IME lands when
+// inputd gains an fcitx/IBus client — at that point the composed text
+// gets routed through here the same way. Returns true if a frame was
+// queued.
+bool mb_host_route_text_input(const char *utf8);
+
 // Render every live MoonBase surface into the current GL context. Called
 // from mr_composite during the normal-window pass. The caller supplies
 // the same basic-shader / ortho-projection pair the X-client draw uses,

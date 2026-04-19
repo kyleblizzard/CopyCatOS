@@ -745,6 +745,35 @@ static void on_key_press(CCWM *wm, XEvent *e)
         uint32_t mods = translate_x_mods(e->xkey.state);
         if (mb_host_route_key((uint32_t)sym, mods,
                               /*is_down*/ true, /*is_repeat*/ false)) {
+            // Tier 1 text input: printable ASCII only, no IME, no
+            // compose. Real IME lands when inputd gains an fcitx/IBus
+            // client. Suppress when Command is held — those key presses
+            // are menu shortcuts, not text entry.
+            if (!(mods & MB_MOD_COMMAND)) {
+                char buf[8];
+                int n = XLookupString(&e->xkey, buf, sizeof(buf) - 1,
+                                      NULL, NULL);
+                // XLookupString returns Latin-1 bytes; the Tier 1 gate
+                // below restricts to printable ASCII (0x20..0x7E),
+                // which is a strict subset of UTF-8. Ctrl-letter
+                // combinations come back as sub-0x20 control codes and
+                // are dropped here — apps that want them still see the
+                // KEY_DOWN event with the keysym + modifiers.
+                if (n > 0 && n < (int)sizeof(buf)) {
+                    bool printable_ascii = true;
+                    for (int i = 0; i < n; i++) {
+                        unsigned char c = (unsigned char)buf[i];
+                        if (c < 0x20 || c > 0x7E) {
+                            printable_ascii = false;
+                            break;
+                        }
+                    }
+                    if (printable_ascii) {
+                        buf[n] = '\0';
+                        mb_host_route_text_input(buf);
+                    }
+                }
+            }
             return;
         }
     }

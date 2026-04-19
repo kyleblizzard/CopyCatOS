@@ -49,18 +49,27 @@
 // Event queue — fixed-size ring
 // ---------------------------------------------------------------------
 //
-// Events with embedded pointers (text input, hotplug name, …) are not
-// emitted by this slice. When they land, the ring grows a companion
-// side-buffer owned per-slot. For now a plain ring of mb_event_t
-// structs is enough.
+// Most events fit in a plain mb_event_t. Events that carry an
+// application-visible string (MB_EV_TEXT_INPUT today, CONTROLLER_HOTPLUG
+// names later, etc.) keep the heap-owned UTF-8 alive in a parallel
+// side-buffer indexed by the same ring slot. On pop, the side-buffer
+// entry is transferred to g_last_returned_text so that ev.text.text
+// stays valid until the next pump call — matching the pattern most
+// event-loop APIs use for pointer-carrying fields.
 
 #define MB_EV_QUEUE_CAP 128
 
 static mb_event_t g_ring[MB_EV_QUEUE_CAP];
+static char      *g_ring_text[MB_EV_QUEUE_CAP];
 static size_t     g_ring_head   = 0;
 static size_t     g_ring_tail   = 0;
 static size_t     g_ring_count  = 0;
 static bool       g_quit_latched = false;
+
+// Owns the string that backs the most recently returned event's
+// pointer-carrying field. Freed at the start of every pump call, which
+// is the documented lifetime for the returned pointer.
+static char      *g_last_returned_text = NULL;
 
 static uint64_t mono_us(void) {
     struct timespec ts;
@@ -68,29 +77,65 @@ static uint64_t mono_us(void) {
     return (uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u;
 }
 
-static void ring_push(const mb_event_t *ev) {
+static void free_last_returned_text(void) {
+    if (g_last_returned_text) {
+        free(g_last_returned_text);
+        g_last_returned_text = NULL;
+    }
+}
+
+// Push with optional owned text. `owned_text` (if non-NULL) must be a
+// malloc'd, NUL-terminated UTF-8 string — the ring takes ownership.
+static void ring_push_with_text(const mb_event_t *ev, char *owned_text) {
     if (g_ring_count >= MB_EV_QUEUE_CAP) {
         // Overflow: drop the oldest. This should only happen if an app
         // stops pumping for a pathologically long time. Losing events
         // silently is worse than losing the oldest ones, so we bias
-        // toward letting the app see the recent ones.
+        // toward letting the app see the recent ones. Free the dropped
+        // slot's side-buffer too so we don't leak on wraparound.
+        if (g_ring_text[g_ring_head]) {
+            free(g_ring_text[g_ring_head]);
+            g_ring_text[g_ring_head] = NULL;
+        }
         g_ring_head = (g_ring_head + 1) % MB_EV_QUEUE_CAP;
         g_ring_count--;
     }
     g_ring[g_ring_tail] = *ev;
+    g_ring_text[g_ring_tail] = owned_text;
     g_ring_tail = (g_ring_tail + 1) % MB_EV_QUEUE_CAP;
     g_ring_count++;
+}
+
+static void ring_push(const mb_event_t *ev) {
+    ring_push_with_text(ev, NULL);
 }
 
 static int ring_pop(mb_event_t *out) {
     if (g_ring_count == 0) return 0;
     *out = g_ring[g_ring_head];
+    char *text = g_ring_text[g_ring_head];
+    g_ring_text[g_ring_head] = NULL;
     g_ring_head = (g_ring_head + 1) % MB_EV_QUEUE_CAP;
     g_ring_count--;
+    if (text) {
+        // Transfer ownership to the "last returned" slot. The previous
+        // last-returned was already freed at the top of this pump call,
+        // so no double-free. ev.text.text stays valid until the next
+        // pump call.
+        g_last_returned_text = text;
+        out->text.text = text;
+    }
     return 1;
 }
 
 void mb_internal_eventloop_shutdown(void) {
+    for (size_t i = 0; i < MB_EV_QUEUE_CAP; i++) {
+        if (g_ring_text[i]) {
+            free(g_ring_text[i]);
+            g_ring_text[i] = NULL;
+        }
+    }
+    free_last_returned_text();
     g_ring_head = 0;
     g_ring_tail = 0;
     g_ring_count = 0;
@@ -227,6 +272,59 @@ static void translate_key(uint16_t kind,
     ring_push(&ev);
 }
 
+// TEXT_INPUT body:
+//   { 1: window_id, 2: tstr text, 3: timestamp_us }
+// Tier 1: the server only emits printable ASCII. UTF-8 beyond ASCII
+// lands when real IME arrives (inputd + fcitx/IBus). Empty strings and
+// stale window_ids are dropped silently.
+static void translate_text_input(const uint8_t *body, size_t body_len) {
+    mb_cbor_r_t r;
+    mb_cbor_r_init(&r, body, body_len);
+    uint64_t pairs = 0;
+    if (!mb_cbor_r_map_begin(&r, &pairs)) return;
+
+    uint32_t    window_id = 0;
+    const char *text_ptr = NULL;
+    size_t      text_len = 0;
+    uint64_t    timestamp_us = 0;
+    bool        have_id = false, have_text = false;
+    for (uint64_t i = 0; i < pairs; i++) {
+        uint64_t key = 0;
+        if (!mb_cbor_r_uint(&r, &key)) return;
+        switch (key) {
+            case 1: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                window_id = (uint32_t)v; have_id = true; break; }
+            case 2: {
+                if (!mb_cbor_r_tstr(&r, &text_ptr, &text_len)) return;
+                have_text = true; break; }
+            case 3: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                timestamp_us = v; break; }
+            default:
+                if (!mb_cbor_r_skip(&r)) return;
+                break;
+        }
+    }
+    if (!have_id || !have_text || text_len == 0) return;
+
+    mb_window_t *w = mb_internal_window_find(window_id);
+    if (!w) return;   // stale reference — app already closed locally
+
+    char *owned = malloc(text_len + 1);
+    if (!owned) return;
+    memcpy(owned, text_ptr, text_len);
+    owned[text_len] = '\0';
+
+    mb_event_t ev = {0};
+    ev.kind = MB_EV_TEXT_INPUT;
+    ev.window = w;
+    ev.timestamp_us = timestamp_us ? timestamp_us : mono_us();
+    // ev.text.text is re-pointed to the owned buffer on pop. Leaving
+    // it NULL here is intentional — ring_pop consults g_ring_text[].
+    ring_push_with_text(&ev, owned);
+}
+
 // BACKING_SCALE_CHANGED body:
 //   { 1: window_id, 2: float old_scale, 3: float new_scale, 4: uint output_id }
 // Updates the local window handle's cached scale + output_id (so
@@ -292,6 +390,9 @@ static void translate_frame(uint16_t kind,
         case MB_IPC_KEY_DOWN:
         case MB_IPC_KEY_UP:
             translate_key(kind, body, body_len);
+            break;
+        case MB_IPC_TEXT_INPUT:
+            translate_text_input(body, body_len);
             break;
         case MB_IPC_BACKING_SCALE_CHANGED:
             translate_backing_scale_changed(body, body_len);
@@ -367,6 +468,13 @@ int moonbase_poll_event(mb_event_t *ev) {
         return MB_EINVAL;
     }
 
+    // Release the heap-owned string (if any) that backed the pointer
+    // we handed the app in the last pump call. Doing this at pump
+    // entry — not pop — is what pins the documented lifetime:
+    // "ev.text.text is valid until the next moonbase_poll_event or
+    // moonbase_wait_event call."
+    free_last_returned_text();
+
     drain_parked_frames();
     if (ring_pop(ev)) return 1;
 
@@ -384,6 +492,11 @@ int moonbase_wait_event(mb_event_t *ev, int timeout_ms) {
         mb_internal_set_last_error(MB_EINVAL);
         return MB_EINVAL;
     }
+
+    // See moonbase_poll_event: free the previous pump call's
+    // pointer-carrying string at pump entry so ev.text.text stays valid
+    // until the next pump call.
+    free_last_returned_text();
 
     drain_parked_frames();
     if (ring_pop(ev)) return 1;

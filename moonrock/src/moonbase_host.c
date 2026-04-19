@@ -1136,6 +1136,37 @@ bool mb_host_route_key(uint32_t keycode, uint32_t modifiers,
     return rc == 0;
 }
 
+bool mb_host_route_text_input(const char *utf8) {
+    if (!g_server || g_focused_window_id == 0) return false;
+    if (!utf8 || utf8[0] == '\0') return false;
+    mb_surface_t *surf = surface_find(g_focused_window_id);
+    if (!surf) {
+        g_focused_window_id = 0;
+        return false;
+    }
+
+    size_t text_len = strlen(utf8);
+
+    mb_cbor_w_t w;
+    mb_cbor_w_init_grow(&w, 32 + text_len);
+    mb_cbor_w_map_begin(&w, 3);
+    mb_cbor_w_key(&w, 1); mb_cbor_w_uint(&w, surf->window_id);
+    mb_cbor_w_key(&w, 2); mb_cbor_w_tstr_n(&w, utf8, text_len);
+    mb_cbor_w_key(&w, 3); mb_cbor_w_uint(&w, ts_us());
+    if (!mb_cbor_w_ok(&w)) {
+        mb_cbor_w_drop(&w);
+        return false;
+    }
+    size_t len = 0;
+    uint8_t *body = mb_cbor_w_finish(&w, &len);
+    if (!body) return false;
+
+    int rc = mb_server_send(g_server, surf->client, MB_IPC_TEXT_INPUT,
+                            body, len, NULL, 0);
+    free(body);
+    return rc == 0;
+}
+
 // Drain the deferred-delete queue. Must run with a current GL context,
 // which is the contract of mb_host_render.
 static void drain_pending_deletes(void) {

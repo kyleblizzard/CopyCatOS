@@ -330,6 +330,27 @@ mb_input_route = executable(
 test('input-route', mb_input_route, timeout: 10)
 
 # ---------------------------------------------------------------------
+# mb-text-input-route — TEXT_INPUT translator pump test
+# ---------------------------------------------------------------------
+#
+# Companion to input-route: parent replies to WINDOW_CREATE, sends
+# WINDOW_FOCUSED then two back-to-back MB_IPC_TEXT_INPUT frames
+# ("a", "Hello"). Child asserts moonbase_wait_event delivers them as
+# MB_EV_TEXT_INPUT with ev.text.text pointing at the right UTF-8 bytes
+# and that the second pump call correctly releases the first frame's
+# owned string without crashing (the lifetime contract).
+
+mb_text_input_route = executable(
+  'mb-text-input-route',
+  'tests/text-input-route.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('text-input-route', mb_text_input_route, timeout: 10)
+
+# ---------------------------------------------------------------------
 # mb-backing-scale-changed — Phase C slice 3c.4 scale migration test
 # ---------------------------------------------------------------------
 #
