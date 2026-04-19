@@ -389,6 +389,28 @@ mb_backing_scale = executable(
 test('backing-scale-changed', mb_backing_scale, timeout: 10)
 
 # ---------------------------------------------------------------------
+# mb-drag-events — DRAG_ENTER / OVER / LEAVE / DROP translator test
+# ---------------------------------------------------------------------
+#
+# Parent replies to WINDOW_CREATE, then pushes a six-frame drag script:
+# ENTER with two URIs, OVER position-only, DROP with two URIs, a second
+# ENTER with a zero-length URI list, LEAVE, then a tail OVER. Child
+# asserts each event arrives with the right kind, window, coords,
+# modifiers, uri_count and (where applicable) uris[] contents. Also
+# exercises the pump-lifetime contract — a second drag payload must
+# invalidate the previous pointer without leaking or crashing.
+
+mb_drag_events = executable(
+  'mb-drag-events',
+  'tests/drag-events.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('drag-events', mb_drag_events, timeout: 10)
+
+# ---------------------------------------------------------------------
 # mb-leakcheck-loop — Phase C plumbing-tasks line 62
 # ---------------------------------------------------------------------
 #

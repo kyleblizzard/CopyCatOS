@@ -172,6 +172,16 @@ typedef enum {
     MB_EV_GESTURE_PINCH,
     MB_EV_GESTURE_SWIPE,
 
+    // Drag-into-window — XDND from the desktop, fileviewer, or any
+    // app that advertises a URI payload. ENTER and DROP carry the URI
+    // list; OVER is position-only (for hover hit-testing); LEAVE ends
+    // the session without a drop. Touch doesn't participate — only
+    // pointer-driven drags reach here.
+    MB_EV_DRAG_ENTER,
+    MB_EV_DRAG_OVER,
+    MB_EV_DRAG_LEAVE,
+    MB_EV_DRAG_DROP,
+
     // Controller
     MB_EV_CONTROLLER_BUTTON,
     MB_EV_CONTROLLER_AXIS,
@@ -307,6 +317,25 @@ typedef struct {
 
         // MB_EV_BACKING_SCALE_CHANGED
         struct { float old_scale, new_scale; } backing_scale;
+
+        // MB_EV_DRAG_ENTER / OVER / LEAVE / DROP
+        //
+        // x, y       — window-local points; undefined on LEAVE (x=y=0)
+        // uris       — array of UTF-8 URI strings (e.g. "file:///…")
+        //              Non-NULL and uri_count > 0 only on ENTER and DROP.
+        //              OVER and LEAVE both carry uris == NULL, uri_count == 0.
+        // modifiers  — MB_MOD_* bitmask at the time the event fired.
+        //
+        // The uris pointer and every string it references are borrowed
+        // and valid until the next moonbase_poll_event /
+        // moonbase_wait_event call on this thread — same lifetime rule
+        // as ev.text.text. Copy anything you need to keep.
+        struct {
+            int                x, y;
+            uint32_t           uri_count;
+            const char *const *uris;
+            uint32_t           modifiers;
+        } drag;
     };
 } mb_event_t;
 

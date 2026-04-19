@@ -78,6 +78,11 @@ enum {
     MB_IPC_CONTROLLER_AXIS        = 0x0241,
     MB_IPC_CONTROLLER_HOTPLUG     = 0x0242,
 
+    MB_IPC_DRAG_ENTER             = 0x0250,
+    MB_IPC_DRAG_OVER              = 0x0251,
+    MB_IPC_DRAG_LEAVE             = 0x0252,
+    MB_IPC_DRAG_DROP              = 0x0253,
+
     // ---- Consent / permissions (0x0300 – 0x03FF) --------------------
     MB_IPC_CONSENT_REQUEST        = 0x0300,
     MB_IPC_CONSENT_GRANT          = 0x0301,

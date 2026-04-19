@@ -59,17 +59,28 @@
 
 #define MB_EV_QUEUE_CAP 128
 
-static mb_event_t g_ring[MB_EV_QUEUE_CAP];
-static char      *g_ring_text[MB_EV_QUEUE_CAP];
-static size_t     g_ring_head   = 0;
-static size_t     g_ring_tail   = 0;
-static size_t     g_ring_count  = 0;
-static bool       g_quit_latched = false;
+// Heap-owned URI list backing MB_EV_DRAG_ENTER / DROP. Array of count
+// char* + a parallel char** of borrowed pointers cast to const char*
+// for the public ev.drag.uris field. Freed together.
+typedef struct {
+    uint32_t            count;
+    char              **storage;   // owned UTF-8 strings
+    const char        **view;      // const view handed to the app
+} mb_drag_payload_t;
+
+static mb_event_t         g_ring[MB_EV_QUEUE_CAP];
+static char              *g_ring_text[MB_EV_QUEUE_CAP];
+static mb_drag_payload_t *g_ring_drag[MB_EV_QUEUE_CAP];
+static size_t             g_ring_head   = 0;
+static size_t             g_ring_tail   = 0;
+static size_t             g_ring_count  = 0;
+static bool               g_quit_latched = false;
 
 // Owns the string that backs the most recently returned event's
 // pointer-carrying field. Freed at the start of every pump call, which
 // is the documented lifetime for the returned pointer.
-static char      *g_last_returned_text = NULL;
+static char              *g_last_returned_text = NULL;
+static mb_drag_payload_t *g_last_returned_drag = NULL;
 
 static uint64_t mono_us(void) {
     struct timespec ts;
@@ -84,37 +95,73 @@ static void free_last_returned_text(void) {
     }
 }
 
-// Push with optional owned text. `owned_text` (if non-NULL) must be a
-// malloc'd, NUL-terminated UTF-8 string — the ring takes ownership.
-static void ring_push_with_text(const mb_event_t *ev, char *owned_text) {
+static void drag_payload_free(mb_drag_payload_t *p) {
+    if (!p) return;
+    if (p->storage) {
+        for (uint32_t i = 0; i < p->count; i++) free(p->storage[i]);
+        free(p->storage);
+    }
+    free(p->view);
+    free(p);
+}
+
+static void free_last_returned_drag(void) {
+    if (g_last_returned_drag) {
+        drag_payload_free(g_last_returned_drag);
+        g_last_returned_drag = NULL;
+    }
+}
+
+// Push with optional owned text and/or owned drag payload. Each extra
+// (if non-NULL) is ring-owned: malloc'd string for `owned_text`, an
+// mb_drag_payload_t carrying its own storage for `owned_drag`.
+static void ring_push_with_sides(const mb_event_t *ev,
+                                 char *owned_text,
+                                 mb_drag_payload_t *owned_drag) {
     if (g_ring_count >= MB_EV_QUEUE_CAP) {
         // Overflow: drop the oldest. This should only happen if an app
         // stops pumping for a pathologically long time. Losing events
         // silently is worse than losing the oldest ones, so we bias
         // toward letting the app see the recent ones. Free the dropped
-        // slot's side-buffer too so we don't leak on wraparound.
+        // slot's side-buffers too so we don't leak on wraparound.
         if (g_ring_text[g_ring_head]) {
             free(g_ring_text[g_ring_head]);
             g_ring_text[g_ring_head] = NULL;
+        }
+        if (g_ring_drag[g_ring_head]) {
+            drag_payload_free(g_ring_drag[g_ring_head]);
+            g_ring_drag[g_ring_head] = NULL;
         }
         g_ring_head = (g_ring_head + 1) % MB_EV_QUEUE_CAP;
         g_ring_count--;
     }
     g_ring[g_ring_tail] = *ev;
     g_ring_text[g_ring_tail] = owned_text;
+    g_ring_drag[g_ring_tail] = owned_drag;
     g_ring_tail = (g_ring_tail + 1) % MB_EV_QUEUE_CAP;
     g_ring_count++;
 }
 
 static void ring_push(const mb_event_t *ev) {
-    ring_push_with_text(ev, NULL);
+    ring_push_with_sides(ev, NULL, NULL);
+}
+
+static void ring_push_with_text(const mb_event_t *ev, char *owned_text) {
+    ring_push_with_sides(ev, owned_text, NULL);
+}
+
+static void ring_push_with_drag(const mb_event_t *ev,
+                                mb_drag_payload_t *owned_drag) {
+    ring_push_with_sides(ev, NULL, owned_drag);
 }
 
 static int ring_pop(mb_event_t *out) {
     if (g_ring_count == 0) return 0;
     *out = g_ring[g_ring_head];
-    char *text = g_ring_text[g_ring_head];
+    char              *text = g_ring_text[g_ring_head];
+    mb_drag_payload_t *drag = g_ring_drag[g_ring_head];
     g_ring_text[g_ring_head] = NULL;
+    g_ring_drag[g_ring_head] = NULL;
     g_ring_head = (g_ring_head + 1) % MB_EV_QUEUE_CAP;
     g_ring_count--;
     if (text) {
@@ -125,6 +172,14 @@ static int ring_pop(mb_event_t *out) {
         g_last_returned_text = text;
         out->text.text = text;
     }
+    if (drag) {
+        // Same lifetime story as text: ring → last-returned slot,
+        // app-visible pointer into drag->view survives until the next
+        // pump call.
+        g_last_returned_drag = drag;
+        out->drag.uri_count = drag->count;
+        out->drag.uris      = drag->view;
+    }
     return 1;
 }
 
@@ -134,8 +189,13 @@ void mb_internal_eventloop_shutdown(void) {
             free(g_ring_text[i]);
             g_ring_text[i] = NULL;
         }
+        if (g_ring_drag[i]) {
+            drag_payload_free(g_ring_drag[i]);
+            g_ring_drag[i] = NULL;
+        }
     }
     free_last_returned_text();
+    free_last_returned_drag();
     g_ring_head = 0;
     g_ring_tail = 0;
     g_ring_count = 0;
@@ -378,6 +438,120 @@ static void translate_backing_scale_changed(const uint8_t *body, size_t body_len
     ring_push(&ev);
 }
 
+// DRAG_ENTER / DRAG_DROP body:
+//   { 1: window_id, 2: int x, 3: int y, 4: uint modifiers,
+//     5: array<tstr> uris, 6: timestamp_us }
+// DRAG_OVER body:
+//   { 1: window_id, 2: int x, 3: int y, 4: uint modifiers,
+//     6: timestamp_us }
+// DRAG_LEAVE body:
+//   { 1: window_id, 6: timestamp_us }
+//
+// want_uris==true for ENTER/DROP, false for OVER/LEAVE. A missing uris
+// array on an ENTER/DROP is fine — the app just sees uri_count == 0.
+// An uris array on an OVER/LEAVE frame is skipped.
+static void translate_drag(uint16_t kind,
+                           const uint8_t *body, size_t body_len) {
+    mb_cbor_r_t r;
+    mb_cbor_r_init(&r, body, body_len);
+    uint64_t pairs = 0;
+    if (!mb_cbor_r_map_begin(&r, &pairs)) return;
+
+    bool     want_uris = (kind == MB_IPC_DRAG_ENTER ||
+                          kind == MB_IPC_DRAG_DROP);
+    uint32_t window_id = 0;
+    int64_t  x = 0, y = 0;
+    uint32_t modifiers = 0;
+    uint64_t timestamp_us = 0;
+    bool     have_id = false;
+
+    mb_drag_payload_t *drag = NULL;
+    if (want_uris) {
+        drag = calloc(1, sizeof(*drag));
+        if (!drag) return;
+    }
+
+    for (uint64_t i = 0; i < pairs; i++) {
+        uint64_t key = 0;
+        if (!mb_cbor_r_uint(&r, &key)) goto fail;
+        switch (key) {
+            case 1: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) goto fail;
+                window_id = (uint32_t)v; have_id = true; break; }
+            case 2: { int64_t v = 0;
+                if (!mb_cbor_r_int(&r, &v)) goto fail;
+                x = v; break; }
+            case 3: { int64_t v = 0;
+                if (!mb_cbor_r_int(&r, &v)) goto fail;
+                y = v; break; }
+            case 4: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) goto fail;
+                modifiers = (uint32_t)v; break; }
+            case 5: {
+                if (!want_uris) {
+                    if (!mb_cbor_r_skip(&r)) goto fail;
+                    break;
+                }
+                uint64_t count = 0;
+                if (!mb_cbor_r_array_begin(&r, &count)) goto fail;
+                if (count > 0) {
+                    drag->storage = calloc(count, sizeof(char *));
+                    drag->view    = calloc(count, sizeof(const char *));
+                    if (!drag->storage || !drag->view) goto fail;
+                }
+                for (uint64_t u = 0; u < count; u++) {
+                    const char *s = NULL; size_t slen = 0;
+                    if (!mb_cbor_r_tstr(&r, &s, &slen)) goto fail;
+                    char *copy = malloc(slen + 1);
+                    if (!copy) goto fail;
+                    memcpy(copy, s, slen);
+                    copy[slen] = '\0';
+                    drag->storage[u] = copy;
+                    drag->view[u]    = copy;
+                    drag->count = (uint32_t)(u + 1);
+                }
+                break;
+            }
+            case 6: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) goto fail;
+                timestamp_us = v; break; }
+            default:
+                if (!mb_cbor_r_skip(&r)) goto fail;
+                break;
+        }
+    }
+    if (!have_id) goto fail;
+
+    mb_window_t *w = mb_internal_window_find(window_id);
+    if (!w) goto fail;   // stale reference — app already closed locally
+
+    mb_event_t ev = {0};
+    switch (kind) {
+        case MB_IPC_DRAG_ENTER: ev.kind = MB_EV_DRAG_ENTER; break;
+        case MB_IPC_DRAG_OVER:  ev.kind = MB_EV_DRAG_OVER;  break;
+        case MB_IPC_DRAG_LEAVE: ev.kind = MB_EV_DRAG_LEAVE; break;
+        case MB_IPC_DRAG_DROP:  ev.kind = MB_EV_DRAG_DROP;  break;
+        default:                goto fail;
+    }
+    ev.window = w;
+    ev.timestamp_us = timestamp_us ? timestamp_us : mono_us();
+    ev.drag.x = (int)x;
+    ev.drag.y = (int)y;
+    ev.drag.modifiers = modifiers;
+    // uri_count + uris stay zero/NULL here; ring_pop() will re-point
+    // them at the owned drag payload if we pass one.
+
+    if (drag) {
+        ring_push_with_drag(&ev, drag);
+    } else {
+        ring_push(&ev);
+    }
+    return;
+
+fail:
+    drag_payload_free(drag);
+}
+
 static void translate_frame(uint16_t kind,
                             const uint8_t *body, size_t body_len) {
     switch (kind) {
@@ -396,6 +570,12 @@ static void translate_frame(uint16_t kind,
             break;
         case MB_IPC_BACKING_SCALE_CHANGED:
             translate_backing_scale_changed(body, body_len);
+            break;
+        case MB_IPC_DRAG_ENTER:
+        case MB_IPC_DRAG_OVER:
+        case MB_IPC_DRAG_LEAVE:
+        case MB_IPC_DRAG_DROP:
+            translate_drag(kind, body, body_len);
             break;
         default:
             // Unmapped kind in this slice. Dropping it on the floor is
@@ -474,6 +654,7 @@ int moonbase_poll_event(mb_event_t *ev) {
     // "ev.text.text is valid until the next moonbase_poll_event or
     // moonbase_wait_event call."
     free_last_returned_text();
+    free_last_returned_drag();
 
     drain_parked_frames();
     if (ring_pop(ev)) return 1;
@@ -497,6 +678,7 @@ int moonbase_wait_event(mb_event_t *ev, int timeout_ms) {
     // pointer-carrying string at pump entry so ev.text.text stays valid
     // until the next pump call.
     free_last_returned_text();
+    free_last_returned_drag();
 
     drain_parked_frames();
     if (ring_pop(ev)) return 1;
