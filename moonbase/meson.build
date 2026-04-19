@@ -778,3 +778,38 @@ preview_appc = custom_target('preview-appc',
   ],
   build_by_default: true,
 )
+
+# ---------------------------------------------------------------------
+# examples/activity-monitor — Activity Monitor.appc v0.1
+# ---------------------------------------------------------------------
+#
+# Fourth and final reference app before the libmoonbase.so.1 public-SDK
+# freeze. Exercises long-lived periodic sampling (wait_event with a
+# 1s timeout), Cairo-drawn list rows (no widget library required), and
+# a declared system:process-list entitlement in Info.appc. Pure libc —
+# reads /proc directly — so no extra dependencies beyond moonbase + cairo.
+
+activity_monitor_exe = executable(
+  'activity-monitor',
+  'examples/activity-monitor/main.c',
+  include_directories: include_directories('include'),
+  dependencies: [cairo_dep],
+  link_with: libmoonbase,
+  install: false,
+)
+
+activity_monitor_appc = custom_target('activity-monitor-appc',
+  output: 'activity-monitor.appc',
+  input: [files('examples/activity-monitor/Info.appc'), activity_monitor_exe],
+  command: [
+    find_program('sh'), '-c',
+    'set -eu; '
+    + 'rm -rf "$0"; '
+    + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
+    + 'cp "$1" "$0/Contents/Info.appc"; '
+    + 'cp "$2" "$0/Contents/MacOS/activity-monitor"; '
+    + 'chmod 0755 "$0/Contents/MacOS/activity-monitor"',
+    '@OUTPUT@', '@INPUT0@', '@INPUT1@',
+  ],
+  build_by_default: true,
+)
