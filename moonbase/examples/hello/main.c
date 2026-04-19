@@ -9,9 +9,9 @@
 // MoonRock succeeds, a Cairo window round-trips a commit, and events
 // reach an installed .appc launched via moonbase-launch.
 //
-// Everything here is deliberately boring. The value isn't in the
-// rendering — it's in proving the plumbing works the same way a real
-// app would use it.
+// Uses the app-owns-loop path (moonbase_wait_event). moonbase_run() is
+// the MoonBase-owns-loop convenience shape; it is still ENOSYS in the
+// current framework slice, so this app drives the loop itself.
 
 #include <moonbase.h>
 
@@ -27,13 +27,9 @@ static void paint(mb_window_t *w)
     int width = 0, height = 0;
     moonbase_window_size(w, &width, &height);
 
-    // Window body — Aqua neutral #ECECEC.
     cairo_set_source_rgb(cr, 0xEC / 255.0, 0xEC / 255.0, 0xEC / 255.0);
     cairo_paint(cr);
 
-    // Centered label. Lucida Grande is the only UI font on this OS;
-    // Cairo's toy-font-face API falls back gracefully when it's
-    // missing (e.g. running outside an installed CopyCatOS session).
     cairo_select_font_face(cr, "Lucida Grande",
                            CAIRO_FONT_SLANT_NORMAL,
                            CAIRO_FONT_WEIGHT_BOLD);
@@ -49,32 +45,6 @@ static void paint(mb_window_t *w)
     cairo_show_text(cr, msg);
 
     moonbase_window_commit(w);
-}
-
-static void on_event(const mb_event_t *ev, void *userdata)
-{
-    mb_window_t *w = (mb_window_t *)userdata;
-
-    switch (ev->kind) {
-    case MB_EV_WINDOW_REDRAW:
-        paint(w);
-        break;
-
-    case MB_EV_WINDOW_CLOSED:
-        moonbase_quit(0);
-        break;
-
-    case MB_EV_KEY_DOWN:
-        // Cmd-Q quits. Plain Q is ignored — this app has no commands.
-        if ((ev->key.modifiers & MB_MOD_COMMAND) &&
-            (ev->key.keycode == 'q' || ev->key.keycode == 'Q')) {
-            moonbase_quit(0);
-        }
-        break;
-
-    default:
-        break;
-    }
 }
 
 int main(int argc, char **argv)
@@ -104,8 +74,46 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    moonbase_set_event_handler(on_event, w);
-    moonbase_window_show(w);
+    // Paint once so the window has content the first time MoonRock
+    // composites it. Subsequent paints come from MB_EV_WINDOW_REDRAW.
+    paint(w);
 
-    return moonbase_run();
+    int running = 1;
+    int exit_code = 0;
+    while (running) {
+        mb_event_t ev;
+        int wr = moonbase_wait_event(&ev, -1);
+        if (wr < 0) {
+            fprintf(stderr,
+                    "hello: wait_event error: %s\n",
+                    moonbase_error_string((mb_error_t)wr));
+            exit_code = 1;
+            break;
+        }
+        if (wr == 0) continue;
+
+        switch (ev.kind) {
+        case MB_EV_WINDOW_REDRAW:
+            paint(w);
+            break;
+
+        case MB_EV_WINDOW_CLOSED:
+        case MB_EV_APP_WILL_QUIT:
+            running = 0;
+            break;
+
+        case MB_EV_KEY_DOWN:
+            if ((ev.key.modifiers & MB_MOD_COMMAND) &&
+                (ev.key.keycode == 'q' || ev.key.keycode == 'Q')) {
+                running = 0;
+            }
+            break;
+
+        default:
+            break;
+        }
+    }
+
+    moonbase_window_close(w);
+    return exit_code;
 }
