@@ -540,6 +540,31 @@ test('consent-cli', mb_consent_cli,
 )
 
 # ---------------------------------------------------------------------
+# mb-consent-wire — client-side MB_IPC_CONSENT_REQUEST round-trip
+# ---------------------------------------------------------------------
+#
+# Parent runs mb_server_t and replies to each CONSENT_REQUEST according
+# to the capability string: phase 1 gets a canned GRANT, phase 2 a
+# DENY, phase 3 an unrelated POWER_CHANGED followed by a GRANT (the
+# helper must queue the unrelated frame), phase 4 a GRANT with a
+# wrong req_id followed by the correct one (the helper must queue
+# the mismatched reply). Each phase after the call drains
+# mb_conn_pop_queued and asserts the expected queued frame is there.
+# Pins the client half of the lazy-consent IPC leg — the responder
+# side lands in the paired slice that also flips
+# mb_consent_gate_allows from grant-by-default to deny-on-missing.
+
+mb_consent_wire = executable(
+  'mb-consent-wire',
+  'tests/consent-wire.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('consent-wire', mb_consent_wire, timeout: 10)
+
+# ---------------------------------------------------------------------
 # mb-info-appc — Phase D slice 1 Info.appc schema loader test
 # ---------------------------------------------------------------------
 #

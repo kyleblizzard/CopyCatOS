@@ -8,6 +8,7 @@
 // routes frames through mb_conn_send / mb_conn_recv.
 
 #include "transport.h"
+#include "consent.h"
 #include "frame.h"
 #include "cbor.h"
 #include "debug.h"
@@ -443,6 +444,149 @@ int mb_conn_request(uint16_t kind,
         }
         // Unrelated frame — park it on the pending-frame queue so the
         // app's next poll_event / wait_event turn can pick it up.
+        int qrc = conn_queue_push(in_kind, in_body, in_len);
+        if (qrc < 0) {
+            free(in_body);
+            return qrc;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------
+// Consent request (internal helper — see src/ipc/consent.h)
+// ---------------------------------------------------------------------
+//
+// Lives here rather than in its own .c so it can share the file-local
+// `conn_queue_push` above. The loop is close to mb_conn_request but
+// adds req_id correlation: a GRANT/DENY whose req_id doesn't match
+// ours is queued, not consumed — a reply to a sibling request (once
+// concurrent consent prompts are a thing) is not ours to eat.
+
+// Decode GRANT/DENY body. remember defaults to false on absence so the
+// responder can skip the pair for "session-only" without causing a
+// proto error. Returns MB_EOK on success, MB_EPROTO on malformed.
+static int consent_decode_reply(const uint8_t *body, size_t body_len,
+                                uint64_t *out_req_id, bool *out_remember) {
+    mb_cbor_r_t r;
+    mb_cbor_r_init(&r, body, body_len);
+    uint64_t pairs = 0;
+    if (!mb_cbor_r_map_begin(&r, &pairs)) return MB_EPROTO;
+
+    bool have_req_id = false;
+    *out_remember = false;
+
+    for (uint64_t i = 0; i < pairs; i++) {
+        uint64_t key = 0;
+        if (!mb_cbor_r_uint(&r, &key)) return MB_EPROTO;
+        switch (key) {
+            case 1: {
+                uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return MB_EPROTO;
+                *out_req_id = v;
+                have_req_id = true;
+                break;
+            }
+            case 2: {
+                bool b = false;
+                if (!mb_cbor_r_bool(&r, &b)) return MB_EPROTO;
+                *out_remember = b;
+                break;
+            }
+            default:
+                if (!mb_cbor_r_skip(&r)) return MB_EPROTO;
+                break;
+        }
+    }
+    return have_req_id ? 0 : MB_EPROTO;
+}
+
+int mb_ipc_consent_request(const char *capability,
+                           const char *context,
+                           uint32_t    window_id,
+                           bool       *out_allow,
+                           bool       *out_remember) {
+    if (!capability || !*capability || !out_allow) {
+        return MB_EINVAL;
+    }
+    if (!g_conn.handshaken) {
+        return MB_EIPC;
+    }
+
+    // Monotonic counter — unique per process is enough. The compositor
+    // only sees one consent request per app connection in flight today
+    // (main-thread-only). The counter exists so a pre-existing queued
+    // reply from a torn-down earlier request can't be mistaken for a
+    // fresh one, and so we're future-proof against concurrent prompts.
+    static uint64_t s_next_req_id = 1;
+    uint64_t req_id = s_next_req_id++;
+
+    const char *ctx = context ? context : "";
+
+    // Encode REQUEST body.
+    mb_cbor_w_t w;
+    mb_cbor_w_init_grow(&w, 128);
+    mb_cbor_w_map_begin(&w, 4);
+    mb_cbor_w_key(&w, 1); mb_cbor_w_uint(&w, req_id);
+    mb_cbor_w_key(&w, 2); mb_cbor_w_tstr(&w, capability);
+    mb_cbor_w_key(&w, 3); mb_cbor_w_tstr(&w, ctx);
+    mb_cbor_w_key(&w, 4); mb_cbor_w_uint(&w, (uint64_t)window_id);
+
+    if (!mb_cbor_w_ok(&w)) {
+        int err = mb_cbor_w_err(&w);
+        mb_cbor_w_drop(&w);
+        return err ? err : MB_ENOMEM;
+    }
+    size_t   body_len = 0;
+    uint8_t *body = mb_cbor_w_finish(&w, &body_len);
+    if (!body) return MB_ENOMEM;
+
+    int rc = mb_conn_send(MB_IPC_CONSENT_REQUEST, body, body_len, NULL, 0);
+    free(body);
+    if (rc < 0) return rc;
+
+    for (;;) {
+        uint16_t in_kind = 0;
+        uint8_t *in_body = NULL;
+        size_t   in_len  = 0;
+        size_t   nfds    = 0;
+        int r = mb_conn_recv(&in_kind, &in_body, &in_len, NULL, &nfds);
+        if (r == 0) return MB_EIPC;     // peer closed mid-request
+        if (r < 0) return r;
+
+        if (in_kind == MB_IPC_CONSENT_GRANT ||
+            in_kind == MB_IPC_CONSENT_DENY) {
+            uint64_t reply_req_id = 0;
+            bool     remember     = false;
+            int drc = consent_decode_reply(in_body, in_len,
+                                           &reply_req_id, &remember);
+            if (drc < 0) {
+                free(in_body);
+                return drc;
+            }
+            if (reply_req_id != req_id) {
+                // Not ours — queue it for whoever is waiting.
+                int qrc = conn_queue_push(in_kind, in_body, in_len);
+                if (qrc < 0) {
+                    free(in_body);
+                    return qrc;
+                }
+                continue;
+            }
+            *out_allow = (in_kind == MB_IPC_CONSENT_GRANT);
+            if (out_remember) *out_remember = remember;
+            free(in_body);
+            return 0;
+        }
+        if (in_kind == MB_IPC_ERROR) {
+            // Any ERROR during our wait is ours — matches
+            // mb_conn_request. Per-request ERROR correlation (key 3
+            // req_id in the ERROR body) is deferred to a later slice
+            // that actually exercises sibling in-flight requests.
+            int code = decode_error_code(in_body, in_len);
+            free(in_body);
+            return code;
+        }
+        // Unrelated kind — park it for the event-loop pump.
         int qrc = conn_queue_push(in_kind, in_body, in_len);
         if (qrc < 0) {
             free(in_body);
