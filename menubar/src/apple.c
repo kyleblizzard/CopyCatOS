@@ -61,7 +61,7 @@ static int apple_hover = -1;
 static char logout_label[128] = "Log Out...";
 
 static const char *apple_items[17] = {
-    "About This Mac",
+    "About CopyCatOS",
     "---",
     "Software Update...",
     "---",
@@ -83,7 +83,7 @@ static const int apple_item_count = 16;
 // Keyboard shortcuts displayed right-aligned next to menu items.
 // NULL means no shortcut. Uses Mac-style symbols (⌘ ⌥ ⇧).
 static const char *apple_shortcuts[] = {
-    NULL,           // About This Mac
+    NULL,           // About CopyCatOS
     NULL,           // ---
     NULL,           // Software Update...
     NULL,           // ---
@@ -104,9 +104,11 @@ static const char *apple_shortcuts[] = {
 // Which items are disabled (grayed out, non-clickable)?
 static bool is_disabled(int index)
 {
-    // About, Software Update, Dock submenu, Recent Items — disabled stubs.
-    // Indices shifted by +1 from the "Controller Settings..." insertion.
-    return (index == 0 || index == 2 || index == 6 || index == 7);
+    // Software Update, Dock submenu, Recent Items — still disabled stubs.
+    // About CopyCatOS (index 0) now fires a placeholder notify-send toast
+    // pending a real Aqua About sheet. Indices shifted by +1 from the
+    // "Controller Settings..." insertion.
+    return (index == 2 || index == 6 || index == 7);
 }
 
 // ── Internal: load a PNG, scale it, and extract an alpha mask ───────
@@ -510,7 +512,24 @@ static void apple_execute(MenuBar *mb, int index)
 
     fprintf(stderr, "[apple] Execute: %s\n", label);
 
-    if (strcmp(label, "System Preferences...") == 0) {
+    if (strcmp(label, "About CopyCatOS") == 0) {
+        // Placeholder About surface — pulls the live libmoonbase.so runtime
+        // version via the `moonbase-version` CLI and fires it through
+        // notify-send as an ephemeral toast. This is NOT the final UX.
+        // Snow Leopard's "About This Mac" is a bespoke Aqua panel; the
+        // real version lands once MoonRock exposes a shell-owned dialog
+        // primitive we can draw the panel inside. Until then, a toast
+        // with the correct version beats a disabled menu item.
+        if (fork() == 0) {
+            setsid();
+            execlp("sh", "sh", "-c",
+                "v=$(moonbase-version 2>/dev/null); "
+                "notify-send -a 'CopyCatOS' 'About CopyCatOS' "
+                "\"MoonBase runtime v${v:-unknown}\"",
+                NULL);
+            _exit(1);
+        }
+    } else if (strcmp(label, "System Preferences...") == 0) {
         // Launch the CopyCatOS System Preferences app
         if (fork() == 0) {
             setsid();

@@ -204,6 +204,28 @@ moonbase_consent = executable(
 )
 
 # ---------------------------------------------------------------------
+# moonbase-version — print libmoonbase.so runtime version to stdout
+# ---------------------------------------------------------------------
+#
+# One-line shell surface for the runtime API version. Prints
+# `MAJOR.MINOR.PATCH\n` and exits 0 — designed for `$(moonbase-version)`
+# in shell consumers (menubar's About item, future About sheet, build
+# scripts that want to assert an installed runtime).
+#
+# Installed to bindir because it's a public, user-invocable tool, not
+# a launcher helper like moonbase-consent. Distinct from a future
+# copycatos-version CLI, which will report the OS release — these are
+# two axes and must not collapse into one command.
+
+moonbase_version = executable(
+  'moonbase-version',
+  'tools/moonbase-version.c',
+  include_directories: include_directories('include'),
+  link_with: libmoonbase,
+  install: true,
+)
+
+# ---------------------------------------------------------------------
 # Sandbox profiles
 # ---------------------------------------------------------------------
 #
