@@ -99,7 +99,18 @@ moonbase_ipc_sources = [
   '../moonbase/src/ipc/cbor.c',
   '../moonbase/src/ipc/frame.c',
   '../moonbase/src/server/server.c',
+  '../moonbase/src/server/consent_responder.c',
 ]
+
+# Compile-time default for the moonbase-consent binary path. The
+# responder resolves this when MOONBASE_CONSENT_BIN is not set in
+# the env. Built from get_option('libexecdir'), which matches where
+# moonbase/meson.build installs the binary.
+moonbase_consent_path = get_option('prefix') / get_option('libexecdir') / 'moonbase-consent'
+add_project_arguments(
+  '-DMOONBASE_CONSENT_PATH="@0@"'.format(moonbase_consent_path),
+  language: 'c',
+)
 
 moonbase_includes = include_directories(
   '../moonbase/include',

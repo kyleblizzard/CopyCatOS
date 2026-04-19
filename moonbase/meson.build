@@ -37,6 +37,15 @@ project('moonbase', 'c',
 # Phase C+ will lean on (memfd_create, pidfd_open, getentropy, etc.).
 add_project_arguments('-D_GNU_SOURCE', language: 'c')
 
+# Compile-time default for the moonbase-consent binary path used by
+# the consent responder. Tests override via $MOONBASE_CONSENT_BIN;
+# production installs resolve through libexecdir.
+moonbase_consent_default_path = get_option('prefix') / get_option('libexecdir') / 'moonbase-consent'
+add_project_arguments(
+  '-DMOONBASE_CONSENT_PATH="@0@"'.format(moonbase_consent_default_path),
+  language: 'c',
+)
+
 # ---------------------------------------------------------------------
 # Public headers
 # ---------------------------------------------------------------------
@@ -92,6 +101,7 @@ moonbase_lib_sources = files(
   'src/ipc/transport.c',
   'src/keychain/keychain.c',
   'src/server/server.c',
+  'src/server/consent_responder.c',
 )
 
 # Phase B library links no external deps on purpose — the stubs
@@ -563,6 +573,31 @@ mb_consent_wire = executable(
 )
 
 test('consent-wire', mb_consent_wire, timeout: 10)
+
+# ---------------------------------------------------------------------
+# mb-consent-responder — server-side CONSENT_REQUEST responder test
+# ---------------------------------------------------------------------
+#
+# Drives mb_consent_responder end-to-end. Parent runs mb_server_t +
+# the responder pointing at the real moonbase-consent binary; forks a
+# child per phase that calls mb_ipc_consent_request, and asserts the
+# reply (GRANT / DENY / ERROR) plus that consents.toml landed the
+# right decision under the HELLO bundle-id. Also pins that the
+# responder ignores any client-side attempt to spoof bundle-id.
+
+mb_consent_responder = executable(
+  'mb-consent-responder',
+  'tests/consent-responder.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('consent-responder', mb_consent_responder,
+  args: [moonbase_consent],
+  depends: [moonbase_consent],
+  timeout: 30,
+)
 
 # ---------------------------------------------------------------------
 # mb-info-appc — Phase D slice 1 Info.appc schema loader test

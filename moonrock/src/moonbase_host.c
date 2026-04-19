@@ -15,6 +15,7 @@
 #include "moonbase_host.h"
 
 #include "server.h"
+#include "consent_responder.h"
 #include "cbor.h"
 #include "moonbase/ipc/kinds.h"
 #include "moonrock_display.h"
@@ -832,6 +833,8 @@ static void on_event(mb_server_t *s, const mb_server_event_t *ev, void *user) {
                     ev->hello.bundle_version && *ev->hello.bundle_version
                         ? ev->hello.bundle_version : "(0.0.0)",
                     ev->hello.pid, ev->hello.language, ev->hello.api_version);
+            mb_consent_responder_note_connected(ev->client,
+                                                ev->hello.bundle_id);
             break;
         case MB_SERVER_EV_FRAME:
             switch (ev->frame_kind) {
@@ -848,6 +851,11 @@ static void on_event(mb_server_t *s, const mb_server_event_t *ev, void *user) {
                                          ev->frame_body, ev->frame_body_len,
                                          ev->frame_fds, ev->frame_fd_count);
                     break;
+                case MB_IPC_CONSENT_REQUEST:
+                    mb_consent_responder_handle_request(
+                        s, ev->client,
+                        ev->frame_body, ev->frame_body_len);
+                    break;
                 default:
                     fprintf(stderr,
                             "[moonrock] moonbase client %u frame 0x%04x len=%zu\n",
@@ -859,6 +867,7 @@ static void on_event(mb_server_t *s, const mb_server_event_t *ev, void *user) {
             fprintf(stderr,
                     "[moonrock] moonbase client %u disconnected (reason=%d)\n",
                     ev->client, ev->disconnect_reason);
+            mb_consent_responder_note_disconnected(ev->client);
             surface_sweep_client(ev->client);
             break;
     }
@@ -902,13 +911,25 @@ bool mb_host_init(const char *path, Display *dpy, Window root) {
         g_server = NULL;
         return false;
     }
+    // Boot the consent responder. Failure is logged but non-fatal —
+    // the host runs happily without lazy consent, it just replies
+    // ERROR to every CONSENT_REQUEST until the responder is fixed.
+    int crc = mb_consent_responder_init(NULL);
+    if (crc != 0) {
+        fprintf(stderr,
+                "[moonrock] mb_consent_responder_init failed: %d\n", crc);
+    }
     fprintf(stderr, "[moonrock] moonbase host listening on %s\n", use_path);
     return true;
 }
 
 size_t mb_host_collect_pollfds(struct pollfd *out_fds, size_t max) {
     if (!g_server || !out_fds || max == 0) return 0;
-    return mb_server_get_pollfds(g_server, out_fds, max);
+    size_t n = mb_server_get_pollfds(g_server, out_fds, max);
+    if (n < max) {
+        n += mb_consent_responder_collect_pollfds(out_fds + n, max - n);
+    }
+    return n;
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1022,6 +1043,10 @@ static void mb_host_check_scale_migration(void) {
 void mb_host_tick(const struct pollfd *fds, size_t nfds) {
     if (!g_server) return;
     mb_server_tick(g_server, fds, nfds);
+    // Same poll set covers consent helper pidfds. The responder
+    // walks it and only touches fds it recognizes, so running both
+    // ticks on the same slice is safe.
+    mb_consent_responder_tick(g_server, fds, nfds);
     // Runs once per main-loop iteration. Catches output-scale changes
     // and hotplug-induced migrations before the next composite pass.
     mb_host_check_scale_migration();
@@ -1464,6 +1489,7 @@ void mb_host_shutdown(void) {
     for (int i = 0; i < MB_MAX_SURFACES; i++) {
         if (g_surfaces[i].in_use) surface_release(&g_surfaces[i]);
     }
+    mb_consent_responder_shutdown();
     mb_server_close(g_server);
     g_server = NULL;
     g_dpy  = NULL;
