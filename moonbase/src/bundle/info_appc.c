@@ -74,7 +74,8 @@ static const char *const PERM_HW_VALUES[] = {
 };
 static const char *const PERM_SYS_VALUES[] = {
     "notifications:post", "notifications:receive-all",
-    "clipboard-monitor", "accessibility", "keychain", "printing", NULL,
+    "clipboard-monitor", "accessibility", "keychain", "printing",
+    "process-list", NULL,
 };
 
 // Reverse-DNS check — matches `^[a-z][a-z0-9.-]*\.[a-z0-9.-]+$` from the

@@ -426,6 +426,17 @@ int main(int argc, char **argv) {
     bool want_net = bundle.info.perm_network_count > 0;
     const char *unshare_net = want_net ? "0" : "1";
 
+    // 5b. system:process-list keeps the host PID namespace so /proc lists
+    //     every process — Activity Monitor can't do its job with only
+    //     its own sandbox's PIDs. Signal the profile via env var so the
+    //     positional contract stays unchanged.
+    for (size_t i = 0; i < bundle.info.perm_system_count; i++) {
+        if (strcmp(bundle.info.perm_system[i], "process-list") == 0) {
+            setenv("MOONBASE_UNSHARE_PID", "0", 1);
+            break;
+        }
+    }
+
     // 6. Assemble bwrap argv.
     argv_t bw;
     argv_init(&bw);

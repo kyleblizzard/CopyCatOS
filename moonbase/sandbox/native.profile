@@ -48,6 +48,11 @@ data_path="${2:?native.profile: data path required}"
 unshare_net="${3:-1}"
 host_home="${4:-${HOME:-}}"
 
+# PID-namespace unshare is on by default. The launcher sets
+# MOONBASE_UNSHARE_PID=0 when the bundle declares system:process-list,
+# so Activity Monitor-class apps can see host PIDs through /proc.
+unshare_pid="${MOONBASE_UNSHARE_PID:-1}"
+
 printf '%s\n' \
     --ro-bind     /               /                 \
     --proc        /proc                             \
@@ -67,7 +72,6 @@ printf '%s\n' \
     --bind        "$data_path"    "$data_path"      \
     --unshare-user                                  \
     --unshare-ipc                                   \
-    --unshare-pid                                   \
     --unshare-uts                                   \
     --unshare-cgroup                                \
     --die-with-parent                               \
@@ -75,6 +79,10 @@ printf '%s\n' \
     --clearenv                                      \
     --setenv      HOME            "$data_path"      \
     --setenv      PATH            /usr/bin:/bin
+
+if [[ "$unshare_pid" == "1" ]]; then
+    printf '%s\n' --unshare-pid
+fi
 
 if [[ "$unshare_net" == "1" ]]; then
     printf '%s\n' --unshare-net
