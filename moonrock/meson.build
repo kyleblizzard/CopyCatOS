@@ -82,6 +82,7 @@ cc_wm_sources = [
   'src/resize.c',
   'src/moonbase_host.c',
   'src/moonbase_chrome.c',
+  'src/moonbase_xdnd.c',
 ]
 
 # ── MoonBase IPC sources (shared with libmoonbase.so.1) ────────────────

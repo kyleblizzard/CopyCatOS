@@ -62,6 +62,48 @@ bool mb_host_has_focus(void);
 // not dispatch the event to any other handler.
 bool mb_host_handle_button_press(Window win, int x, int y, unsigned int button);
 
+// Snapshot of the per-surface state that XDND needs in order to convert
+// root-relative pointer coordinates into window-local points. All sizes
+// are in physical pixels; `scale` is the backing scale. `content_*`
+// describe the content rect (app-drawn pixels) inside the chrome. The
+// caller-facing IPC window_id is `window_id`; `client` is the IPC
+// client to send drag frames to.
+typedef struct {
+    uint32_t window_id;
+    uint32_t client;           // mb_client_id_t, but avoid pulling the
+                               // full server header into this interface
+    int      screen_x, screen_y;   // outer chrome origin in root coords
+    int      content_x, content_y; // content rect origin in root coords
+    uint32_t content_w, content_h; // content rect physical-pixel size
+    float    scale;
+} mb_host_proxy_info_t;
+
+// If `win` is the InputOnly proxy of a live MoonBase surface, fill
+// `*out` and return true. Otherwise return false (and leave `*out`
+// untouched). Used by the XDND module to decide whether an incoming
+// ClientMessage targets a MoonBase surface and to translate root
+// coordinates into content-local points.
+bool mb_host_find_proxy_surface(Window win, mb_host_proxy_info_t *out);
+
+// Emit a MB_IPC_DRAG_{ENTER,OVER,LEAVE,DROP} frame to `client`.
+//   `kind` is the IPC kind constant (MB_IPC_DRAG_*).
+//   `window_id` targets a surface the client owns.
+//   `x`, `y` are content-rect-local points (ignored by LEAVE).
+//   `modifiers` is an MB_MOD_* bitmask (ignored by LEAVE).
+//   `uris` / `uri_count` attach a URI list to ENTER/DROP frames; pass
+//   NULL/0 for OVER and LEAVE. `timestamp_us` is normally 0 (the host
+//   stamps monotonic time); non-zero overrides for replay tests.
+// Returns true on success, false on any send / encode failure.
+bool mb_host_emit_drag_frame(uint32_t client,
+                             uint16_t kind,
+                             uint32_t window_id,
+                             int      x,
+                             int      y,
+                             uint32_t modifiers,
+                             const char *const *uris,
+                             size_t   uri_count,
+                             uint64_t timestamp_us);
+
 // Deliver a keyboard event to the currently-focused MoonBase surface.
 // `keycode` is an X11 keysym (XK_*); `modifiers` is an MB_MOD_* mask;
 // `is_down` chooses MB_IPC_KEY_DOWN vs MB_IPC_KEY_UP. Returns true if a

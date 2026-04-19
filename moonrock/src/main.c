@@ -15,6 +15,7 @@
 #include "input.h"
 #include "moonrock.h"
 #include "moonbase_host.h"
+#include "moonbase_xdnd.h"
 #include "struts.h"
 #include <stdio.h>
 #include <signal.h>
@@ -63,6 +64,13 @@ int main(int argc, char *argv[])
     if (!mb_host_init(NULL, wm.dpy, wm.root)) {
         fprintf(stderr, "[moonrock] MoonBase host unavailable — no .appc support\n");
     }
+
+    // XDND → MB_IPC_DRAG_* bridge. Caches the XDND atom set and arms
+    // the state machine that forwards XdndEnter/Position/Leave/Drop
+    // ClientMessages (on MoonBase InputOnly proxies) into IPC drag
+    // frames. Always initialized even if the IPC host failed — it
+    // still provides safe no-op return paths for events.c.
+    mb_xdnd_init(wm.dpy, wm.root);
 
     // Set up strut handling so dock/menubar can reserve screen edges
     struts_init(&wm);

@@ -20,6 +20,7 @@
 #include "moonrock_display.h"
 #include "moonrock_shaders.h"
 #include "moonbase_chrome.h"
+#include "moonbase_xdnd.h"
 #include "wm.h"   // TITLEBAR_HEIGHT, BORDER_WIDTH, BUTTON_* (point-space)
 
 #include <stdio.h>
@@ -31,6 +32,7 @@
 #include <unistd.h>
 
 #include <GL/gl.h>
+#include <X11/Xatom.h>
 
 static mb_server_t *g_server = NULL;
 static char        *g_default_path = NULL;   // owned, only used when we built it
@@ -205,6 +207,10 @@ static mb_surface_t *surface_find(uint32_t window_id) {
 static void surface_release(mb_surface_t *s) {
     if (!s || !s->in_use) return;
     if (s->input_proxy && g_dpy) {
+        // If a drag session was in flight against this proxy, tell the
+        // XDND bridge to drop its state before the XID goes away —
+        // otherwise it could try to XSendEvent to a dead window.
+        mb_xdnd_forget_window(s->input_proxy);
         // XDestroyWindow is a one-way request; the server free-lists the
         // XID. No reply check — a dead display handle would already have
         // broken the WM loop.
@@ -261,6 +267,14 @@ static Window create_input_proxy(int screen_x, int screen_y,
                              CWEventMask | CWOverrideRedirect,
                              &attr);
     if (!w) return 0;
+    // Advertise XDND support BEFORE mapping. GTK and Qt sources scan
+    // XdndAware at the instant the pointer enters a drop target; if
+    // the property is missing at that moment they skip the target for
+    // the rest of the drag session.
+    Atom xdnd_aware = XInternAtom(g_dpy, "XdndAware", False);
+    unsigned long version = 5;  // we support XDND protocol v5
+    XChangeProperty(g_dpy, w, xdnd_aware, XA_ATOM, 32,
+                    PropModeReplace, (unsigned char *)&version, 1);
     // Raise so the proxy sits above reparented X client windows — GL
     // composites MoonBase surfaces on top visually, and the click
     // region has to agree with the pixels.
@@ -1101,6 +1115,103 @@ bool mb_host_handle_button_press(Window win, int x, int y, unsigned int button) 
     // slice. Drag-to-move, minimize, zoom, and content pointer events
     // land in later slices.
     return true;
+}
+
+// Populate the per-surface snapshot the XDND module uses to translate
+// root coordinates into content-local points and to address the IPC
+// client. Returns false if `win` is not a live MoonBase proxy.
+bool mb_host_find_proxy_surface(Window win, mb_host_proxy_info_t *out) {
+    if (!out) return false;
+    mb_surface_t *s = surface_find_by_proxy(win);
+    if (!s) return false;
+
+    // Chrome insets must match moonbase_chrome.c's layout. The content
+    // rect sits at (border_px, titlebar_px) inside the chrome and has
+    // the client's committed px_w × px_h dimensions. Before the first
+    // commit px_w / px_h are zero — the caller treats that case as
+    // "no content rect yet" and sends LEAVE / skips OVER.
+    int border_px   = (int)(BORDER_WIDTH    * s->scale + 0.5f);
+    if (border_px < 1) border_px = 1;
+    int titlebar_px = (int)(TITLEBAR_HEIGHT * s->scale + 0.5f);
+
+    out->window_id = s->window_id;
+    out->client    = (uint32_t)s->client;
+    out->screen_x  = s->screen_x;
+    out->screen_y  = s->screen_y;
+    out->content_x = s->screen_x + border_px;
+    out->content_y = s->screen_y + titlebar_px;
+    out->content_w = s->px_w;
+    out->content_h = s->px_h;
+    out->scale     = s->scale;
+    return true;
+}
+
+bool mb_host_emit_drag_frame(uint32_t client,
+                             uint16_t kind,
+                             uint32_t window_id,
+                             int      x,
+                             int      y,
+                             uint32_t modifiers,
+                             const char *const *uris,
+                             size_t   uri_count,
+                             uint64_t timestamp_us) {
+    if (!g_server) return false;
+    if (timestamp_us == 0) timestamp_us = ts_us();
+
+    // Map shape per IPC.md §5.3:
+    //   ENTER / DROP → { 1, 2, 3, 4, 5, 6 }
+    //   OVER         → { 1, 2, 3, 4, 6 }
+    //   LEAVE        → { 1, 6 }
+    // Unknown kinds are refused here — the caller is the only path
+    // that builds these frames so wrong kinds are a bug, not a network
+    // condition.
+    bool is_enter = (kind == MB_IPC_DRAG_ENTER);
+    bool is_drop  = (kind == MB_IPC_DRAG_DROP);
+    bool is_over  = (kind == MB_IPC_DRAG_OVER);
+    bool is_leave = (kind == MB_IPC_DRAG_LEAVE);
+    if (!is_enter && !is_drop && !is_over && !is_leave) return false;
+
+    size_t pairs;
+    if (is_leave)                 pairs = 2;
+    else if (is_over)             pairs = 5;
+    else                          pairs = 6;  // ENTER / DROP
+
+    mb_cbor_w_t w;
+    // Rough headroom for map header + small keys + URIs. URIs are the
+    // only thing that can push this over 64 bytes; sum them up once.
+    size_t cap = 48;
+    if (is_enter || is_drop) {
+        for (size_t i = 0; i < uri_count; i++) {
+            cap += (uris && uris[i] ? strlen(uris[i]) : 0) + 8;
+        }
+    }
+    mb_cbor_w_init_grow(&w, cap);
+    mb_cbor_w_map_begin(&w, pairs);
+    mb_cbor_w_key(&w, 1); mb_cbor_w_uint(&w, window_id);
+    if (!is_leave) {
+        mb_cbor_w_key(&w, 2); mb_cbor_w_int (&w, (int64_t)x);
+        mb_cbor_w_key(&w, 3); mb_cbor_w_int (&w, (int64_t)y);
+        mb_cbor_w_key(&w, 4); mb_cbor_w_uint(&w, modifiers);
+    }
+    if (is_enter || is_drop) {
+        mb_cbor_w_key(&w, 5);
+        mb_cbor_w_array_begin(&w, uri_count);
+        for (size_t i = 0; i < uri_count; i++) {
+            const char *u = (uris && uris[i]) ? uris[i] : "";
+            mb_cbor_w_tstr_n(&w, u, strlen(u));
+        }
+    }
+    mb_cbor_w_key(&w, 6); mb_cbor_w_uint(&w, timestamp_us);
+
+    if (!mb_cbor_w_ok(&w)) { mb_cbor_w_drop(&w); return false; }
+    size_t len = 0;
+    uint8_t *body = mb_cbor_w_finish(&w, &len);
+    if (!body) return false;
+
+    int rc = mb_server_send(g_server, (mb_client_id_t)client,
+                            kind, body, len, NULL, 0);
+    free(body);
+    return rc == 0;
 }
 
 bool mb_host_route_key(uint32_t keycode, uint32_t modifiers,

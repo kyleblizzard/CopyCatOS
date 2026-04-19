@@ -9,6 +9,7 @@
 #include "input.h"
 #include "moonrock.h"
 #include "moonbase_host.h"
+#include "moonbase_xdnd.h"
 #include "moonbase.h"     // MB_MOD_*
 #include "struts.h"
 #include "resize.h"
@@ -35,6 +36,7 @@ static void on_key_press(CCWM *wm, XEvent *e);
 static void on_key_release(CCWM *wm, XEvent *e);
 static void on_expose(CCWM *wm, XEvent *e);
 static void on_leave_notify(CCWM *wm, XEvent *e);
+static void on_selection_notify(CCWM *wm, XEvent *e);
 
 // Event handler function type
 typedef void (*EventHandler)(CCWM *wm, XEvent *e);
@@ -58,6 +60,7 @@ static void init_handlers(void)
     handlers[KeyRelease]       = on_key_release;
     handlers[Expose]           = on_expose;
     handlers[LeaveNotify]      = on_leave_notify;
+    handlers[SelectionNotify]  = on_selection_notify;
 }
 
 void events_run(CCWM *wm)
@@ -641,6 +644,16 @@ static void on_client_message(CCWM *wm, XEvent *e)
 {
     XClientMessageEvent *cm = &e->xclient;
 
+    // XDND ClientMessages that target a MoonBase InputOnly proxy get
+    // consumed here and never touch the EWMH / _NET_* path below —
+    // the XDND module sends its own XdndStatus / XdndFinished replies
+    // and the EWMH handlers would otherwise never match (wrong atom).
+    // Returning early keeps the dispatch short and avoids false
+    // matches if someone adds an atom clash later.
+    if (mb_xdnd_handle_client_message(cm)) {
+        return;
+    }
+
     // Check for _NET_WM_PING response (pong) first — these are sent
     // to the root window by apps that received our ping. If we get one,
     // the app is responsive and we can clear the beach ball.
@@ -825,4 +838,14 @@ static void on_leave_notify(CCWM *wm, XEvent *e)
             frame_redraw_decor(wm, c);
         }
     }
+}
+
+// SelectionNotify is the X reply to an XConvertSelection request. We
+// only make those requests from the XDND path (text/uri-list on a
+// MoonBase proxy), so hand every SelectionNotify there. Non-XDND
+// selections go unhandled — the WM doesn't own any selection today.
+static void on_selection_notify(CCWM *wm, XEvent *e)
+{
+    (void)wm;
+    (void)mb_xdnd_handle_selection_notify(&e->xselection);
 }
