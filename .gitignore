@@ -20,10 +20,13 @@ __pycache__/
 
 # ── Every .md except the repo README ────────────────────────────────
 # Enforce "only code + README.md" by globbing every .md then un-ignoring
-# only the top-level README.md. CLAUDE.md, AGENTS.md, design docs, lessons,
-# todos, memory notes, roadmaps — all stay local.
+# ONLY the root-level README.md. The leading slash anchors the negation
+# to the repo root — without it, git would un-ignore README.md at any
+# depth (docs/README.md, component/README.md, …) and leak local docs.
+# CLAUDE.md, AGENTS.md, design docs, lessons, todos, memory notes,
+# roadmaps — all stay local.
 *.md
-!README.md
+!/README.md
 
 # ── Copyrighted / reference material (local-only) ───────────────────
 snowleopardaura/
