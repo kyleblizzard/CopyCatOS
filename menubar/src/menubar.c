@@ -37,20 +37,46 @@
 // hardcoded constants to points.
 #include "moonrock_scale.h"
 
-// Runtime menubar height — configurable via ~/.config/copycatos/desktop.conf
-// Default 22px (Snow Leopard standard), range 22-88 for handheld devices.
+// Logical bar height in points, from ~/.config/copycatos/desktop.conf.
+// Default 22 (Snow Leopard baseline), range 22–88 for handheld devices.
 int menubar_height = DEFAULT_MENUBAR_HEIGHT;
 
-// Proportional scale factor — all dimensions scale by this value.
-// At 22px (default), scale is 1.0. At 44px, scale is 2.0. At 88px, scale is 4.0.
+// Per-output HiDPI scale from MoonRock. 1.0 until the bridge hands us
+// a real value (or 1.0 forever if MoonRock isn't running).
+float menubar_hidpi_scale = 1.0f;
+
+// Combined points-to-physical-pixels factor. See menubar.h for the
+// formula. Recomputed by recompute_menubar_scale() any time its two
+// inputs (menubar_height, menubar_hidpi_scale) change.
 double menubar_scale = 1.0;
 
 // Live snapshot of every connected output's scale as published by MoonRock
-// on the root window. Rewritten at startup and on every PropertyNotify for
-// the _MOONROCK_OUTPUT_SCALES atom. Separate from menubar_scale (which is
-// the user's height preference for the bar itself) — this one is the
-// compositor-driven HiDPI scale for the hosting output.
+// on _MOONROCK_OUTPUT_SCALES. Rewritten at startup and on every
+// PropertyNotify for that atom. menubar_hidpi_scale is derived from this
+// table for the point (0,0) — the origin of the bar's hosting output.
 static MoonRockScaleTable g_output_scales;
+
+// Recompute the combined scale factor. Must run any time menubar_height
+// (user config / SIGHUP) or menubar_hidpi_scale (MoonRock output scale)
+// changes.
+static void recompute_menubar_scale(void)
+{
+    menubar_scale =
+        ((double)menubar_height / 22.0) * (double)menubar_hidpi_scale;
+}
+
+// Pull the hosting-output scale from the cached MoonRock table, write it
+// into menubar_hidpi_scale, and recompute menubar_scale. Returns the
+// previous hidpi value so callers can detect change.
+static float apply_hidpi_scale_from_table(void)
+{
+    float old = menubar_hidpi_scale;
+    menubar_hidpi_scale = g_output_scales.valid
+        ? moonrock_scale_for_point(&g_output_scales, 0, 0)
+        : 1.0f;
+    recompute_menubar_scale();
+    return old;
+}
 
 // Log a one-line summary of the current scale table. Keeps the bridge
 // observable end-to-end without cluttering the main paint loop yet.
@@ -112,9 +138,10 @@ static void read_menubar_config(void)
     }
     fclose(fp);
 
-    // Update the proportional scale factor any time height changes.
-    // All S() and SF() macros throughout the codebase use this value.
-    menubar_scale = (double)menubar_height / 22.0;
+    // Refresh the combined scale factor any time the user's height
+    // preference changes. menubar_hidpi_scale is unaffected here — it
+    // tracks the output, not the user config.
+    recompute_menubar_scale();
 }
 
 // ── Forward declarations ────────────────────────────────────────────
@@ -122,6 +149,40 @@ static void dismiss_open_menu(MenuBar *mb);
 static int  hit_test_menu(MenuBar *mb, int mx);
 static void grab_pointer(MenuBar *mb);
 static void ungrab_pointer(MenuBar *mb);
+
+// Apply the current menubar_scale to the live window: resize, rewrite
+// struts, recompute scale-dependent layout regions, reload any cached
+// scale-sized assets (Apple logo), and repaint. Called after either a
+// SIGHUP-driven height change or a MoonRock-driven HiDPI change.
+static void apply_menubar_resize(MenuBar *mb)
+{
+    int h_px = MENUBAR_HEIGHT;  // S(22) — physical pixels on host output
+
+    XResizeWindow(mb->dpy, mb->win, mb->screen_w, h_px);
+
+    long strut_partial[12] = {0};
+    strut_partial[2] = h_px;
+    strut_partial[8] = 0;
+    strut_partial[9] = mb->screen_w;
+    XChangeProperty(mb->dpy, mb->win,
+                    mb->atom_net_wm_strut_partial, XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char *)strut_partial, 12);
+    long strut[4] = { 0, 0, h_px, 0 };
+    XChangeProperty(mb->dpy, mb->win,
+                    mb->atom_net_wm_strut, XA_CARDINAL, 32,
+                    PropModeReplace, (unsigned char *)strut, 4);
+
+    // Recompute point-scaled layout anchors
+    mb->apple_w   = S(50);
+    mb->appname_x = S(58);
+
+    // Apple logo is pre-rasterized at S(22)×S(15) in apple_init; rebuild
+    // at the new scale. Other submodules (render, systray) draw their
+    // scale-dependent content per-frame so they don't need a reload.
+    apple_reload(mb);
+
+    menubar_paint(mb);
+}
 
 // ── Initialization ──────────────────────────────────────────────────
 
@@ -206,6 +267,22 @@ bool menubar_init(MenuBar *mb)
         colormap = DefaultColormap(mb->dpy, mb->screen);
     }
 
+    // ── Subscribe to root window events + MoonRock scale bridge ─
+    // Done BEFORE XCreateWindow so MENUBAR_HEIGHT already reflects the
+    // host output's HiDPI scale when the window is born. Without this,
+    // the window would be created at 1.0x and then resized on the first
+    // PropertyNotify — visible flicker on startup.
+    //
+    // moonrock_scale_init's XSelectInput is additive (ORs in
+    // PropertyChangeMask without clobbering existing bits), so the order
+    // of init vs our own XSelectInput doesn't matter — but keeping them
+    // together here makes the root subscription intent explicit.
+    XSelectInput(mb->dpy, mb->root, PropertyChangeMask);
+    moonrock_scale_init(mb->dpy);
+    moonrock_scale_refresh(mb->dpy, &g_output_scales);
+    apply_hidpi_scale_from_table();
+    log_scale_table("init");
+
     // ── Create the menu bar window ──────────────────────────────
     XSetWindowAttributes attrs;
     attrs.override_redirect = False;
@@ -253,19 +330,6 @@ bool menubar_init(MenuBar *mb)
                     mb->atom_net_wm_strut, XA_CARDINAL,
                     32, PropModeReplace,
                     (unsigned char *)strut, 4);
-
-    // ── Watch root window for active window changes ─────────────
-    XSelectInput(mb->dpy, mb->root, PropertyChangeMask);
-
-    // ── Subscribe to MoonRock's per-output scale bridge ─────────
-    // moonrock_scale_init preserves the mask bits we just set above; it
-    // only adds PropertyChangeMask if it isn't already on, so the order
-    // here is defensive. The first refresh may return false if the
-    // compositor hasn't started yet (property missing) — that's fine, a
-    // later PropertyNotify will fill the table in.
-    moonrock_scale_init(mb->dpy);
-    moonrock_scale_refresh(mb->dpy, &g_output_scales);
-    log_scale_table("init");
 
     // ── Map (show) the window ───────────────────────────────────
     XMapWindow(mb->dpy, mb->win);
@@ -614,11 +678,19 @@ void menubar_run(MenuBar *mb)
                 } else if (ev.xproperty.atom == moonrock_scale_atom(mb->dpy)) {
                     // MoonRock updated the per-output scale table — either
                     // a hotplug changed the output set, or the user moved
-                    // a Displays-pane slider. Refresh our cached snapshot.
-                    // Point-size → pixel conversions that consume this
-                    // land in Phase E task 2.
+                    // a Displays-pane slider. Refresh our cached snapshot,
+                    // fold the hosting-output scale into menubar_scale, and
+                    // if the scale actually changed, resize the window.
                     moonrock_scale_refresh(mb->dpy, &g_output_scales);
+                    float old_hidpi = apply_hidpi_scale_from_table();
                     log_scale_table("property-notify");
+                    if (old_hidpi != menubar_hidpi_scale) {
+                        fprintf(stderr,
+                                "[menubar] hidpi: %.2f → %.2f (resizing)\n",
+                                (double)old_hidpi,
+                                (double)menubar_hidpi_scale);
+                        apply_menubar_resize(mb);
+                    }
                 }
                 break;
 
@@ -656,34 +728,15 @@ void menubar_run(MenuBar *mb)
             read_menubar_config();
 
             if (menubar_height != old_height) {
-                fprintf(stderr, "[menubar] Resizing: %d → %d\n",
+                fprintf(stderr, "[menubar] Resizing: %d → %d points\n",
                         old_height, menubar_height);
-
-                // Resize the menubar window
-                XResizeWindow(mb->dpy, mb->win, mb->screen_w, menubar_height);
-
-                // Update struts so the WM adjusts work area
-                long struts[12] = {0};
-                struts[2] = menubar_height;
-                struts[8] = 0;
-                struts[9] = mb->screen_w;
-                Atom sp = XInternAtom(mb->dpy, "_NET_WM_STRUT_PARTIAL", False);
-                XChangeProperty(mb->dpy, mb->win, sp, XA_CARDINAL, 32,
-                                PropModeReplace, (unsigned char *)struts, 12);
-                Atom ss = XInternAtom(mb->dpy, "_NET_WM_STRUT", False);
-                XChangeProperty(mb->dpy, mb->win, ss, XA_CARDINAL, 32,
-                                PropModeReplace, (unsigned char *)struts, 4);
-
-                // Recompute scaled layout regions for the new height
-                mb->apple_w = S(50);
-                mb->appname_x = S(58);
-
-                // Reload Apple logo at the new scale so it renders
-                // at the correct size for the new bar height
-                apple_reload(mb);
+                apply_menubar_resize(mb);
+            } else {
+                // Height unchanged — nothing to rebuild, but still
+                // repaint in case the config reload updated something
+                // else we haven't hooked explicitly yet.
+                menubar_paint(mb);
             }
-
-            menubar_paint(mb);
         }
 
         // ── Wait for next event or timeout ──────────────────────

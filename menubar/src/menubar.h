@@ -24,25 +24,38 @@
 // for handheld devices like the Lenovo Legion Go.
 #define DEFAULT_MENUBAR_HEIGHT 22
 
-// Runtime height — set during init from config file, used everywhere.
-// External modules (render.c, systray.c) reference this via extern.
+// Logical bar height in points, from user config. 22 at Snow Leopard
+// baseline, 22–88 for handheld/touch. This value is in points — it does
+// NOT fold in per-output HiDPI scale. See menubar_scale for the combined
+// points-to-physical-pixels factor.
 extern int menubar_height;
 
-// Proportional scale factor: menubar_height / 22.0 (1.0 at standard size).
-// All pixel dimensions throughout the menubar use this to scale proportionally,
-// so the UI looks correct whether the bar is 22px (desktop) or 88px (touch).
+// Per-output HiDPI scale published by MoonRock on _MOONROCK_OUTPUT_SCALES
+// for the bar's hosting output. 1.0 when MoonRock isn't running (the
+// menubar still draws, just without hidpi awareness).
+extern float menubar_hidpi_scale;
+
+// Combined points-to-physical-pixels scale:
+//   menubar_scale = (menubar_height / 22.0) * menubar_hidpi_scale
+// Every pixel constant in the codebase was written against the 22pt
+// baseline. S() and SF() multiply by this to produce physical pixels that
+// are correct for both the user's height preference and the HiDPI scale
+// of the output hosting the bar.
 extern double menubar_scale;
 
-// Convenience macro so existing code doesn't need to change
-#define MENUBAR_HEIGHT menubar_height
-
-// Scale a pixel value proportionally and round to the nearest integer.
-// Use for all hardcoded pixel dimensions (padding, widths, heights, offsets).
+// Scale a point value to physical pixels, rounded to nearest int.
+// Use for padding, widths, heights, offsets — anything written against
+// the 22pt baseline that needs a concrete pixel count.
 #define S(x) ((int)((x) * menubar_scale + 0.5))
 
-// Scale a floating-point value proportionally (no rounding).
+// Scale a point value to physical pixels as a double (no rounding).
 // Use for Cairo coordinates, corner radii, and other fractional values.
 #define SF(x) ((x) * menubar_scale)
+
+// Physical-pixel height of the bar window on its host output. Equal to
+// menubar_height × menubar_hidpi_scale. Use for window geometry (X
+// Create/Resize), struts, and the paint Cairo surface.
+#define MENUBAR_HEIGHT S(22)
 
 // Core state for the entire menu bar.
 // A single instance is created in main.c and shared with every module.
