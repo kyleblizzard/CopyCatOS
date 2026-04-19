@@ -16,10 +16,12 @@
 // identify an item; passing NULL for any of them on fetch/delete/list
 // matches every value for that field.
 //
-// Entitlement: `system:"keychain"` in Info.appc. Advisory-only in v1 —
-// the D-Bus session socket is already reachable from every native-tier
-// sandbox because the launcher binds $XDG_RUNTIME_DIR in. Tightening
-// to a real fence is deferred until a sandboxed xdg-dbus-proxy lands.
+// Entitlement: `system:"keychain"` in Info.appc. Enforced at the
+// libmoonbase API boundary — every call below returns MB_EPERM
+// unless the bundle declared it. The D-Bus session socket itself
+// is still reachable from every native-tier sandbox because the
+// launcher binds $XDG_RUNTIME_DIR in; a sandboxed xdg-dbus-proxy
+// filter is the runtime-fence follow-up.
 //
 // API stability: MOONBASE_KEYCHAIN_API_VERSION is 0 (unstable) until
 // all four reference apps ship end-to-end. Signatures may change

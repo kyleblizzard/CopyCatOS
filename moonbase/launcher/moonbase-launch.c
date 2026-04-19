@@ -222,6 +222,66 @@ static int add_filesystem_bind(argv_t *a, const char *entry,
 }
 
 // -------------------------------------------------------------------
+// entitlement env builder
+// -------------------------------------------------------------------
+
+// Compose MOONBASE_ENTITLEMENTS from all five perm_* arrays. The format
+// is "group1=v1,v2;group2=v3" — missing groups don't appear. libmoonbase
+// reads this string once and gates privileged APIs (keychain, …) at
+// their top edge with MB_EPERM when a declaration is missing.
+//
+// Returns a malloc'd NUL-terminated buffer on success. Returns NULL
+// only on allocation failure; an empty entitlement set returns an
+// empty string ("") which is still valid output.
+static char *build_entitlements_env(const mb_info_appc_t *info) {
+    size_t cap = 256;
+    char *buf = malloc(cap);
+    if (!buf) return NULL;
+    size_t len = 0;
+    buf[0] = '\0';
+
+    struct group { const char *name; char **values; size_t count; };
+    struct group groups[] = {
+        {"filesystem", info->perm_filesystem, info->perm_filesystem_count},
+        {"network",    info->perm_network,    info->perm_network_count},
+        {"hardware",   info->perm_hardware,   info->perm_hardware_count},
+        {"system",     info->perm_system,     info->perm_system_count},
+        {"ipc",        info->perm_ipc,        info->perm_ipc_count},
+    };
+
+    for (size_t g = 0; g < sizeof(groups) / sizeof(groups[0]); g++) {
+        if (groups[g].count == 0) continue;
+
+        // Pre-compute the bytes this group needs so one realloc covers
+        // the ';', the "group=", every ',' value, and the NUL.
+        size_t need = len + 1 /* ';' */
+                          + strlen(groups[g].name) + 1 /* '=' */
+                          + 1 /* trailing NUL */;
+        for (size_t v = 0; v < groups[g].count; v++) {
+            need += strlen(groups[g].values[v]) + 1; /* ',' or join */
+        }
+        if (need >= cap) {
+            while (cap < need + 1) cap *= 2;
+            char *nb = realloc(buf, cap);
+            if (!nb) { free(buf); return NULL; }
+            buf = nb;
+        }
+
+        if (len > 0) buf[len++] = ';';
+        size_t nl = strlen(groups[g].name);
+        memcpy(buf + len, groups[g].name, nl); len += nl;
+        buf[len++] = '=';
+        for (size_t v = 0; v < groups[g].count; v++) {
+            if (v > 0) buf[len++] = ',';
+            size_t vl = strlen(groups[g].values[v]);
+            memcpy(buf + len, groups[g].values[v], vl); len += vl;
+        }
+    }
+    buf[len] = '\0';
+    return buf;
+}
+
+// -------------------------------------------------------------------
 // consent helper lookup + exec
 // -------------------------------------------------------------------
 
@@ -491,6 +551,22 @@ int main(int argc, char **argv) {
     if (argv_push(&bw, "--setenv") < 0) goto oom;
     if (argv_push(&bw, "MOONBASE_BUNDLE_ID") < 0) goto oom;
     if (argv_push(&bw, bundle.info.id) < 0) goto oom;
+
+    // MOONBASE_ENTITLEMENTS: declared entitlement set from Info.appc.
+    // libmoonbase reads this once and gates privileged APIs with
+    // MB_EPERM when the matching permission wasn't declared. --clearenv
+    // in the profile wipes the host env, so this --setenv is the only
+    // way the string reaches the sandbox.
+    {
+        char *ent_str = build_entitlements_env(&bundle.info);
+        if (!ent_str) goto oom;
+        int push_rc = 0;
+        push_rc |= argv_push(&bw, "--setenv");
+        push_rc |= argv_push(&bw, "MOONBASE_ENTITLEMENTS");
+        push_rc |= argv_push(&bw, ent_str);
+        free(ent_str);
+        if (push_rc < 0) goto oom;
+    }
 
     // 7. Inner exec + user args.
     if (argv_push(&bw, bundle.exe_abs_path) < 0) goto oom;

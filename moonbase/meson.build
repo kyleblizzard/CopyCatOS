@@ -74,6 +74,7 @@ install_headers(ipc_headers, subdir: 'moonbase/ipc')
 # ---------------------------------------------------------------------
 
 moonbase_lib_sources = files(
+  'src/entitlements.c',
   'src/error.c',
   'src/eventloop.c',
   'src/gl_path.c',
@@ -461,6 +462,27 @@ mb_gl_path = executable(
 test('gl-path', mb_gl_path, timeout: 10)
 
 # ---------------------------------------------------------------------
+# mb-entitlement-gate — API-boundary entitlement gate unit test
+# ---------------------------------------------------------------------
+#
+# Exercises the MB_EPERM gate at the top of every privileged
+# moonbase_keychain_* function. Forks a child per phase so
+# MOONBASE_ENTITLEMENTS can change between runs without the
+# pthread_once cache leaking state. Positive phase points
+# DBUS_SESSION_BUS_ADDRESS at a nonexistent socket so libsecret
+# can't hang waiting for a bus on headless runners.
+
+mb_entitlement_gate = executable(
+  'mb-entitlement-gate',
+  'tests/entitlement-gate.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('entitlement-gate', mb_entitlement_gate, timeout: 15)
+
+# ---------------------------------------------------------------------
 # mb-info-appc — Phase D slice 1 Info.appc schema loader test
 # ---------------------------------------------------------------------
 #
@@ -713,10 +735,11 @@ textedit_appc = custom_target('textedit-appc',
 # the app doesn't need a text-entry form yet (that lands when the
 # framework grows modal dialogs).
 #
-# system:"keychain" in Info.appc is advisory in v1 — every native-tier
-# bundle already reaches the session D-Bus bus through the launcher's
-# XDG_RUNTIME_DIR bind. Tightening to a real fence waits on a sandboxed
-# xdg-dbus-proxy filter.
+# system:"keychain" in Info.appc is enforced at the libmoonbase API
+# boundary — every keychain call returns MB_EPERM without it. The
+# runtime D-Bus socket is still reachable through the launcher's
+# XDG_RUNTIME_DIR bind; a sandboxed xdg-dbus-proxy filter is the
+# follow-up.
 
 keychain_access_exe = executable(
   'keychain-access',
