@@ -17,11 +17,13 @@
 
 #include "moonbase.h"
 #include "moonbase_keychain.h"
+#include "consents.h"
 
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -68,6 +70,20 @@ static int phase_allowed(void) {
     setenv("MOONBASE_ENTITLEMENTS", "system=keychain", 1);
     // Force libsecret to fail fast if it tries to reach a bus.
     setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent/mb-gate-test", 1);
+
+    // Pre-seed a consent ALLOW so the consent gate short-circuits on
+    // ALLOW without trying to reach a compositor. This test is about
+    // the entitlement gate — isolating it from the consent gate keeps
+    // "not MB_EPERM" unambiguous about which gate lifted.
+    char xdg[] = "/tmp/mb-ent-gate-XXXXXX";
+    if (!mkdtemp(xdg)) { perror("mkdtemp"); return 1; }
+    setenv("XDG_DATA_HOME", xdg, 1);
+    setenv("HOME", xdg, 1);
+    setenv("MOONBASE_BUNDLE_ID", "show.blizzard.entitlement-gate-test", 1);
+    if (mb_consent_record("system", "keychain", MB_CONSENT_ALLOW) != MB_EOK) {
+        fprintf(stderr, "allowed: failed to pre-seed consent ALLOW\n");
+        return 1;
+    }
 
     char *out = NULL;
     mb_error_t rc = moonbase_keychain_fetch(NULL, "lbl", "acc", &out);

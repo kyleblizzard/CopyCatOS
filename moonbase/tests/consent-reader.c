@@ -118,8 +118,8 @@ static void phase_missing_file(void) {
     set_consents(NULL);
     CHECK(mb_consent_query("system", "keychain") == MB_CONSENT_MISSING,
           "no file -> MISSING");
-    CHECK(mb_consent_gate_allows("system", "keychain") == true,
-          "no file -> gate allows (grant-by-default)");
+    CHECK(mb_consent_gate_allows("system", "keychain") == false,
+          "no file + no compositor -> gate denies");
 }
 
 static void phase_allow(void) {
@@ -150,8 +150,8 @@ static void phase_wrong_section(void) {
         "decision = \"allow\"\n");
     CHECK(mb_consent_query("system", "keychain") == MB_CONSENT_MISSING,
           "different section -> MISSING");
-    CHECK(mb_consent_gate_allows("system", "keychain") == true,
-          "different section -> gate allows");
+    CHECK(mb_consent_gate_allows("system", "keychain") == false,
+          "different section + no compositor -> gate denies");
 }
 
 static void phase_section_without_decision(void) {

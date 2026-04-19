@@ -15,13 +15,13 @@
 //                    dispatch MB_IPC_CONSENT_REQUEST → moonbase-consent
 //                    → write consents.toml → return the decision.
 //
-// This header ships gate 2's reader half. The writer (moonbase-consent
-// growing a per-capability path) and the IPC wire
-// (MB_IPC_CONSENT_REQUEST) land in follow-up commits. Until then,
-// mb_consent_gate_allows returns true on MISSING with a one-time log
-// line so the refapps stay callable through the plumbing — the flip
-// to deny-on-missing happens the same commit the IPC responder lands,
-// not before.
+// This header ships gate 2's reader + gate helper. With the IPC wire
+// live (moonrock's consent responder forwards MISSING lookups to
+// moonbase-consent, which writes consents.toml and replies
+// GRANT/DENY), mb_consent_gate_allows honors that decision in
+// process. If the compositor connection is down or the IPC fails,
+// the gate denies — an unprovoked privileged call reaching a headless
+// tool has no user to approve it.
 //
 // On-disk store, per sandbox.md §6:
 //
@@ -60,12 +60,12 @@ typedef enum {
 // thread.
 mb_consent_status_t mb_consent_query(const char *group, const char *value);
 
-// Gate helper matching the sandbox §6 transition during the
-// grant-by-default window: returns true on ALLOW or MISSING, false on
-// DENY. When the IPC responder lands, MISSING flips to "false" and the
-// callers don't change. Emits a first-time stderr diagnostic per
-// (group, value) pair so a single process that touches several
-// missing capabilities still surfaces each one in logs.
+// Gate helper implementing sandbox §6: returns true on ALLOW, false
+// on DENY. On MISSING, dispatches MB_IPC_CONSENT_REQUEST to moonrock
+// and returns the responder's decision. If the connection isn't
+// handshaken (no compositor) or the IPC fails, returns false and
+// emits a first-time stderr diagnostic per (group, value) pair so
+// the cause is obvious in logs without spamming on repeat calls.
 bool mb_consent_gate_allows(const char *group, const char *value);
 
 // Record a decision for (group, value) to the caller's consents.toml.

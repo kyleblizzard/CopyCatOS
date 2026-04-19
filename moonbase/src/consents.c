@@ -14,6 +14,9 @@
 
 #include "consents.h"
 
+#include "ipc/consent.h"
+#include "ipc/transport.h"
+
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -236,11 +239,11 @@ mb_consent_status_t mb_consent_query(const char *group, const char *value) {
     return s;
 }
 
-// First-time warning per (group, value) so CI logs make the
-// grant-by-default state explicit without spamming on repeated calls.
-// One global bool would silence warnings for any app that touches
-// several missing capabilities; a tiny linked list keyed by
-// "group:value" keeps each capability visible exactly once per
+// First-time warning per (group, value) so CI logs make a deny
+// decision (no compositor, IPC failure) visible without spamming on
+// repeated calls. One global bool would silence warnings for any app
+// that touches several missing capabilities; a tiny linked list keyed
+// by "group:value" keeps each capability visible exactly once per
 // process. This path is cold (fires at most once per capability per
 // process) — a linked list is plenty.
 typedef struct warn_node {
@@ -267,8 +270,8 @@ static bool warn_first_time(const char *group, const char *value) {
     warn_node_t *node = malloc(sizeof(*node));
     if (!node) {
         // Allocation failure: treat as "already warned" so we don't
-        // spam on every call — the gate still grants, the caller
-        // just misses the log line.
+        // spam on every call — the gate still denies, the caller
+        // just misses the log line on this and subsequent calls.
         pthread_mutex_unlock(&warn_mu);
         return false;
     }
@@ -284,14 +287,51 @@ bool mb_consent_gate_allows(const char *group, const char *value) {
     if (s == MB_CONSENT_ALLOW) return true;
     if (s == MB_CONSENT_DENY)  return false;
 
-    // MISSING: grant-by-default until MB_IPC_CONSENT_REQUEST lands.
-    if (group && value && warn_first_time(group, value)) {
-        fprintf(stderr,
-            "moonbase: consent missing for %s:%s — granting by default "
-            "(IPC consent wire pending)\n",
-            group, value);
+    // MISSING: route to moonrock's consent responder if the connection
+    // is up; otherwise deny. "No compositor" is a legitimate state
+    // (headless tools, early boot) — silently granting would let a
+    // privileged call through with no user in the loop. Silently
+    // denying without a log would look like a mysterious MB_EPERM
+    // from the callsite; log once per capability so the cause is
+    // obvious in the logs.
+    if (!mb_conn_is_handshaken()) {
+        if (group && value && warn_first_time(group, value)) {
+            fprintf(stderr,
+                "moonbase: consent missing for %s:%s — "
+                "no compositor connection, denying\n",
+                group, value);
+        }
+        return false;
     }
-    return true;
+
+    // Build the "group.value" capability string the responder expects.
+    // Sized to fit the reader's own cap (both sides share the schema).
+    char capability[128];
+    int n = snprintf(capability, sizeof(capability), "%s.%s", group, value);
+    if (n < 0 || (size_t)n >= sizeof(capability)) {
+        if (warn_first_time(group, value)) {
+            fprintf(stderr,
+                "moonbase: consent capability name too long for %s:%s, "
+                "denying\n", group, value);
+        }
+        return false;
+    }
+
+    // Synchronous request/reply on the app's main thread. The responder
+    // forks moonbase-consent, which writes consents.toml and exits; the
+    // responder sends GRANT/DENY back. On any IPC failure, deny — the
+    // caller gets MB_EPERM rather than an opaque hang.
+    bool allow = false, remember = false;
+    int rc = mb_ipc_consent_request(capability, "", 0, &allow, &remember);
+    if (rc != 0) {
+        if (warn_first_time(group, value)) {
+            fprintf(stderr,
+                "moonbase: consent IPC failed for %s:%s (rc=%d), denying\n",
+                group, value, rc);
+        }
+        return false;
+    }
+    return allow;
 }
 
 // ---------------------------------------------------------------------

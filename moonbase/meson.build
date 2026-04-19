@@ -600,6 +600,32 @@ test('consent-responder', mb_consent_responder,
 )
 
 # ---------------------------------------------------------------------
+# mb-consent-gate-ipc — slice 6A end-to-end gate test
+# ---------------------------------------------------------------------
+#
+# Drives mb_consent_gate_allows' deny-on-missing + IPC path. Parent
+# runs mb_server_t + the responder pointing at moonbase-consent; forks
+# a child per phase that calls mb_consent_gate_allows (not the raw
+# mb_ipc_consent_request wire), and asserts the decision matches the
+# AUTO mode and that consents.toml lands the right entry. Phase 3
+# never calls moonbase_init so the gate's !handshaken deny-branch is
+# pinned — no IPC, no write.
+
+mb_consent_gate_ipc = executable(
+  'mb-consent-gate-ipc',
+  'tests/consent-gate-ipc.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('consent-gate-ipc', mb_consent_gate_ipc,
+  args: [moonbase_consent],
+  depends: [moonbase_consent],
+  timeout: 30,
+)
+
+# ---------------------------------------------------------------------
 # mb-info-appc — Phase D slice 1 Info.appc schema loader test
 # ---------------------------------------------------------------------
 #
