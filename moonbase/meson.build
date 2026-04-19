@@ -76,6 +76,7 @@ install_headers(ipc_headers, subdir: 'moonbase/ipc')
 moonbase_lib_sources = files(
   'src/error.c',
   'src/eventloop.c',
+  'src/gl_path.c',
   'src/init.c',
   'src/stubs.c',
   'src/window.c',
@@ -111,13 +112,21 @@ cairo_dep = dependency('cairo')
 # glib2 pull-in is transitive via libsecret's pkg-config file.
 libsecret_dep = dependency('libsecret-1')
 
+# EGL + OpenGL ES drive MOONBASE_RENDER_GL windows. The v1 internal
+# path is EGL pbuffer + glReadPixels back into the existing SHM
+# commit pipeline — MoonRock doesn't need to learn dmabuf import for
+# this slice. A later slice swaps the internals for zero-copy GBM +
+# dmabuf without touching the public API.
+egl_dep   = dependency('egl')
+glesv2_dep = dependency('glesv2')
+
 libmoonbase = shared_library(
   'moonbase',
   moonbase_lib_sources,
   include_directories: include_directories('include', 'src'),
   version: '1.0.0',
   soversion: '1',
-  dependencies: [threads_dep, cairo_dep, libsecret_dep],
+  dependencies: [threads_dep, cairo_dep, libsecret_dep, egl_dep, glesv2_dep],
   install: true,
 )
 
@@ -402,6 +411,28 @@ mb_leakcheck_loop = executable(
 test('leakcheck-loop', mb_leakcheck_loop, timeout: 90)
 
 # ---------------------------------------------------------------------
+# mb-gl-path — MOONBASE_RENDER_GL internal path unit test
+# ---------------------------------------------------------------------
+#
+# Drives src/gl_path.c directly — no moonrock required. Brings up an
+# EGL pbuffer, glClears to a known colour, reads the framebuffer back
+# through the same swizzle the public GL swap path uses, and asserts
+# the corners land as ARGB32 premul in native byte order (±1 for
+# vendor rounding). Exits 77 (SKIP) if EGL isn't available on the
+# host — some CI images strip llvmpipe.
+
+mb_gl_path = executable(
+  'mb-gl-path',
+  'tests/gl-path.c',
+  include_directories: include_directories('include', 'src'),
+  dependencies: [glesv2_dep],
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('gl-path', mb_gl_path, timeout: 10)
+
+# ---------------------------------------------------------------------
 # mb-info-appc — Phase D slice 1 Info.appc schema loader test
 # ---------------------------------------------------------------------
 #
@@ -568,6 +599,42 @@ hello_appc = custom_target('hello-appc',
     + 'cp "$1" "$0/Contents/Info.appc"; '
     + 'cp "$2" "$0/Contents/MacOS/hello"; '
     + 'chmod 0755 "$0/Contents/MacOS/hello"',
+    '@OUTPUT@', '@INPUT0@', '@INPUT1@',
+  ],
+  build_by_default: true,
+)
+
+# ---------------------------------------------------------------------
+# examples/gl-hello — minimal MOONBASE_RENDER_GL reference app
+# ---------------------------------------------------------------------
+#
+# Proves the GL ABI end-to-end. Creates a 480×320-point GL window,
+# clears to Aqua blue, draws one triangle via a trivial ES3 shader,
+# and commits every redraw. Paired with a declared render-mode of
+# "gl" in Info.appc so moonbase-launch binds /dev/dri into the
+# sandbox. Not installed — run from the build tree:
+#   moonbase-launch build/gl-hello.appc
+
+gl_hello_exe = executable(
+  'gl-hello',
+  'examples/gl-hello/main.c',
+  include_directories: include_directories('include'),
+  dependencies: [glesv2_dep],
+  link_with: libmoonbase,
+  install: false,
+)
+
+gl_hello_appc = custom_target('gl-hello-appc',
+  output: 'gl-hello.appc',
+  input: [files('examples/gl-hello/Info.appc'), gl_hello_exe],
+  command: [
+    find_program('sh'), '-c',
+    'set -eu; '
+    + 'rm -rf "$0"; '
+    + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
+    + 'cp "$1" "$0/Contents/Info.appc"; '
+    + 'cp "$2" "$0/Contents/MacOS/gl-hello"; '
+    + 'chmod 0755 "$0/Contents/MacOS/gl-hello"',
     '@OUTPUT@', '@INPUT0@', '@INPUT1@',
   ],
   build_by_default: true,

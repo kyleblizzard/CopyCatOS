@@ -460,6 +460,21 @@ int main(int argc, char **argv) {
         }
     }
 
+    // GL-mode bundles need /dev/dri so Mesa can reach the GPU. The
+    // native.profile tier mounts a fresh /dev tmpfs (no renderD128 in
+    // it by default); bind the host /dev/dri back in read-write. Mesa
+    // falls back to software llvmpipe when card nodes aren't readable,
+    // but the hardware path is what the Legion Go S wants. webview-
+    // tier bundles already get /dev/dri via the webview.profile.
+    if (bundle.info.render_default == MB_INFO_APPC_RENDER_GL) {
+        struct stat dri_st;
+        if (stat("/dev/dri", &dri_st) == 0 && S_ISDIR(dri_st.st_mode)) {
+            if (argv_push(&bw, "--dev-bind") < 0) goto oom;
+            if (argv_push(&bw, "/dev/dri") < 0) goto oom;
+            if (argv_push(&bw, "/dev/dri") < 0) goto oom;
+        }
+    }
+
     // Let the app know its bundle id; useful for MoonRock introspection
     // and for the app's own logging path derivation.
     if (argv_push(&bw, "--setenv") < 0) goto oom;

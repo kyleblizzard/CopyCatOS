@@ -35,6 +35,7 @@
 
 #include "moonbase.h"
 #include "internal.h"
+#include "gl_path.h"
 #include "ipc/cbor.h"
 #include "ipc/transport.h"
 #include "moonbase/ipc/kinds.h"
@@ -89,6 +90,14 @@ struct mb_window {
     int             stride;
     cairo_surface_t *surf;
     cairo_t         *cr;
+
+    // ── MOONBASE_RENDER_GL path state ────────────────────────────────
+    //
+    // Allocated lazily on the first moonbase_window_gl_make_current.
+    // Re-allocated on backing-scale change so the pbuffer size tracks
+    // the window's physical-pixel size exactly. NULL on Cairo windows
+    // and on GL windows that haven't hit their first make_current yet.
+    mb_gl_window_t *gl;
 };
 
 // ---------------------------------------------------------------------
@@ -302,6 +311,18 @@ static void window_release_frame(mb_window_t *w) {
     w->px_width = w->px_height = w->stride = 0;
 }
 
+// Release the GL-side pbuffer + framework bookkeeping. Called from
+// the same two points that invoke window_release_frame — a Cairo
+// window never allocates this, a GL window holds its pbuffer across
+// frames but drops it when the backing scale changes or the window
+// closes. Safe to call when no GL state is live.
+static void window_release_gl(mb_window_t *w) {
+    if (w->gl) {
+        mb_gl_window_destroy(w->gl);
+        w->gl = NULL;
+    }
+}
+
 void mb_internal_window_apply_backing_scale(mb_window_t *w,
                                             float new_scale,
                                             uint32_t new_output_id) {
@@ -316,6 +337,10 @@ void mb_internal_window_apply_backing_scale(mb_window_t *w,
     // physical-pixel dimensions. The app will see MB_EV_BACKING_SCALE_CHANGED
     // and redraw.
     window_release_frame(w);
+
+    // Same reasoning for the GL pbuffer — the next make_current will
+    // re-allocate it at the new backing-pixel size.
+    window_release_gl(w);
 }
 
 void moonbase_window_close(mb_window_t *w) {
@@ -325,6 +350,7 @@ void moonbase_window_close(mb_window_t *w) {
     }
     registry_remove(w);
     window_release_frame(w);
+    window_release_gl(w);
     if (mb_conn_is_handshaken()) {
         mb_cbor_w_t cw;
         mb_cbor_w_init_grow(&cw, 16);
@@ -582,4 +608,179 @@ void moonbase_window_backing_pixel_size(mb_window_t *w,
     float s = w->backing_scale > 0.0f ? w->backing_scale : 1.0f;
     if (width_px)  *width_px  = (int)(w->width_points  * s + 0.5f);
     if (height_px) *height_px = (int)(w->height_points * s + 0.5f);
+}
+
+// ---------------------------------------------------------------------
+// moonbase_window_gl_make_current / moonbase_window_gl_swap_buffers
+// ---------------------------------------------------------------------
+//
+// The GL draw path. The app:
+//
+//   1. Creates its window with render_mode = MOONBASE_RENDER_GL.
+//   2. On MB_EV_WINDOW_REDRAW (or at its own cadence), calls
+//      moonbase_window_gl_make_current() to bind our per-window EGL
+//      pbuffer + process-wide GLES 3 context.
+//   3. Issues GL calls — glClear, glDraw*, its own shaders, whatever.
+//   4. Calls moonbase_window_gl_swap_buffers() to hand the frame to
+//      MoonRock.
+//
+// Under the hood v1 is: EGL pbuffer → glReadPixels → ARGB32 SHM →
+// WINDOW_COMMIT SCM_RIGHTS. Zero moonrock-side changes.
+
+int moonbase_window_gl_make_current(mb_window_t *w) {
+    if (!w) {
+        mb_internal_set_last_error(MB_EINVAL);
+        return MB_EINVAL;
+    }
+    if (w->render_mode != MOONBASE_RENDER_GL) {
+        // Cairo-mode windows can't hand out a GL context.
+        mb_internal_set_last_error(MB_EINVAL);
+        return MB_EINVAL;
+    }
+
+    // Compute current backing pixel size — matches the Cairo path so
+    // the two modes see pixel-identical dimensions.
+    float s = w->backing_scale > 0.0f ? w->backing_scale : 1.0f;
+    int px_w = (int)(w->width_points  * s + 0.5f);
+    int px_h = (int)(w->height_points * s + 0.5f);
+    if (px_w <= 0 || px_h <= 0) {
+        mb_internal_set_last_error(MB_EINVAL);
+        return MB_EINVAL;
+    }
+
+    // If we already have a pbuffer of the right size, just re-bind.
+    if (w->gl) {
+        int cur_w = 0, cur_h = 0;
+        mb_gl_window_pixel_size(w->gl, &cur_w, &cur_h);
+        if (cur_w == px_w && cur_h == px_h) {
+            mb_error_t e = mb_gl_window_make_current(w->gl);
+            if (e != MB_EOK) {
+                mb_internal_set_last_error(e);
+                return e;
+            }
+            return MB_EOK;
+        }
+        // Size changed — drop the old pbuffer and re-allocate. The
+        // normal trigger is a backing-scale event, which already
+        // dropped the block; but a future window_set_size slice can
+        // change px dimensions without a scale change.
+        window_release_gl(w);
+    }
+
+    mb_gl_window_t *gl = NULL;
+    mb_error_t e = mb_gl_window_create(px_w, px_h, &gl);
+    if (e != MB_EOK) {
+        mb_internal_set_last_error(e);
+        return e;
+    }
+    w->gl = gl;
+    e = mb_gl_window_make_current(gl);
+    if (e != MB_EOK) {
+        window_release_gl(w);
+        mb_internal_set_last_error(e);
+        return e;
+    }
+    return MB_EOK;
+}
+
+int moonbase_window_gl_swap_buffers(mb_window_t *w) {
+    if (!w) {
+        mb_internal_set_last_error(MB_EINVAL);
+        return MB_EINVAL;
+    }
+    if (w->render_mode != MOONBASE_RENDER_GL) {
+        mb_internal_set_last_error(MB_EINVAL);
+        return MB_EINVAL;
+    }
+    if (!w->gl) {
+        // swap without a prior make_current — nothing to show.
+        mb_internal_set_last_error(MB_EINVAL);
+        return MB_EINVAL;
+    }
+    if (!mb_conn_is_handshaken()) {
+        mb_internal_set_last_error(MB_EIPC);
+        return MB_EIPC;
+    }
+
+    int px_w = 0, px_h = 0;
+    mb_gl_window_pixel_size(w->gl, &px_w, &px_h);
+    int stride = argb32_stride_for(px_w);
+    size_t size = (size_t)stride * (size_t)px_h;
+
+    // Allocate the shm buffer. Fresh memfd per frame matches the
+    // Cairo path exactly — a double-buffered refinement slice can
+    // come later when the profiler demands it.
+    int fd = mb_memfd("moonbase-window-gl", 0);
+    if (fd < 0) {
+        mb_internal_set_last_error(MB_ENOMEM);
+        return MB_ENOMEM;
+    }
+    if (ftruncate(fd, (off_t)size) != 0) {
+        close(fd);
+        mb_internal_set_last_error(MB_ENOMEM);
+        return MB_ENOMEM;
+    }
+    void *map = mmap(NULL, size, PROT_READ | PROT_WRITE,
+                     MAP_SHARED, fd, 0);
+    if (map == MAP_FAILED) {
+        close(fd);
+        mb_internal_set_last_error(MB_ENOMEM);
+        return MB_ENOMEM;
+    }
+
+    // GPU → CPU copy + RGBA→BGRA swizzle + vertical flip + premultiply
+    // all happen inside gl_path. After this call `map` holds ARGB32
+    // premul pixels in the same layout Cairo apps produce.
+    mb_error_t rerr = mb_gl_window_read_framebuffer(w->gl, stride, map);
+    if (rerr != MB_EOK) {
+        munmap(map, size);
+        close(fd);
+        mb_internal_set_last_error(rerr);
+        return rerr;
+    }
+
+    // Drop the mapping before sending — the server mmaps its own
+    // view from the fd, and once we've written every byte we don't
+    // need a local mapping any more.
+    munmap(map, size);
+
+    mb_cbor_w_t cw;
+    mb_cbor_w_init_grow(&cw, 64);
+    mb_cbor_w_map_begin(&cw, 9);
+    mb_cbor_w_key(&cw, 1); mb_cbor_w_uint(&cw, w->id);
+    mb_cbor_w_key(&cw, 2); mb_cbor_w_uint(&cw, (uint64_t)px_w);
+    mb_cbor_w_key(&cw, 3); mb_cbor_w_uint(&cw, (uint64_t)px_h);
+    mb_cbor_w_key(&cw, 4); mb_cbor_w_uint(&cw, (uint64_t)stride);
+    mb_cbor_w_key(&cw, 5); mb_cbor_w_uint(&cw, 0);  // ARGB32 premul
+    mb_cbor_w_key(&cw, 6); mb_cbor_w_uint(&cw, 0);
+    mb_cbor_w_key(&cw, 7); mb_cbor_w_uint(&cw, 0);
+    mb_cbor_w_key(&cw, 8); mb_cbor_w_uint(&cw, (uint64_t)px_w);
+    mb_cbor_w_key(&cw, 9); mb_cbor_w_uint(&cw, (uint64_t)px_h);
+    if (!mb_cbor_w_ok(&cw)) {
+        mb_cbor_w_drop(&cw);
+        close(fd);
+        mb_internal_set_last_error(MB_ENOMEM);
+        return MB_ENOMEM;
+    }
+    size_t body_len = 0;
+    uint8_t *body = mb_cbor_w_finish(&cw, &body_len);
+    if (!body) {
+        close(fd);
+        mb_internal_set_last_error(MB_ENOMEM);
+        return MB_ENOMEM;
+    }
+
+    int send_fd = fd;
+    int rc = mb_conn_send(MB_IPC_WINDOW_COMMIT, body, body_len, &send_fd, 1);
+    free(body);
+
+    // The kernel dup'd our fd for delivery, so releasing our copy is
+    // correct whether send succeeded or not.
+    close(fd);
+
+    if (rc < 0) {
+        mb_internal_set_last_error((mb_error_t)rc);
+        return rc;
+    }
+    return 0;
 }
