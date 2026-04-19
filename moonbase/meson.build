@@ -565,3 +565,37 @@ hello_appc = custom_target('hello-appc',
   ],
   build_by_default: true,
 )
+
+# ---------------------------------------------------------------------
+# examples/textedit — TextEdit.appc v0.1
+# ---------------------------------------------------------------------
+#
+# Smallest useful Cairo app on MoonBase: one window, one in-memory byte
+# buffer, TEXT_INPUT + KEY_DOWN drive editing. Same bundle-assembly
+# shape as hello.appc. No menus, no file I/O, no selection yet —
+# TextEdit grows into those as their framework slices land.
+
+textedit_exe = executable(
+  'textedit',
+  'examples/textedit/main.c',
+  include_directories: include_directories('include'),
+  dependencies: [cairo_dep],
+  link_with: libmoonbase,
+  install: false,
+)
+
+textedit_appc = custom_target('textedit-appc',
+  output: 'textedit.appc',
+  input: [files('examples/textedit/Info.appc'), textedit_exe],
+  command: [
+    find_program('sh'), '-c',
+    'set -eu; '
+    + 'rm -rf "$0"; '
+    + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
+    + 'cp "$1" "$0/Contents/Info.appc"; '
+    + 'cp "$2" "$0/Contents/MacOS/textedit"; '
+    + 'chmod 0755 "$0/Contents/MacOS/textedit"',
+    '@OUTPUT@', '@INPUT0@', '@INPUT1@',
+  ],
+  build_by_default: true,
+)

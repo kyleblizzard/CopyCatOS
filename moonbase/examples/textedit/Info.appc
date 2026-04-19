@@ -1,0 +1,23 @@
+[bundle]
+id               = "show.blizzard.textedit"
+name             = "TextEdit"
+version          = "0.1.0"
+minimum-moonbase = "1.0"
+copyright        = "by Kyle Blizzard @ Blizzard.show"
+category         = "productivity"
+
+[executable]
+path                = "Contents/MacOS/textedit"
+language            = "c"
+render-mode-default = "cairo"
+
+[permissions]
+filesystem = []
+network    = []
+hardware   = []
+system     = []
+ipc        = []
+
+[localization]
+base-locale       = "en"
+supported-locales = ["en"]
