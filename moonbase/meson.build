@@ -120,6 +120,12 @@ libsecret_dep = dependency('libsecret-1')
 egl_dep   = dependency('egl')
 glesv2_dep = dependency('glesv2')
 
+# Preview.appc decodes PNG and JPEG via the distro-stock libraries.
+# Pulled in only for the example executable, not for libmoonbase itself —
+# the framework doesn't own image decode.
+libpng_dep  = dependency('libpng')
+libjpeg_dep = dependency('libjpeg')
+
 libmoonbase = shared_library(
   'moonbase',
   moonbase_lib_sources,
@@ -732,6 +738,42 @@ keychain_access_appc = custom_target('keychain-access-appc',
     + 'cp "$1" "$0/Contents/Info.appc"; '
     + 'cp "$2" "$0/Contents/MacOS/keychain-access"; '
     + 'chmod 0755 "$0/Contents/MacOS/keychain-access"',
+    '@OUTPUT@', '@INPUT0@', '@INPUT1@',
+  ],
+  build_by_default: true,
+)
+
+# ---------------------------------------------------------------------
+# examples/preview — Preview.appc v0.1
+# ---------------------------------------------------------------------
+#
+# Reference app 4 of 4 before the libmoonbase.so.1 public-SDK freeze.
+# Pressure-tests the GL render path, MB_EV_DRAG_* delivery, and the
+# moonbase_prefs_* store in one bundle: open an image (argv or
+# drag-drop), upload it as a GL texture, draw with letterboxing,
+# remember window size and last-opened path between runs. PNG + JPEG
+# only for v0.1 — every other format waits on its own slice.
+
+preview_exe = executable(
+  'preview',
+  'examples/preview/main.c',
+  include_directories: include_directories('include'),
+  dependencies: [glesv2_dep, libpng_dep, libjpeg_dep],
+  link_with: libmoonbase,
+  install: false,
+)
+
+preview_appc = custom_target('preview-appc',
+  output: 'preview.appc',
+  input: [files('examples/preview/Info.appc'), preview_exe],
+  command: [
+    find_program('sh'), '-c',
+    'set -eu; '
+    + 'rm -rf "$0"; '
+    + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
+    + 'cp "$1" "$0/Contents/Info.appc"; '
+    + 'cp "$2" "$0/Contents/MacOS/preview"; '
+    + 'chmod 0755 "$0/Contents/MacOS/preview"',
     '@OUTPUT@', '@INPUT0@', '@INPUT1@',
   ],
   build_by_default: true,
