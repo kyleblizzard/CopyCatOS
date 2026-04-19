@@ -36,6 +36,13 @@ libpng_dep = dependency('libpng')
 cc = meson.get_compiler('c')
 math_dep = cc.find_library('m', required: true)
 
+# MoonRock -> shell scale bridge. Client-side reader lives in
+# ../moonrock/shell-api/ and is compiled directly into menubar. Every shell
+# component (dock, desktop, systemcontrol) will eventually do the same —
+# a standalone helper library isn't worth the packaging overhead for three
+# C files that change as a set with moonrock's display module.
+moonrock_shell_api_dir = '../moonrock/shell-api'
+
 sources = [
   'src/main.c',
   'src/menubar.c',
@@ -43,10 +50,12 @@ sources = [
   'src/appmenu.c',
   'src/systray.c',
   'src/apple.c',
+  moonrock_shell_api_dir / 'moonrock_scale.c',
 ]
 
 executable('menubar',
   sources,
+  include_directories: include_directories(moonrock_shell_api_dir),
   dependencies: [x11_dep, cairo_dep, cairo_xlib_dep, pangocairo_dep, libpng_dep, math_dep],
   install: true,
   install_dir: get_option('bindir'),

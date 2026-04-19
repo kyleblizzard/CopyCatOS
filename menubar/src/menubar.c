@@ -30,6 +30,13 @@
 #include "appmenu.h"
 #include "systray.h"
 
+// MoonRock -> shell scale bridge. MoonRock publishes per-output HiDPI scale
+// to the root window; we subscribe so menubar knows the effective scale for
+// its hosting output. Task 3 wiring is proof-of-life only — the logged value
+// will drive real pixel-size math once Phase E task 2 converts our
+// hardcoded constants to points.
+#include "moonrock_scale.h"
+
 // Runtime menubar height — configurable via ~/.config/copycatos/desktop.conf
 // Default 22px (Snow Leopard standard), range 22-88 for handheld devices.
 int menubar_height = DEFAULT_MENUBAR_HEIGHT;
@@ -37,6 +44,36 @@ int menubar_height = DEFAULT_MENUBAR_HEIGHT;
 // Proportional scale factor — all dimensions scale by this value.
 // At 22px (default), scale is 1.0. At 44px, scale is 2.0. At 88px, scale is 4.0.
 double menubar_scale = 1.0;
+
+// Live snapshot of every connected output's scale as published by MoonRock
+// on the root window. Rewritten at startup and on every PropertyNotify for
+// the _MOONROCK_OUTPUT_SCALES atom. Separate from menubar_scale (which is
+// the user's height preference for the bar itself) — this one is the
+// compositor-driven HiDPI scale for the hosting output.
+static MoonRockScaleTable g_output_scales;
+
+// Log a one-line summary of the current scale table. Keeps the bridge
+// observable end-to-end without cluttering the main paint loop yet.
+static void log_scale_table(const char *reason)
+{
+    if (!g_output_scales.valid || g_output_scales.count == 0) {
+        fprintf(stderr,
+                "[menubar] scale: %s — no MoonRock table yet "
+                "(compositor may not be running)\n",
+                reason);
+        return;
+    }
+    // Menubar lives at the top-left of the virtual screen, so the scale for
+    // point (0,0) is the scale of the output hosting us.
+    float here = moonrock_scale_for_point(&g_output_scales, 0, 0);
+    fprintf(stderr, "[menubar] scale: %s — %d output(s); host=%.2f\n",
+            reason, g_output_scales.count, (double)here);
+    for (int i = 0; i < g_output_scales.count; i++) {
+        const MoonRockOutputScale *o = &g_output_scales.outputs[i];
+        fprintf(stderr, "[menubar] scale:   %s %dx%d @ (%d,%d) scale=%.2f\n",
+                o->name, o->width, o->height, o->x, o->y, (double)o->scale);
+    }
+}
 
 // SIGHUP reload flag — set by signal handler, checked in event loop
 static volatile bool reload_config = false;
@@ -219,6 +256,16 @@ bool menubar_init(MenuBar *mb)
 
     // ── Watch root window for active window changes ─────────────
     XSelectInput(mb->dpy, mb->root, PropertyChangeMask);
+
+    // ── Subscribe to MoonRock's per-output scale bridge ─────────
+    // moonrock_scale_init preserves the mask bits we just set above; it
+    // only adds PropertyChangeMask if it isn't already on, so the order
+    // here is defensive. The first refresh may return false if the
+    // compositor hasn't started yet (property missing) — that's fine, a
+    // later PropertyNotify will fill the table in.
+    moonrock_scale_init(mb->dpy);
+    moonrock_scale_refresh(mb->dpy, &g_output_scales);
+    log_scale_table("init");
 
     // ── Map (show) the window ───────────────────────────────────
     XMapWindow(mb->dpy, mb->win);
@@ -564,6 +611,14 @@ void menubar_run(MenuBar *mb)
                     }
                     appmenu_update_active(mb);
                     menubar_paint(mb);
+                } else if (ev.xproperty.atom == moonrock_scale_atom(mb->dpy)) {
+                    // MoonRock updated the per-output scale table — either
+                    // a hotplug changed the output set, or the user moved
+                    // a Displays-pane slider. Refresh our cached snapshot.
+                    // Point-size → pixel conversions that consume this
+                    // land in Phase E task 2.
+                    moonrock_scale_refresh(mb->dpy, &g_output_scales);
+                    log_scale_table("property-notify");
                 }
                 break;
 

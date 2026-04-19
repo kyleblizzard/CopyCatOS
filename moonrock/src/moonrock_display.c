@@ -23,6 +23,10 @@
 #include "moonrock_display.h"
 #include "wm_compat.h"
 
+// Public contract for the MoonRock -> shell scale bridge. We only need the
+// atom name from it here — the parser and subscribe helpers are client-side.
+#include "moonrock_scale.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -432,6 +436,66 @@ static size_t read_edid_blob(Display *dpy, RROutput output,
 
 
 // ============================================================================
+//  Publish scales to the root window
+// ============================================================================
+//
+// Shell components (menubar, dock, desktop, systemcontrol) are standalone
+// X11 processes. MoonRock is the single source of truth for per-output
+// scale, but those components can't link against MoonRock's C API. The
+// bridge is a line-oriented UTF-8 property on the root window, written
+// under the atom _MOONROCK_OUTPUT_SCALES. Every connected output emits
+// one newline-terminated line:
+//
+//     <name> <x> <y> <width> <height> <scale>
+//
+// Xlib converts a root-property write into a PropertyNotify event on every
+// client that has PropertyChangeMask selected on the root window, so
+// subscribers get live updates automatically — no new socket, no new
+// daemon. See moonrock/shell-api/moonrock_scale.h for the reader side.
+//
+// Callers: end of display_init() (covers startup and hotplug, since
+// display_handle_hotplug() re-enters display_init) and end of
+// display_set_scale_for_output() (covers SysPrefs changing user scale).
+static void publish_scales_to_root(void)
+{
+    if (!display_dpy || display_root == None) return;
+
+    // Assemble the payload. MOONROCK_SCALE_MAX_OUTPUTS * ~80 bytes per
+    // line is still comfortably under a few KB — a 4096-byte stack buffer
+    // matches what the client side requests in one XGetWindowProperty().
+    char buf[4096];
+    size_t pos = 0;
+
+    for (int i = 0; i < output_count && pos < sizeof(buf); i++) {
+        int n = snprintf(buf + pos, sizeof(buf) - pos,
+                         "%s %d %d %d %d %.3f\n",
+                         outputs[i].name,
+                         outputs[i].x, outputs[i].y,
+                         outputs[i].width, outputs[i].height,
+                         (double)outputs[i].scale);
+        if (n < 0) break;
+        if ((size_t)n >= sizeof(buf) - pos) {
+            // Line didn't fit — stop here rather than emit a truncated
+            // line the parser might mis-read.
+            break;
+        }
+        pos += (size_t)n;
+    }
+
+    Atom prop = XInternAtom(display_dpy, MOONROCK_SCALE_ATOM_NAME, False);
+    Atom utf8 = XInternAtom(display_dpy, "UTF8_STRING", False);
+
+    XChangeProperty(display_dpy, display_root, prop, utf8, 8,
+                    PropModeReplace, (unsigned char *)buf, (int)pos);
+    XFlush(display_dpy);
+
+    fprintf(stderr, "[display] Published %d scale entr%s to %s (%zu bytes)\n",
+            output_count, output_count == 1 ? "y" : "ies",
+            MOONROCK_SCALE_ATOM_NAME, pos);
+}
+
+
+// ============================================================================
 //  Initialization
 // ============================================================================
 
@@ -713,6 +777,11 @@ bool display_init(Display *dpy, int screen)
                    RRScreenChangeNotifyMask |
                    RROutputChangeNotifyMask |
                    RRCrtcChangeNotifyMask);
+
+    // Publish the per-output scale table to the root window so standalone
+    // shell components can pick it up without calling into us. Covers
+    // hotplug too because display_handle_hotplug() re-enters display_init.
+    publish_scales_to_root();
 
     fprintf(stderr, "[display] Initialized: %d output(s)\n", output_count);
     return true;
@@ -1030,6 +1099,10 @@ bool display_set_scale_for_output(MROutput *output, float scale)
                                  : outputs[i].default_scale;
         }
     }
+
+    // Rewrite the shell-facing property so live subscribers (menubar, dock,
+    // desktop) see the new scale immediately via PropertyNotify.
+    publish_scales_to_root();
 
     return save_scale_overrides();
 }

@@ -119,9 +119,15 @@ moonbase_includes = include_directories(
   '../moonbase/src/server',
 )
 
+# shell-api/ carries headers that are also consumed by standalone shell
+# components (menubar, dock, desktop). Publishing side of the per-output
+# scale bridge lives in moonrock_display.c; it only needs the atom-name
+# macro from moonrock_scale.h, not the .c file.
+shell_api_includes = include_directories('shell-api')
+
 executable('moonrock',
   cc_wm_sources + moonrock_sources + moonbase_ipc_sources,
-  include_directories: [moonbase_includes],
+  include_directories: [moonbase_includes, shell_api_includes],
   dependencies: [
     x11_dep, xcomposite_dep, xdamage_dep, xfixes_dep,
     xext_dep, xrender_dep, xrandr_dep,
