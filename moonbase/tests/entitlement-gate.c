@@ -4,10 +4,12 @@
 //
 // Proves every privileged moonbase_keychain_* call returns MB_EPERM
 // when MOONBASE_ENTITLEMENTS doesn't declare `system=keychain`. Also
-// proves the gate lifts when the declaration is present — the
-// libsecret call that follows may fail for unrelated reasons (no D-Bus
-// session bus on a bare CI runner), but "not MB_EPERM" is the load-
-// bearing invariant the gate contract promises.
+// proves the entitlement gate lifts when the declaration is present
+// (the allow phase pre-seeds a consent ALLOW so the consent gate
+// short-circuits, isolating this test to the entitlement boundary) —
+// the libsecret call that follows may fail for unrelated reasons (no
+// D-Bus session bus on a bare CI runner), but "not MB_EPERM" is the
+// load-bearing invariant the gate contract promises.
 //
 // Each phase runs in its own forked child so the pthread_once cache
 // inside entitlements.c starts fresh with the right env visible.
