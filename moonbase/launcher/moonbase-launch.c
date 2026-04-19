@@ -134,13 +134,15 @@ static int mkdir_p(const char *path, mode_t mode) {
 // The function never mutates its caller's args.
 static int find_profile(const char *tier, char *out, size_t cap) {
     const char *env_dir = getenv("MOONBASE_SANDBOX_DIR");
+    // env_dir may be NULL when running from an installed tree; bounded
+    // iteration ensures a NULL candidate is skipped instead of ending
+    // the loop, so the install-path fallbacks are always reachable.
     const char *candidates[] = {
         env_dir,                                        // 1
         "/usr/local/share/moonbase/sandbox",            // 2a
         "/usr/share/moonbase/sandbox",                  // 2b
-        NULL,
     };
-    for (size_t i = 0; candidates[i]; i++) {
+    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
         if (!candidates[i]) continue;
         int n = snprintf(out, cap, "%s/%s.profile", candidates[i], tier);
         if (n < 0 || (size_t)n >= cap) continue;
