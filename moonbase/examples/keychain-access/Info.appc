@@ -1,0 +1,23 @@
+[bundle]
+id               = "show.blizzard.keychainaccess"
+name             = "Keychain Access"
+version          = "0.1.0"
+minimum-moonbase = "1.0"
+copyright        = "by Kyle Blizzard @ Blizzard.show"
+category         = "utility"
+
+[executable]
+path                = "Contents/MacOS/keychain-access"
+language            = "c"
+render-mode-default = "cairo"
+
+[permissions]
+filesystem = []
+network    = []
+hardware   = []
+system     = ["keychain"]
+ipc        = []
+
+[localization]
+base-locale       = "en"
+supported-locales = ["en"]

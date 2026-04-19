@@ -87,6 +87,7 @@ moonbase_lib_sources = files(
   'src/ipc/debug.c',
   'src/ipc/frame.c',
   'src/ipc/transport.c',
+  'src/keychain/keychain.c',
   'src/server/server.c',
 )
 
@@ -104,13 +105,19 @@ threads_dep = dependency('threads')
 # use EGL + GBM instead — but every cairo-rendering app expects it.
 cairo_dep = dependency('cairo')
 
+# libsecret is the Secret Service D-Bus client library the keychain
+# adapter wraps. One shared libmoonbase link means every language
+# binding (C, Python, Rust, Swift, Web) gets keychain for free. The
+# glib2 pull-in is transitive via libsecret's pkg-config file.
+libsecret_dep = dependency('libsecret-1')
+
 libmoonbase = shared_library(
   'moonbase',
   moonbase_lib_sources,
   include_directories: include_directories('include', 'src'),
   version: '1.0.0',
   soversion: '1',
-  dependencies: [threads_dep, cairo_dep],
+  dependencies: [threads_dep, cairo_dep, libsecret_dep],
   install: true,
 )
 
@@ -595,6 +602,47 @@ textedit_appc = custom_target('textedit-appc',
     + 'cp "$1" "$0/Contents/Info.appc"; '
     + 'cp "$2" "$0/Contents/MacOS/textedit"; '
     + 'chmod 0755 "$0/Contents/MacOS/textedit"',
+    '@OUTPUT@', '@INPUT0@', '@INPUT1@',
+  ],
+  build_by_default: true,
+)
+
+# ---------------------------------------------------------------------
+# examples/keychain-access — Keychain Access.appc v0.1
+# ---------------------------------------------------------------------
+#
+# Reference app 3 of 4 required before the libmoonbase.so.1 public-SDK
+# freeze. Drives every public symbol in moonbase_keychain.h through a
+# real bundle: list / store / fetch / delete / generate_password /
+# secret_free. v0.1 uses auto-generated labels + 20-char passwords so
+# the app doesn't need a text-entry form yet (that lands when the
+# framework grows modal dialogs).
+#
+# system:"keychain" in Info.appc is advisory in v1 — every native-tier
+# bundle already reaches the session D-Bus bus through the launcher's
+# XDG_RUNTIME_DIR bind. Tightening to a real fence waits on a sandboxed
+# xdg-dbus-proxy filter.
+
+keychain_access_exe = executable(
+  'keychain-access',
+  'examples/keychain-access/main.c',
+  include_directories: include_directories('include'),
+  dependencies: [cairo_dep],
+  link_with: libmoonbase,
+  install: false,
+)
+
+keychain_access_appc = custom_target('keychain-access-appc',
+  output: 'keychain-access.appc',
+  input: [files('examples/keychain-access/Info.appc'), keychain_access_exe],
+  command: [
+    find_program('sh'), '-c',
+    'set -eu; '
+    + 'rm -rf "$0"; '
+    + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
+    + 'cp "$1" "$0/Contents/Info.appc"; '
+    + 'cp "$2" "$0/Contents/MacOS/keychain-access"; '
+    + 'chmod 0755 "$0/Contents/MacOS/keychain-access"',
     '@OUTPUT@', '@INPUT0@', '@INPUT1@',
   ],
   build_by_default: true,
