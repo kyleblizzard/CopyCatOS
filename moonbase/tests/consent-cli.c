@@ -146,6 +146,63 @@ static void phase_unknown_verb_falls_through(void) {
           "unknown verb falls through to first-launch arm");
 }
 
+// Phase 7: `ask` with MOONBASE_CONSENT_AUTO=approve exits 0 and
+// writes ALLOW. Pairs what moonrock's responder will do once slice
+// 6B.2 lands — the responder hands the verdict off to the CLI by
+// setting MOONBASE_CONSENT_AUTO and forking; the CLI does the write.
+static void phase_ask_auto_approve(void) {
+    const char *bid = "show.blizzard.cli-ask-approve";
+    char *argv[] = {
+        (char *)g_cli, "ask", "system", "keychain",
+        (char *)bid, "signing into iCloud", NULL
+    };
+    // setenv overwrite=1 in the parent; run_cli forks and the child
+    // inherits the env, so the automation arm fires.
+    setenv("MOONBASE_CONSENT_AUTO", "approve", 1);
+    int rc = run_cli(argv, bid, false);
+    unsetenv("MOONBASE_CONSENT_AUTO");
+    CHECK(rc == 0, "ask + AUTO=approve exits 0");
+
+    setenv("MOONBASE_BUNDLE_ID", bid, 1);
+    CHECK(mb_consent_query("system", "keychain") == MB_CONSENT_ALLOW,
+          "reader sees ALLOW after ask+approve");
+    CHECK(mb_consent_gate_allows("system", "keychain"),
+          "gate returns true after ask+approve");
+}
+
+// Phase 8: `ask` with MOONBASE_CONSENT_AUTO=reject exits 1 and
+// writes DENY. A DENY is a recorded decision the gate honors —
+// distinct from "nothing recorded" which the 6A gate flip will treat
+// as prompt-on-use.
+static void phase_ask_auto_reject(void) {
+    const char *bid = "show.blizzard.cli-ask-reject";
+    char *argv[] = {
+        (char *)g_cli, "ask", "hardware", "microphone",
+        (char *)bid, NULL  // no context arg — optional
+    };
+    setenv("MOONBASE_CONSENT_AUTO", "reject", 1);
+    int rc = run_cli(argv, bid, false);
+    unsetenv("MOONBASE_CONSENT_AUTO");
+    CHECK(rc == 1, "ask + AUTO=reject exits 1");
+
+    setenv("MOONBASE_BUNDLE_ID", bid, 1);
+    CHECK(mb_consent_query("hardware", "microphone") == MB_CONSENT_DENY,
+          "reader sees DENY after ask+reject");
+    CHECK(!mb_consent_gate_allows("hardware", "microphone"),
+          "gate returns false after ask+reject");
+}
+
+// Phase 9: `ask` with too few args trips usage path (exit 2) and
+// writes nothing. Pin the argc contract so moonrock's responder can
+// rely on exit 2 ≠ "user decided deny".
+static void phase_ask_bad_argc(void) {
+    char *argv[] = {
+        (char *)g_cli, "ask", "system", "keychain", NULL
+    };
+    int rc = run_cli(argv, NULL, false);
+    CHECK(rc == 2, "ask argc < 5 exits 2");
+}
+
 int main(int argc, char **argv) {
     if (argc < 2) {
         fprintf(stderr,
@@ -175,6 +232,9 @@ int main(int argc, char **argv) {
     phase_no_bundle_id_fails();
     phase_bad_argc();
     phase_unknown_verb_falls_through();
+    phase_ask_auto_approve();
+    phase_ask_auto_reject();
+    phase_ask_bad_argc();
 
     if (failures) {
         fprintf(stderr, "consent-cli: %d failure(s)\n", failures);

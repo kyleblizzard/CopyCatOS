@@ -1,9 +1,9 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // moonbase-consent — first-launch consent sheet + per-capability
-// consent recorder.
+// consent recorder + IPC consent responder.
 //
-// Two surfaces live in this one binary, dispatched by argv[1]:
+// Three surfaces live in this one binary, dispatched by argv[1]:
 //
 //   1. First-launch sheet (called by moonbase-launch):
 //        moonbase-consent <bundle-path> <bundle-id>
@@ -29,12 +29,24 @@
 //      IPC grant path lands, this CLI is the `defaults write` of the
 //      MoonBase consent store for tests, CI seeding, and post-incident
 //      repair.
+//
+//   3. IPC consent responder (compositor-spawned sheet):
+//        moonbase-consent ask <group> <value> <bundle-id> [context]
+//      What moonrock forks when a client sends MB_IPC_CONSENT_REQUEST.
+//      Interim behavior mirrors surface 1: MOONBASE_CONSENT_AUTO=
+//      approve|reject always wins, a TTY gets a y/n prompt, headless
+//      + no override declines. Once decided it writes the row via
+//      mb_consent_record and exits 0 for allow / 1 for deny so the
+//      responder can translate the exit code directly to GRANT/DENY.
+//      The real MoonBase-drawn Aqua sheet lands in a follow-up slice
+//      and replaces the TTY/headless arms here.
 
 #include "bundle/bundle.h"
 #include "bundle/info_appc.h"
 #include "consents.h"
 
 #include <errno.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -188,13 +200,108 @@ static int cmd_record_consent(int argc, char **argv) {
     return 1;
 }
 
+// ask-consent subcommand: `moonbase-consent ask <group> <value>
+// <bundle-id> [context]`. Dispatched from main() when argv[1] == "ask".
+//
+// This is what the moonrock responder spawns when a client sends
+// MB_IPC_CONSENT_REQUEST. It decides (sheet UI is a follow-up slice —
+// interim behavior: MOONBASE_CONSENT_AUTO=approve|reject always wins;
+// TTY → y/n prompt; headless + no override → deny safe-default),
+// records the decision into the caller bundle's consents.toml via
+// mb_consent_record, and exits with a code the responder maps to an
+// IPC reply:
+//
+//   0 → allow decision persisted → MB_IPC_CONSENT_GRANT
+//   1 → deny  decision persisted → MB_IPC_CONSENT_DENY
+//   2 → usage error (bad argc)   → MB_IPC_ERROR (treat as deny)
+//   3 → writer failure           → MB_IPC_ERROR (nothing was recorded)
+//
+// Keeping exit 3 distinct from exit 1 lets the responder log a real
+// error and surface MB_EIPC instead of masking a disk-full / read-only
+// store as "user denied." `mb_consent_record` failures are rare, but
+// when they happen diagnostics matter.
+//
+// `context` is an optional human-readable reason the app passed with
+// its request; it's shown on stderr so the user (or an operator
+// reading logs) sees why the prompt happened. It is NOT written into
+// consents.toml — the store is allow/deny keyed by capability, not
+// allow/deny/reason.
+static int cmd_ask_consent(int argc, char **argv) {
+    if (argc < 5 || argc > 6) {
+        fprintf(stderr,
+            "moonbase-consent: usage: %s ask <group> <value> "
+            "<bundle-id> [context]\n",
+            argv[0]);
+        return 2;
+    }
+    const char *group     = argv[2];
+    const char *value     = argv[3];
+    const char *bundle_id = argv[4];
+    const char *context   = (argc == 6) ? argv[5] : "";
+
+    // The writer resolves the consents.toml path from MOONBASE_BUNDLE_ID.
+    // overwrite=1 so a stale value from the caller's env can't silently
+    // target the wrong bundle.
+    if (setenv("MOONBASE_BUNDLE_ID", bundle_id, 1) != 0) {
+        fprintf(stderr,
+            "moonbase-consent: setenv(MOONBASE_BUNDLE_ID) failed: %s\n",
+            strerror(errno));
+        return 1;
+    }
+
+    // Automation override always wins — same precedent as the
+    // first-launch sheet path below.
+    const char *mode    = getenv("MOONBASE_CONSENT_AUTO");
+    bool decided = false;
+    bool allow   = false;
+    if (mode && strcmp(mode, "approve") == 0) { allow = true;  decided = true; }
+    if (mode && strcmp(mode, "reject")  == 0) { allow = false; decided = true; }
+
+    if (!decided) {
+        fprintf(stderr,
+            "\n━━ %s wants to use %s.%s ━━\n",
+            bundle_id, group, value);
+        if (context && *context) {
+            fprintf(stderr, "  reason: %s\n", context);
+        }
+        if (isatty(STDIN_FILENO)) {
+            allow = prompt_yn();
+        } else {
+            fprintf(stderr,
+                "moonbase-consent: no TTY + no MOONBASE_CONSENT_AUTO — "
+                "declining [%s.%s] for %s.\n",
+                group, value, bundle_id);
+            allow = false;
+        }
+    }
+
+    mb_consent_status_t decision = allow
+        ? MB_CONSENT_ALLOW
+        : MB_CONSENT_DENY;
+    mb_error_t rc = mb_consent_record(group, value, decision);
+    if (rc != MB_EOK) {
+        fprintf(stderr,
+            "moonbase-consent: failed to record [%s.%s] for %s (%s).\n",
+            group, value, bundle_id, moonbase_error_string(rc));
+        return 3;
+    }
+
+    fprintf(stderr,
+        "moonbase-consent: recorded %s for [%s.%s] in %s\n",
+        allow ? "allow" : "deny", group, value, bundle_id);
+    return allow ? 0 : 1;
+}
+
 int main(int argc, char **argv) {
-    // Subcommand dispatch — record-consent surface comes first so the
-    // admin CLI path is noise-free. Falls through to the first-launch
-    // sheet otherwise.
+    // Subcommand dispatch — record-consent surfaces come first so the
+    // admin and IPC-responder CLI paths are noise-free. Falls through
+    // to the first-launch sheet otherwise.
     if (argc >= 2 && (strcmp(argv[1], "allow") == 0 ||
                       strcmp(argv[1], "deny")  == 0)) {
         return cmd_record_consent(argc, argv);
+    }
+    if (argc >= 2 && strcmp(argv[1], "ask") == 0) {
+        return cmd_ask_consent(argc, argv);
     }
 
     if (argc < 3) {
@@ -203,8 +310,10 @@ int main(int argc, char **argv) {
             "  %s <bundle-path> <bundle-id>\n"
             "      first-launch sheet (called by moonbase-launch)\n"
             "  %s <allow|deny> <group> <value> [bundle-id]\n"
-            "      record a first-use consent into consents.toml\n",
-            argv[0], argv[0]);
+            "      record a first-use consent into consents.toml\n"
+            "  %s ask <group> <value> <bundle-id> [context]\n"
+            "      prompt for a first-use consent (IPC responder path)\n",
+            argv[0], argv[0], argv[0]);
         return 2;
     }
     const char *bundle_path = argv[1];
