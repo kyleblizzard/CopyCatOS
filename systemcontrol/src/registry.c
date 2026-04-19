@@ -52,11 +52,13 @@ static void add_pane(SysPrefsState *state,
 }
 
 // ============================================================================
-// registry_init — Register all 27 preference panes
+// registry_init — Register all preference panes (Snow Leopard's 27 + About MoonBase)
 // ============================================================================
 //
 // The order within each category matches the real Snow Leopard System
 // Preferences exactly. Categories are: personal, hardware, net, system.
+// About MoonBase is appended to System — a CopyCatOS-specific addition
+// that surfaces the installed libmoonbase.so.1 runtime version.
 // ============================================================================
 void registry_init(SysPrefsState *state)
 {
@@ -89,7 +91,7 @@ void registry_init(SysPrefsState *state)
     add_pane(state, "bluetooth",         "Bluetooth",               "net",      "bluetooth");
     add_pane(state, "sharing",           "Sharing",                 "net",      "sharing");
 
-    // ── System (8 panes) ────────────────────────────────────────────────
+    // ── System (9 panes — Snow Leopard's 8 plus CopyCatOS's About MoonBase) ──
     add_pane(state, "accounts",          "Accounts",               "system",   "accounts");
     add_pane(state, "date-time",         "Date &\nTime",           "system",   "date-time");
     add_pane(state, "parental-controls", "Parental\nControls",     "system",   "parental-controls");
@@ -98,6 +100,7 @@ void registry_init(SysPrefsState *state)
     add_pane(state, "startup-disk",      "Startup\nDisk",          "system",   "startup-disk");
     add_pane(state, "time-machine",      "Time\nMachine",          "system",   "time-machine");
     add_pane(state, "universal-access",  "Universal\nAccess",      "system",   "universal-access");
+    add_pane(state, "about-moonbase",    "About\nMoonBase",        "system",   "about-moonbase");
 
     // ── Build category index ────────────────────────────────────────────
     // Walk through panes and group them by category

@@ -29,12 +29,19 @@ __pycache__/
 !/README.md
 
 # ── Copyrighted / reference material (local-only) ───────────────────
+# Leading slashes anchor these to the repo root so directories named
+# "icons" / "fonts" deeper in the tree (e.g. systemcontrol/assets/icons)
+# aren't accidentally excluded. The root-level icons/ is the Aqua theme
+# dev cache; nested icons/ directories are legitimate component assets.
+# assets/source/ dirs hold raw high-res icon sources (e.g. Grok Imagine
+# outputs at 3000×3000+) — only the downscaled derivatives ship.
 snowleopardaura/
-icons/
+/icons/
 tutorial/
 screenshots/
 wallpaper/
-fonts/
+/fonts/
+**/assets/source/
 
 # ── Claude / AI config (never ships) ────────────────────────────────
 CLAUDE.md

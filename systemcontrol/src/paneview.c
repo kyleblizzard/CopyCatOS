@@ -14,6 +14,7 @@
 #include "panes/dock.h"
 #include "panes/controller.h"
 #include "panes/power.h"
+#include "panes/about.h"
 
 #include <string.h>
 
@@ -39,6 +40,9 @@ void paneview_paint(SysPrefsState *state)
     } else if (strcmp(id, "energy-saver") == 0) {
         // Energy Saver pane shows power button timing settings
         power_pane_paint(state);
+    } else if (strcmp(id, "about-moonbase") == 0) {
+        // About MoonBase pane shows the installed libmoonbase.so.1 version
+        about_paint(state, state->current_pane);
     } else {
         // All other panes show the stub view
         stub_paint(state, state->current_pane);

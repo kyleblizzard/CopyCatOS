@@ -35,6 +35,7 @@ sources = [
   'src/panes/dock.c',
   'src/panes/controller.c',
   'src/panes/power.c',
+  'src/panes/about.c',
   inputmap_dir / 'config_editor.c',
   inputmap_dir / 'scanner.c',
 ]
