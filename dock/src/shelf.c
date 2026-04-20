@@ -147,14 +147,22 @@ void shelf_draw_bottom_band(DockState *state, int shelf_width)
     cairo_save(cr);
     cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
 
-    // Dark contact line at yfb=3 — RGB(91,84,91)
+    // Scale the 1-pt dark line and 2-pt bright highlight to match the output's
+    // backing scale so the bottom band reads the same thickness at any HiDPI
+    // factor. Stacked from the bottom up to avoid overlap at fractional scales.
+    int bright_h = (int)(2 * state->hidpi_scale + 0.5);
+    int dark_h   = (int)(1 * state->hidpi_scale + 0.5);
+    int bright_y = state->win_h - bright_h;
+    int dark_y   = bright_y - dark_h;
+
+    // Dark contact line (1 pt above bright) — RGB(91,84,91)
     cairo_set_source_rgba(cr, 91/255.0, 84/255.0, 91/255.0, 1.0);
-    cairo_rectangle(cr, shelf_x, state->win_h - 3, shelf_width, 1);
+    cairo_rectangle(cr, shelf_x, dark_y, shelf_width, dark_h);
     cairo_fill(cr);
 
-    // Bright bottom highlight at yfb 1-2 — RGB(232,231,232)
+    // Bright bottom highlight (2 pt from bottom) — RGB(232,231,232)
     cairo_set_source_rgba(cr, 232/255.0, 231/255.0, 232/255.0, 1.0);
-    cairo_rectangle(cr, shelf_x, state->win_h - 2, shelf_width, 2);
+    cairo_rectangle(cr, shelf_x, bright_y, shelf_width, bright_h);
     cairo_fill(cr);
 
     cairo_restore(cr);

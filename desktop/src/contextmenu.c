@@ -22,6 +22,7 @@
 #define _GNU_SOURCE  // For M_PI in math.h under strict C11
 
 #include "contextmenu.h"
+#include "desktop.h"
 #include "labels.h"
 
 #include <X11/Xlib.h>
@@ -35,18 +36,38 @@
 #include <string.h>
 #include <math.h>
 
-// ── Menu configuration ──────────────────────────────────────────────
+// ── Menu geometry (point values, scaled to physical px via S()/SF()) ──
+//
+// Each constant expands to an S()/SF() expression so it evaluates at call
+// time against the current desktop_hidpi_scale. That means every use site
+// produces correct physical pixels on a 1.0× external or a 1.75× panel,
+// with no per-function local scaling dance.
+#define MENU_WIDTH          S(240)    // Total menu width
+#define MENU_ITEM_HEIGHT    S(22)     // Height of each menu item
+#define MENU_PAD_H          S(4)      // Horizontal padding inside items
+#define MENU_PAD_V          S(3)      // Vertical padding above/below items
+#define MENU_CORNER_RADIUS  SF(6.0)   // Corner radius for the menu background
+#define MENU_SHADOW_SIZE    S(8)      // Drop-shadow ring thickness
+#define MENU_SEP_MARGIN     S(12)     // Horizontal margin for separator lines
+#define MENU_SEP_HEIGHT     S(7)      // Total height of a separator row
+#define MENU_SEL_INSET      S(4)      // Horizontal inset for selection pill
+#define MENU_SEL_RADIUS     SF(4.0)   // Selection pill corner radius
+#define MENU_ICON_GUTTER    S(16)     // Leading space before item label text
+#define MENU_TEXT_Y_OFF     S(3)      // Baseline offset for item text
+#define MENU_ARROW_GUTTER   S(8)      // Trailing gap before submenu arrow
+#define MENU_LINE_WIDTH     SF(1.0)   // Stroke width for separators + borders
 
-// Visual constants for menu rendering
-#define MENU_WIDTH        240     // Total menu width in pixels
-#define MENU_ITEM_HEIGHT   22     // Height of each menu item
-#define MENU_PAD_H          4     // Horizontal padding inside items
-#define MENU_PAD_V          3     // Vertical padding above/below items
-#define MENU_CORNER_RADIUS  6     // Corner radius for the menu background
-#define MENU_SHADOW_SIZE    8     // Size of the drop shadow in pixels
-#define MENU_SEP_MARGIN    12     // Horizontal margin for separator lines
-#define MENU_SEP_HEIGHT     7     // Total height of a separator (3px margin + 1px line + 3px margin)
-#define MENU_FONT          "Lucida Grande 13"  // Font for menu items
+// Build the "Lucida Grande <pt>" string with the point size scaled to the
+// active hidpi factor — then Pango will render the glyphs at the right
+// physical-pixel size instead of leaving 13pt on every output.
+static void set_menu_font(PangoLayout *layout)
+{
+    char buf[48];
+    snprintf(buf, sizeof(buf), "Lucida Grande %d", S(13));
+    PangoFontDescription *fd = pango_font_description_from_string(buf);
+    pango_layout_set_font_description(layout, fd);
+    pango_font_description_free(fd);
+}
 
 // A single menu item. Can be a regular item, a separator, or a
 // submenu placeholder.
@@ -99,20 +120,6 @@ static int calc_menu_height(void)
         }
     }
     return h;
-}
-
-// Get the Y offset (from menu top) for a given item index.
-static int item_y_offset(int index)
-{
-    int y = MENU_PAD_V;
-    for (int i = 0; i < index && i < (int)MENU_ITEM_COUNT; i++) {
-        if (menu_items[i].is_separator) {
-            y += MENU_SEP_HEIGHT;
-        } else {
-            y += MENU_ITEM_HEIGHT;
-        }
-    }
-    return y;
 }
 
 // Get the height of a specific item.
@@ -181,9 +188,9 @@ static void paint_menu(cairo_t *cr, int menu_w, int menu_h,
     cairo_set_source_rgba(cr, 240.0/255, 240.0/255, 240.0/255, 245.0/255);
     cairo_fill_preserve(cr);
 
-    // 1px border
+    // 1pt border (scaled)
     cairo_set_source_rgba(cr, 160.0/255, 160.0/255, 160.0/255, 1.0);
-    cairo_set_line_width(cr, 1.0);
+    cairo_set_line_width(cr, MENU_LINE_WIDTH);
     cairo_stroke(cr);
 
     // Draw each menu item
@@ -196,7 +203,7 @@ static void paint_menu(cairo_t *cr, int menu_w, int menu_h,
             // Draw separator line: thin horizontal line with margins
             int sep_y = y + MENU_SEP_HEIGHT / 2;
             cairo_set_source_rgba(cr, 200.0/255, 200.0/255, 200.0/255, 160.0/255);
-            cairo_set_line_width(cr, 1.0);
+            cairo_set_line_width(cr, MENU_LINE_WIDTH);
             cairo_move_to(cr, MENU_SHADOW_SIZE + MENU_SEP_MARGIN, sep_y + 0.5);
             cairo_line_to(cr, menu_w - MENU_SHADOW_SIZE - MENU_SEP_MARGIN, sep_y + 0.5);
             cairo_stroke(cr);
@@ -208,11 +215,11 @@ static void paint_menu(cairo_t *cr, int menu_w, int menu_h,
                 // Draw blue selection background with rounded corners.
                 // #3478F6 is the macOS selection blue.
                 draw_rounded_rect(cr,
-                    MENU_SHADOW_SIZE + 4,
+                    MENU_SHADOW_SIZE + MENU_SEL_INSET,
                     y,
-                    menu_w - 2 * MENU_SHADOW_SIZE - 8,
+                    menu_w - 2 * MENU_SHADOW_SIZE - 2 * MENU_SEL_INSET,
                     MENU_ITEM_HEIGHT,
-                    4.0);  // 4px corner radius on selection
+                    MENU_SEL_RADIUS);
                 cairo_set_source_rgba(cr, 0x34/255.0, 0x78/255.0, 0xF6/255.0, 1.0);
                 cairo_fill(cr);
             }
@@ -220,10 +227,7 @@ static void paint_menu(cairo_t *cr, int menu_w, int menu_h,
             // Draw the menu item text
             PangoLayout *layout = pango_cairo_create_layout(cr);
             pango_layout_set_text(layout, menu_items[i].label, -1);
-
-            PangoFontDescription *font = pango_font_description_from_string(MENU_FONT);
-            pango_layout_set_font_description(layout, font);
-            pango_font_description_free(font);
+            set_menu_font(layout);
 
             // Text color: white on highlight, dark gray otherwise
             if (highlighted) {
@@ -233,7 +237,8 @@ static void paint_menu(cairo_t *cr, int menu_w, int menu_h,
             }
 
             // Position text within the item
-            cairo_move_to(cr, MENU_SHADOW_SIZE + MENU_PAD_H + 16, y + 3);
+            cairo_move_to(cr, MENU_SHADOW_SIZE + MENU_PAD_H + MENU_ICON_GUTTER,
+                          y + MENU_TEXT_Y_OFF);
             pango_cairo_show_layout(cr, layout);
 
             // If this item has a submenu, draw a ">" arrow on the right
@@ -242,8 +247,8 @@ static void paint_menu(cairo_t *cr, int menu_w, int menu_h,
                 int tw, th;
                 pango_layout_get_pixel_size(layout, &tw, &th);
                 cairo_move_to(cr,
-                    menu_w - MENU_SHADOW_SIZE - MENU_PAD_H - tw - 8,
-                    y + 3);
+                    menu_w - MENU_SHADOW_SIZE - MENU_PAD_H - tw - MENU_ARROW_GUTTER,
+                    y + MENU_TEXT_Y_OFF);
                 pango_cairo_show_layout(cr, layout);
             }
 
@@ -542,7 +547,7 @@ static void paint_icon_menu(cairo_t *cr, int menu_w, int menu_h,
     cairo_set_source_rgba(cr, 240.0/255, 240.0/255, 240.0/255, 245.0/255);
     cairo_fill_preserve(cr);
     cairo_set_source_rgba(cr, 160.0/255, 160.0/255, 160.0/255, 1.0);
-    cairo_set_line_width(cr, 1.0);
+    cairo_set_line_width(cr, MENU_LINE_WIDTH);
     cairo_stroke(cr);
 
     // Items
@@ -553,7 +558,7 @@ static void paint_icon_menu(cairo_t *cr, int menu_w, int menu_h,
         if (icon_menu_items[i].is_separator) {
             int sep_y = y + MENU_SEP_HEIGHT / 2;
             cairo_set_source_rgba(cr, 200.0/255, 200.0/255, 200.0/255, 160.0/255);
-            cairo_set_line_width(cr, 1.0);
+            cairo_set_line_width(cr, MENU_LINE_WIDTH);
             cairo_move_to(cr, MENU_SHADOW_SIZE + MENU_SEP_MARGIN, sep_y + 0.5);
             cairo_line_to(cr, menu_w - MENU_SHADOW_SIZE - MENU_SEP_MARGIN, sep_y + 0.5);
             cairo_stroke(cr);
@@ -562,23 +567,22 @@ static void paint_icon_menu(cairo_t *cr, int menu_w, int menu_h,
 
             if (highlighted) {
                 draw_rounded_rect(cr,
-                    MENU_SHADOW_SIZE + 4, y,
-                    menu_w - 2 * MENU_SHADOW_SIZE - 8, MENU_ITEM_HEIGHT,
-                    4.0);
+                    MENU_SHADOW_SIZE + MENU_SEL_INSET, y,
+                    menu_w - 2 * MENU_SHADOW_SIZE - 2 * MENU_SEL_INSET, MENU_ITEM_HEIGHT,
+                    MENU_SEL_RADIUS);
                 cairo_set_source_rgba(cr, 0x34/255.0, 0x78/255.0, 0xF6/255.0, 1.0);
                 cairo_fill(cr);
             }
 
             PangoLayout *layout = pango_cairo_create_layout(cr);
             pango_layout_set_text(layout, icon_menu_items[i].label, -1);
-            PangoFontDescription *fd = pango_font_description_from_string(MENU_FONT);
-            pango_layout_set_font_description(layout, fd);
-            pango_font_description_free(fd);
+            set_menu_font(layout);
 
             cairo_set_source_rgba(cr, highlighted ? 1.0 : 0.1,
                                       highlighted ? 1.0 : 0.1,
                                       highlighted ? 1.0 : 0.1, 1.0);
-            cairo_move_to(cr, MENU_SHADOW_SIZE + MENU_PAD_H + 16, y + 3);
+            cairo_move_to(cr, MENU_SHADOW_SIZE + MENU_PAD_H + MENU_ICON_GUTTER,
+                          y + MENU_TEXT_Y_OFF);
             pango_cairo_show_layout(cr, layout);
 
             // Submenu arrow "▸"
@@ -587,8 +591,8 @@ static void paint_icon_menu(cairo_t *cr, int menu_w, int menu_h,
                 int tw, th;
                 pango_layout_get_pixel_size(layout, &tw, &th);
                 cairo_move_to(cr,
-                    menu_w - MENU_SHADOW_SIZE - MENU_PAD_H - tw - 8,
-                    y + 3);
+                    menu_w - MENU_SHADOW_SIZE - MENU_PAD_H - tw - MENU_ARROW_GUTTER,
+                    y + MENU_TEXT_Y_OFF);
                 pango_cairo_show_layout(cr, layout);
             }
 
@@ -603,13 +607,13 @@ static void paint_icon_menu(cairo_t *cr, int menu_w, int menu_h,
 // A small popup window showing 8 circles: one for each label color (1-7)
 // plus an "X" (none) circle. The user clicks a circle to set the label.
 //
-// Layout: circles arranged in a horizontal row, each PICKER_CIRCLE_D px.
-// The window is sized to fit them with padding.
-#define PICKER_CIRCLE_D   24    // Diameter of each color circle
-#define PICKER_CIRCLE_GAP  6    // Gap between circles
-#define PICKER_PAD_H      10    // Horizontal padding inside the window
-#define PICKER_PAD_V       8    // Vertical padding inside the window
-#define PICKER_SHADOW      6    // Shadow size
+// Layout: circles arranged in a horizontal row, each PICKER_CIRCLE_D pt.
+// All geometry is in points — S() scales to physical pixels per output.
+#define PICKER_CIRCLE_D    S(24)   // Diameter of each color circle
+#define PICKER_CIRCLE_GAP  S(6)    // Gap between circles
+#define PICKER_PAD_H       S(10)   // Horizontal padding inside the window
+#define PICKER_PAD_V       S(8)    // Vertical padding inside the window
+#define PICKER_SHADOW      S(6)    // Shadow ring thickness
 
 // Total number of circles: 7 colors + 1 "none" = LABEL_COUNT (8)
 #define PICKER_CIRCLE_COUNT LABEL_COUNT
@@ -683,12 +687,13 @@ static void paint_picker(cairo_t *cr, int win_w, int win_h, int highlighted)
     cairo_set_source_rgba(cr, 240.0/255, 240.0/255, 240.0/255, 250.0/255);
     cairo_fill_preserve(cr);
     cairo_set_source_rgba(cr, 160.0/255, 160.0/255, 160.0/255, 1.0);
-    cairo_set_line_width(cr, 1.0);
+    cairo_set_line_width(cr, MENU_LINE_WIDTH);
     cairo_stroke(cr);
 
     // Draw each circle
     int cy = PICKER_SHADOW + picker_circle_cy();
     int r  = PICKER_CIRCLE_D / 2;
+    int hover_bump = S(2);  // selection ring extends 2pt past the circle edge
 
     for (int i = 0; i < PICKER_CIRCLE_COUNT; i++) {
         int cx = PICKER_SHADOW + picker_circle_cx(i);
@@ -697,7 +702,7 @@ static void paint_picker(cairo_t *cr, int win_w, int win_h, int highlighted)
             // Circle 0 = "None" — draw a grey ring with an X inside
             if (highlighted == 0) {
                 // Blue selection ring
-                cairo_arc(cr, cx, cy, r + 2, 0, 2 * M_PI);
+                cairo_arc(cr, cx, cy, r + hover_bump, 0, 2 * M_PI);
                 cairo_set_source_rgba(cr, 0x34/255.0, 0x78/255.0, 0xF6/255.0, 1.0);
                 cairo_fill(cr);
             }
@@ -705,13 +710,13 @@ static void paint_picker(cairo_t *cr, int win_w, int win_h, int highlighted)
             cairo_set_source_rgba(cr, 0.85, 0.85, 0.85, 1.0);
             cairo_fill_preserve(cr);
             cairo_set_source_rgba(cr, 0.55, 0.55, 0.55, 1.0);
-            cairo_set_line_width(cr, 1.5);
+            cairo_set_line_width(cr, SF(1.5));
             cairo_stroke(cr);
 
             // "X" inside the circle
             double margin = r * 0.35;
             cairo_set_source_rgba(cr, 0.4, 0.4, 0.4, 1.0);
-            cairo_set_line_width(cr, 1.5);
+            cairo_set_line_width(cr, SF(1.5));
             cairo_move_to(cr, cx - margin, cy - margin);
             cairo_line_to(cr, cx + margin, cy + margin);
             cairo_move_to(cr, cx + margin, cy - margin);
@@ -723,7 +728,7 @@ static void paint_picker(cairo_t *cr, int win_w, int win_h, int highlighted)
 
             if (highlighted == i) {
                 // Slightly larger ring in the label color to show hover
-                cairo_arc(cr, cx, cy, r + 2, 0, 2 * M_PI);
+                cairo_arc(cr, cx, cy, r + hover_bump, 0, 2 * M_PI);
                 cairo_set_source_rgba(cr, 0x34/255.0, 0x78/255.0, 0xF6/255.0, 1.0);
                 cairo_fill(cr);
             }
@@ -735,7 +740,7 @@ static void paint_picker(cairo_t *cr, int win_w, int win_h, int highlighted)
 
             // Slightly darker border
             cairo_set_source_rgba(cr, lc->r * 0.7, lc->g * 0.7, lc->b * 0.7, 1.0);
-            cairo_set_line_width(cr, 1.0);
+            cairo_set_line_width(cr, MENU_LINE_WIDTH);
             cairo_stroke(cr);
         }
     }
@@ -757,11 +762,12 @@ static int show_label_picker(Display *dpy, Window root,
 
     // Position picker to the right of the menu, aligned with the Label item.
     // If it would go off-screen, flip to the left.
-    int win_x = menu_x + MENU_WIDTH + 2 * MENU_SHADOW_SIZE - 4;
+    int edge_nudge = S(4);  // visual overlap into the menu's shadow
+    int win_x = menu_x + MENU_WIDTH + 2 * MENU_SHADOW_SIZE - edge_nudge;
     int win_y = menu_y + label_item_y;
 
     if (win_x + win_w > screen_w) {
-        win_x = menu_x - win_w + 4;
+        win_x = menu_x - win_w + edge_nudge;
     }
     if (win_y + win_h > screen_h) {
         win_y = screen_h - win_h;
