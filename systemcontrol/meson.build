@@ -7,6 +7,7 @@ project('systemcontrol', 'c',
 
 # Dependencies — same stack as every CopyCatOS shell component
 x11_dep        = dependency('x11')
+xrandr_dep     = dependency('xrandr')
 cairo_dep      = dependency('cairo')
 cairo_xlib_dep = dependency('cairo-xlib')
 pangocairo_dep = dependency('pangocairo')
@@ -24,6 +25,10 @@ add_project_arguments('-D_GNU_SOURCE', language: 'c')
 # (no shared library needed since only two programs use them).
 inputmap_dir = '../inputmap/src'
 
+# MoonRock shell-api — tiny reader/requester helpers for per-output scale.
+# Compiled directly (same pattern as menubar, dock, desktop).
+moonrock_shell_api_dir = '../moonrock/shell-api'
+
 sources = [
   'src/main.c',
   'src/sysprefs.c',
@@ -36,13 +41,15 @@ sources = [
   'src/panes/controller.c',
   'src/panes/power.c',
   'src/panes/about.c',
+  'src/panes/displays.c',
   inputmap_dir / 'config_editor.c',
   inputmap_dir / 'scanner.c',
+  moonrock_shell_api_dir / 'moonrock_scale.c',
 ]
 
 executable('systemcontrol', sources,
-  dependencies: [x11_dep, cairo_dep, cairo_xlib_dep, pangocairo_dep, libpng_dep, udev_dep, math_dep],
-  include_directories: include_directories(inputmap_dir),
+  dependencies: [x11_dep, xrandr_dep, cairo_dep, cairo_xlib_dep, pangocairo_dep, libpng_dep, udev_dep, math_dep],
+  include_directories: include_directories(inputmap_dir, moonrock_shell_api_dir),
   install: true,
   install_dir: get_option('bindir'),
 )

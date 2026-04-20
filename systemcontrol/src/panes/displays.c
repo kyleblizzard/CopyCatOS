@@ -1,0 +1,401 @@
+// CopyCatOS — by Kyle Blizzard at Blizzard.show
+
+// ============================================================================
+// panes/displays.c — Displays preferences pane (v1-minimum: scale picker)
+// ============================================================================
+//
+// Enumerates XRandR outputs directly (the _MOONROCK_OUTPUT_SCALES atom only
+// carries name + geometry + effective scale, not mm dimensions), reads each
+// output's current effective scale from the atom, and renders a row per
+// output with a segmented pill control showing the 11 scale choices
+// 0.50 → 3.00 in 0.25 steps.
+//
+// Clicking a pill sends moonrock_request_scale() over
+// _MOONROCK_SET_OUTPUT_SCALE. The pane updates its local state
+// optimistically — MoonRock will re-publish on _MOONROCK_OUTPUT_SCALES and
+// anyone who subscribed (menubar, dock, desktop) gets the scale change via
+// PropertyNotify.
+// ============================================================================
+
+#include "displays.h"
+#include "moonrock_scale.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+
+#include <X11/extensions/Xrandr.h>
+#include <pango/pangocairo.h>
+
+// ── Layout constants (in pixels inside the fixed 668×500 pane window) ──
+
+#define PANE_LEFT          24
+#define PANE_RIGHT         644
+#define ROW_TOP_MARGIN     60   // below the toolbar (TOOLBAR_HEIGHT=38)
+#define ROW_HEIGHT         96
+#define ROW_V_GAP          8
+#define ROW_TITLE_Y         6   // Y offset inside row for "eDP-1 — 1920×1200"
+#define ROW_META_Y         26   // Y offset for "14" panel · 323 PPI" etc.
+#define PILL_Y             52   // Y offset for the scale pills
+#define PILL_H             28
+#define PILL_RADIUS         6.0
+
+// ── Scale choices ───────────────────────────────────────────────────────
+
+#define STEP_COUNT         11
+static const float SCALE_STEPS[STEP_COUNT] = {
+    0.50f, 0.75f, 1.00f, 1.25f, 1.50f,
+    1.75f, 2.00f, 2.25f, 2.50f, 2.75f, 3.00f,
+};
+
+// ── Per-output row state ───────────────────────────────────────────────
+
+#define MAX_ROWS  8
+
+typedef struct {
+    char  name[MOONROCK_SCALE_NAME_MAX];
+    int   width, height;          // native resolution (pixels)
+    int   mm_width, mm_height;    // physical size from EDID
+    float current_scale;          // effective scale MoonRock is using
+    int   picked_step;            // last clicked step; -1 for "match current"
+} DisplayRow;
+
+static DisplayRow g_rows[MAX_ROWS];
+static int        g_row_count = 0;
+static int        g_hover_row = -1;
+static int        g_hover_step = -1;
+static bool       g_subscribed = false;   // moonrock_scale_init once-only
+static bool       g_needs_refresh = true; // re-enumerate on pane entry
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+
+// Nearest step to the given scale — used to highlight the active pill when
+// MoonRock's value doesn't exactly hit one of our discrete steps (e.g. an
+// EDID-derived default of 1.75 for the Legion Go S panel matches exactly;
+// a future 1.40 custom scale from the config file will be shown as 1.50).
+static int nearest_step(float scale)
+{
+    int best = 0;
+    float best_d = 99.0f;
+    for (int i = 0; i < STEP_COUNT; i++) {
+        float d = scale - SCALE_STEPS[i];
+        if (d < 0) d = -d;
+        if (d < best_d) { best_d = d; best = i; }
+    }
+    return best;
+}
+
+// ── XRandR enumeration ─────────────────────────────────────────────────
+
+// Walk the XRandR outputs, keeping only those that are currently connected
+// and have a CRTC (i.e. actively driving a monitor). mm_width / mm_height
+// come straight from EDID — 0 on adapters that don't report it, which we
+// treat as "unknown" in the UI.
+static void enumerate_outputs(Display *dpy, Window root)
+{
+    g_row_count = 0;
+
+    XRRScreenResources *res = XRRGetScreenResources(dpy, root);
+    if (!res) return;
+
+    for (int i = 0; i < res->noutput && g_row_count < MAX_ROWS; i++) {
+        XRROutputInfo *oi = XRRGetOutputInfo(dpy, res, res->outputs[i]);
+        if (!oi) continue;
+
+        if (oi->connection == RR_Connected && oi->crtc) {
+            XRRCrtcInfo *ci = XRRGetCrtcInfo(dpy, res, oi->crtc);
+            if (ci) {
+                DisplayRow *r = &g_rows[g_row_count++];
+                strncpy(r->name, oi->name, sizeof(r->name) - 1);
+                r->name[sizeof(r->name) - 1] = '\0';
+                r->width     = ci->width;
+                r->height    = ci->height;
+                r->mm_width  = oi->mm_width;
+                r->mm_height = oi->mm_height;
+                r->current_scale = 1.0f;  // filled in by refresh_scales()
+                r->picked_step   = -1;
+                XRRFreeCrtcInfo(ci);
+            }
+        }
+
+        XRRFreeOutputInfo(oi);
+    }
+
+    XRRFreeScreenResources(res);
+}
+
+// Read _MOONROCK_OUTPUT_SCALES and copy the effective scale into each row.
+// Rows whose name isn't in the table (e.g. MoonRock hasn't started yet)
+// stay at the default 1.0.
+static void refresh_scales(Display *dpy)
+{
+    MoonRockScaleTable table;
+    moonrock_scale_refresh(dpy, &table);
+
+    for (int i = 0; i < g_row_count; i++) {
+        g_rows[i].current_scale =
+            moonrock_scale_for_name(&table, g_rows[i].name);
+    }
+}
+
+// ── Drawing helpers ────────────────────────────────────────────────────
+
+// Filled rounded rectangle — used for pill buttons and the row background.
+static void rounded_rect(cairo_t *cr, double x, double y,
+                         double w, double h, double r)
+{
+    const double pi = 3.14159265358979323846;
+    cairo_new_sub_path(cr);
+    cairo_arc(cr, x + w - r, y + r,     r, -pi / 2, 0);
+    cairo_arc(cr, x + w - r, y + h - r, r,  0,      pi / 2);
+    cairo_arc(cr, x + r,     y + h - r, r,  pi / 2, pi);
+    cairo_arc(cr, x + r,     y + r,     r,  pi,     3 * pi / 2);
+    cairo_close_path(cr);
+}
+
+// Draw the pill strip for one row. Pills share gaps so the strip reads as
+// a single segmented control. Active pill is filled Aqua blue; hovered
+// pill gets a soft highlight.
+static void draw_pill_strip(cairo_t *cr, int row_index,
+                            double x0, double y0, double strip_w,
+                            int active_step, int hover_step)
+{
+    double pill_w = strip_w / STEP_COUNT;
+
+    for (int i = 0; i < STEP_COUNT; i++) {
+        double x = x0 + i * pill_w;
+
+        // Background — active pill is the selection blue, idle pill is
+        // a light gray, hover pill is a softer blue tint.
+        if (i == active_step) {
+            cairo_set_source_rgb(cr, 0.220, 0.459, 0.843); // #3875D7
+        } else if (i == hover_step) {
+            cairo_set_source_rgba(cr, 0.220, 0.459, 0.843, 0.20);
+        } else {
+            cairo_set_source_rgb(cr, 0.93, 0.93, 0.93);
+        }
+        rounded_rect(cr, x + 2, y0, pill_w - 4, PILL_H, PILL_RADIUS);
+        cairo_fill(cr);
+
+        // Border — 1px darker edge so the segments read cleanly
+        cairo_set_source_rgb(cr, 0.75, 0.75, 0.75);
+        cairo_set_line_width(cr, 1.0);
+        rounded_rect(cr, x + 2, y0, pill_w - 4, PILL_H, PILL_RADIUS);
+        cairo_stroke(cr);
+
+        // Label: "0.5×", "1×", "1.75×", "3×". %g suppresses trailing zeros
+        // so whole scales read as "1×" instead of "1.00×".
+        char label[16];
+        snprintf(label, sizeof(label), "%g×", (double)SCALE_STEPS[i]);
+
+        PangoLayout *layout = pango_cairo_create_layout(cr);
+        pango_layout_set_text(layout, label, -1);
+        PangoFontDescription *font =
+            pango_font_description_from_string("Lucida Grande 11");
+        pango_layout_set_font_description(layout, font);
+        pango_font_description_free(font);
+
+        int lw, lh;
+        pango_layout_get_pixel_size(layout, &lw, &lh);
+
+        if (i == active_step) {
+            cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+        } else {
+            cairo_set_source_rgb(cr, 0.15, 0.15, 0.15);
+        }
+        cairo_move_to(cr, x + (pill_w - lw) / 2.0,
+                      y0 + (PILL_H - lh) / 2.0);
+        pango_cairo_show_layout(cr, layout);
+        g_object_unref(layout);
+    }
+
+    (void)row_index;
+}
+
+// ── Public API — paint, click, motion, release ─────────────────────────
+
+void displays_pane_paint(SysPrefsState *state)
+{
+    if (!g_subscribed) {
+        // Kick off PropertyChangeMask on the root window so subsequent
+        // refresh_scales() calls see up-to-date atom values. Safe to call
+        // multiple times; only the first does work.
+        moonrock_scale_init(state->dpy);
+        g_subscribed = true;
+    }
+
+    // Re-enumerate and refresh only on pane entry (or after an external
+    // refresh trigger). Doing it on every paint would clobber the optimistic
+    // click update before MoonRock's atom round-trip lands.
+    if (g_needs_refresh) {
+        enumerate_outputs(state->dpy, state->root);
+        refresh_scales(state->dpy);
+        g_needs_refresh = false;
+    }
+
+    cairo_t *cr = state->cr;
+
+    // Pane heading
+    PangoLayout *head = pango_cairo_create_layout(cr);
+    pango_layout_set_text(head, "Displays", -1);
+    PangoFontDescription *head_font =
+        pango_font_description_from_string("Lucida Grande Bold 16");
+    pango_layout_set_font_description(head, head_font);
+    pango_font_description_free(head_font);
+    cairo_set_source_rgb(cr, 0.15, 0.15, 0.15);
+    cairo_move_to(cr, PANE_LEFT, 48);
+    pango_cairo_show_layout(cr, head);
+    g_object_unref(head);
+
+    if (g_row_count == 0) {
+        PangoLayout *empty = pango_cairo_create_layout(cr);
+        pango_layout_set_text(empty,
+            "No connected displays were detected.", -1);
+        PangoFontDescription *ef =
+            pango_font_description_from_string("Lucida Grande 12");
+        pango_layout_set_font_description(empty, ef);
+        pango_font_description_free(ef);
+        cairo_set_source_rgb(cr, 0.45, 0.45, 0.45);
+        cairo_move_to(cr, PANE_LEFT, ROW_TOP_MARGIN + 30);
+        pango_cairo_show_layout(cr, empty);
+        g_object_unref(empty);
+        return;
+    }
+
+    // Rows
+    double row_y = ROW_TOP_MARGIN + 20;
+    double row_w = PANE_RIGHT - PANE_LEFT;
+
+    for (int i = 0; i < g_row_count; i++) {
+        DisplayRow *r = &g_rows[i];
+
+        // Title: "eDP-1 — 1920 × 1200"
+        char title[128];
+        snprintf(title, sizeof(title), "%s — %d × %d",
+                 r->name, r->width, r->height);
+
+        PangoLayout *tl = pango_cairo_create_layout(cr);
+        pango_layout_set_text(tl, title, -1);
+        PangoFontDescription *tf =
+            pango_font_description_from_string("Lucida Grande Bold 13");
+        pango_layout_set_font_description(tl, tf);
+        pango_font_description_free(tf);
+        cairo_set_source_rgb(cr, 0.15, 0.15, 0.15);
+        cairo_move_to(cr, PANE_LEFT, row_y + ROW_TITLE_Y);
+        pango_cairo_show_layout(cr, tl);
+        g_object_unref(tl);
+
+        // Meta: "14" panel · 323 PPI" if EDID reports mm, otherwise just
+        // the current effective scale so the row is never empty.
+        char meta[128];
+        if (r->mm_width > 0 && r->mm_height > 0) {
+            double diag_sq = (double)r->mm_width * r->mm_width +
+                             (double)r->mm_height * r->mm_height;
+            double inches = sqrt(diag_sq) / 25.4;
+            double ppi = (double)r->width /
+                         ((double)r->mm_width / 25.4);
+            snprintf(meta, sizeof(meta),
+                     "%.1f\" panel · %.0f PPI · active scale %.2f×",
+                     inches, ppi, (double)r->current_scale);
+        } else {
+            snprintf(meta, sizeof(meta),
+                     "active scale %.2f×",
+                     (double)r->current_scale);
+        }
+
+        PangoLayout *ml = pango_cairo_create_layout(cr);
+        pango_layout_set_text(ml, meta, -1);
+        PangoFontDescription *mf =
+            pango_font_description_from_string("Lucida Grande 11");
+        pango_layout_set_font_description(ml, mf);
+        pango_font_description_free(mf);
+        cairo_set_source_rgb(cr, 0.45, 0.45, 0.45);
+        cairo_move_to(cr, PANE_LEFT, row_y + ROW_META_Y);
+        pango_cairo_show_layout(cr, ml);
+        g_object_unref(ml);
+
+        // Pills
+        int active = (r->picked_step >= 0)
+                       ? r->picked_step
+                       : nearest_step(r->current_scale);
+        int hover = (g_hover_row == i) ? g_hover_step : -1;
+        draw_pill_strip(cr, i, PANE_LEFT, row_y + PILL_Y,
+                        row_w, active, hover);
+
+        row_y += ROW_HEIGHT + ROW_V_GAP;
+    }
+}
+
+// Hit-test: which (row, step) does (x, y) fall in? Returns true if the
+// point hit any pill; fills *row_out and *step_out.
+static bool hit_test(int x, int y, int *row_out, int *step_out)
+{
+    double row_y = ROW_TOP_MARGIN + 20;
+    double row_w = PANE_RIGHT - PANE_LEFT;
+    double pill_w = row_w / STEP_COUNT;
+
+    for (int i = 0; i < g_row_count; i++) {
+        double py = row_y + PILL_Y;
+        if (y >= py && y <= py + PILL_H &&
+            x >= PANE_LEFT && x <= PANE_LEFT + row_w) {
+            int step = (int)((x - PANE_LEFT) / pill_w);
+            if (step < 0) step = 0;
+            if (step >= STEP_COUNT) step = STEP_COUNT - 1;
+            *row_out = i;
+            *step_out = step;
+            return true;
+        }
+        row_y += ROW_HEIGHT + ROW_V_GAP;
+    }
+    return false;
+}
+
+bool displays_pane_click(SysPrefsState *state, int x, int y)
+{
+    int row, step;
+    if (!hit_test(x, y, &row, &step)) return false;
+
+    DisplayRow *r = &g_rows[row];
+    float scale = SCALE_STEPS[step];
+
+    fprintf(stderr,
+            "[sysprefs:displays] Requesting %s → %.2f×\n",
+            r->name, (double)scale);
+
+    if (!moonrock_request_scale(state->dpy, r->name, scale)) {
+        fprintf(stderr,
+                "[sysprefs:displays] moonrock_request_scale() failed — "
+                "request dropped\n");
+        return false;
+    }
+
+    // Optimistic update: show the new step immediately so the UI feels
+    // responsive. MoonRock will re-publish within one event round-trip
+    // and the next refresh_scales() will either confirm or revert.
+    r->picked_step   = step;
+    r->current_scale = scale;
+    return true;  // caller will repaint
+}
+
+bool displays_pane_motion(SysPrefsState *state, int x, int y)
+{
+    (void)state;
+    int row = -1, step = -1;
+    hit_test(x, y, &row, &step);
+    if (row == g_hover_row && step == g_hover_step) return false;
+    g_hover_row  = row;
+    g_hover_step = step;
+    return true;
+}
+
+void displays_pane_release(SysPrefsState *state)
+{
+    (void)state;
+    // Nothing to commit — clicks are atomic (no drag).
+}
+
+void displays_pane_mark_dirty(void)
+{
+    g_needs_refresh = true;
+}

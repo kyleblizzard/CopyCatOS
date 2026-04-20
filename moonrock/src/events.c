@@ -11,6 +11,7 @@
 #include "moonbase_host.h"
 #include "moonbase_xdnd.h"
 #include "moonbase.h"     // MB_MOD_*
+#include "moonrock_display.h"   // display_scale_request_atom + handler
 #include "struts.h"
 #include "resize.h"
 #include <poll.h>
@@ -617,6 +618,17 @@ static void on_motion_notify(CCWM *wm, XEvent *e)
 static void on_property_notify(CCWM *wm, XEvent *e)
 {
     Window w = e->xproperty.window;
+
+    // Reverse scale-request atom: the systemcontrol Displays pane writes
+    // _MOONROCK_SET_OUTPUT_SCALE on the root window. Handle this before
+    // any client-window logic so we don't accidentally match the root
+    // against a client lookup.
+    if (w == wm->root && e->xproperty.state == PropertyNewValue &&
+        e->xproperty.atom == display_scale_request_atom(wm->dpy)) {
+        display_handle_scale_request(wm->dpy, wm->root);
+        return;
+    }
+
     Client *c = wm_find_client(wm, w);
 
     if (c && (e->xproperty.atom == wm->atom_net_wm_name ||

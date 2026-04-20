@@ -17,6 +17,7 @@
 #include "toolbar.h"
 #include "icongrid.h"
 #include "paneview.h"
+#include "panes/displays.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -208,6 +209,12 @@ void sysprefs_open_pane(SysPrefsState *state, int pane_index)
     state->current_view = VIEW_PANE;
     state->current_pane = pane_index;
     state->hover_pane = -1;
+
+    // Per-pane on-entry hooks — each pane with live state it needs to
+    // refresh when re-opened signals that here.
+    if (strcmp(state->panes[pane_index].id, "displays") == 0) {
+        displays_pane_mark_dirty();
+    }
 
     // Update window title
     char title[256];
