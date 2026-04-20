@@ -231,8 +231,10 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
     double tx = ((double)chrome_w - (double)tw) / 2.0;
     double ty = ((double)titlebar_px - (double)th) / 2.0;
 
-    // 1 px white drop shadow below the text (embossed / engraved look).
-    cairo_move_to(cr, tx, ty + 1);
+    // 1 pt white drop shadow below the text (embossed / engraved look).
+    // Offset scales with backing scale — a flat 1 px offset would vanish
+    // visually at 2×/1.75× and stop reading as an engraved edge.
+    cairo_move_to(cr, tx, ty + (double)px(scale));
     cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, active ? 0.7 : 0.3);
     pango_cairo_show_layout(cr, layout);
 
