@@ -22,13 +22,18 @@
 // Grid layout constants — these control how icons are spaced and sized.
 // The grid starts at the top-right and fills downward, then moves left
 // (column by column), just like Finder in Mac OS X.
-#define ICON_CELL_W         140  // Width of each grid cell in pixels
-#define ICON_CELL_H         140  // Height of each grid cell in pixels
-#define ICON_SIZE           128  // Size of the icon image (128x128 — exact Snow Leopard desktop icon size)
-#define ICON_LABEL_FONT     "Lucida Grande 12"  // Pango font description (SL uses 12pt)
-#define ICON_TOP_MARGIN     45   // Pixels below the top edge (room for menubar + breathing room)
-#define ICON_RIGHT_MARGIN   20   // Pixels from the right edge of screen
-#define ICON_MAX_LABEL_WIDTH 110 // Max pixel width before truncating with "..."
+//
+// Values are in POINTS at the 1.0x baseline (matches the original Snow
+// Leopard desktop). Every use site runs them through S() in desktop.h so
+// a HiDPI output doubles/triples them without the constants themselves
+// having to change. ICON_SIZE is the target rendered size — source
+// surfaces from the theme are cairo_scaled to S(ICON_SIZE) per paint.
+#define ICON_CELL_W         140  // Grid cell width (points)
+#define ICON_CELL_H         140  // Grid cell height (points)
+#define ICON_SIZE           128  // Rendered icon size (points) — 128pt matches SL
+#define ICON_TOP_MARGIN     45   // Space below the menubar for breathing room (points)
+#define ICON_RIGHT_MARGIN   20   // Space from the right edge of screen (points)
+#define ICON_MAX_LABEL_WIDTH 110 // Max label width before ellipsis (points)
 
 // Represents a single desktop icon. Each file or folder in ~/Desktop
 // gets one of these structs.
@@ -91,6 +96,14 @@ int icons_get_count(void);
 
 // Re-layout all icons to canonical grid positions (used by "Clean Up").
 void icons_relayout(int screen_w, int screen_h);
+
+// Re-apply the saved layout against the cached screen dimensions.
+// Called from desktop_run after a MoonRock scale change so icon pixel
+// positions track the new scale. The cached dimensions are set by
+// icons_init() and match the screen size, which doesn't change on a
+// pure scale change — only the layout math (which walks the ICON_*
+// constants through the S() macro) does.
+void icons_rescale(void);
 
 // Free all icon resources.
 void icons_shutdown(void);

@@ -19,6 +19,7 @@
 
 #include "layout.h"
 #include "icons.h"
+#include "desktop.h"  // desktop_hidpi_scale, S()
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -152,11 +153,18 @@ static LayoutEntry *layout_find(const char *name)
 // Convert grid (col, row) to screen pixel position.
 // This is the single source of truth for the grid-to-pixel mapping.
 // col=0 is the rightmost column; row=0 is the topmost row.
+// ICON_* constants are points at the 1.0x baseline; S() folds in the
+// current desktop_hidpi_scale so the math lands in physical pixels.
 static void grid_to_pixel(int col, int row, int screen_w,
                            int *out_x, int *out_y)
 {
-    *out_x = screen_w - ICON_RIGHT_MARGIN - ICON_CELL_W - (col * ICON_CELL_W);
-    *out_y = ICON_TOP_MARGIN + (row * ICON_CELL_H);
+    int cell_w = S(ICON_CELL_W);
+    int cell_h = S(ICON_CELL_H);
+    int top    = S(ICON_TOP_MARGIN);
+    int right  = S(ICON_RIGHT_MARGIN);
+
+    *out_x = screen_w - right - cell_w - (col * cell_w);
+    *out_y = top + (row * cell_h);
 }
 
 void layout_apply(DesktopIcon *icons, int count, int screen_w, int screen_h)
@@ -164,7 +172,9 @@ void layout_apply(DesktopIcon *icons, int count, int screen_w, int screen_h)
     if (count == 0) return;
 
     // How many rows fit on screen, accounting for the menubar margin.
-    int rows_per_col = (screen_h - ICON_TOP_MARGIN) / ICON_CELL_H;
+    // Same S() scaling as grid_to_pixel so row-capacity and icon placement
+    // stay consistent.
+    int rows_per_col = (screen_h - S(ICON_TOP_MARGIN)) / S(ICON_CELL_H);
     if (rows_per_col < 1) rows_per_col = 1;
 
     // Build an occupancy grid so we know which cells are already taken

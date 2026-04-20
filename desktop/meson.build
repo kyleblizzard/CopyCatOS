@@ -30,6 +30,11 @@ libjpeg_dep = dependency('libjpeg')
 cc = meson.get_compiler('c')
 math_dep = cc.find_library('m', required: true)
 
+# MoonRock -> shell scale bridge. Same setup as dock and menubar — the
+# client-side reader lives in ../moonrock/shell-api/ and is compiled directly
+# into the desktop binary so per-output HiDPI scale tracks MoonRock live.
+moonrock_shell_api_dir = '../moonrock/shell-api'
+
 sources = [
   'src/main.c',
   'src/desktop.c',
@@ -39,10 +44,12 @@ sources = [
   'src/labels.c',
   'src/contextmenu.c',
   'src/dnd.c',
+  moonrock_shell_api_dir / 'moonrock_scale.c',
 ]
 
 executable('desktop',
   sources,
+  include_directories: include_directories(moonrock_shell_api_dir),
   dependencies: [x11_dep, cairo_dep, cairo_xlib_dep, pangocairo_dep, libjpeg_dep, math_dep],
   install: true,
   install_dir: get_option('bindir'),

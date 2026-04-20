@@ -21,6 +21,7 @@
 #include "desktop.h"
 #include "wallpaper.h"
 #include "icons.h"
+#include "layout.h"
 #include "contextmenu.h"
 #include "labels.h"
 #include "dnd.h"
@@ -31,6 +32,11 @@
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 
+// MoonRock -> shell scale bridge. MoonRock publishes per-output HiDPI scale
+// on the root window; subscribing lets the desktop's icon grid track the
+// scale of the output hosting the top-right anchor point.
+#include "moonrock_scale.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,6 +45,29 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <time.h>
+
+// ── HiDPI scale ─────────────────────────────────────────────────────
+
+// Definition of the extern declared in desktop.h. Starts at 1.0; updated
+// from the _MOONROCK_OUTPUT_SCALES root-window property at startup and on
+// every subsequent PropertyNotify.
+float desktop_hidpi_scale = 1.0f;
+
+// Live snapshot of every connected output's scale as published by MoonRock.
+// Refreshed at startup and on every PropertyNotify for that atom.
+static MoonRockScaleTable g_output_scales;
+
+// The icon grid anchors in the top-right corner of the virtual screen,
+// so the scale that matters to the desktop is whatever scale applies at a
+// point near the top-right of the root window. Used in both init and on
+// every PropertyNotify so both paths share the same lookup rule.
+static float lookup_desktop_scale(const Desktop *d)
+{
+    if (!g_output_scales.valid) return 1.0f;
+    int sx = d->width - 1;
+    int sy = 0;
+    return moonrock_scale_for_point(&g_output_scales, sx, sy);
+}
 
 // ── Forward declarations ────────────────────────────────────────────
 
@@ -103,6 +132,21 @@ bool desktop_init(Desktop *d, const char *wallpaper_path)
 
     fprintf(stderr, "[desktop] Screen: %dx%d\n", d->width, d->height);
 
+    // Subscribe to MoonRock's per-output scale property before any other
+    // setup that depends on size — moonrock_scale_init's XSelectInput is
+    // additive, so it ORs PropertyChangeMask onto whatever the root window
+    // already has selected without clobbering anything. After this, a
+    // single refresh gets the current table into g_output_scales and we
+    // can pick desktop_hidpi_scale for the icon-grid anchor point.
+    moonrock_scale_init(d->dpy);
+    moonrock_scale_refresh(d->dpy, &g_output_scales);
+    desktop_hidpi_scale = lookup_desktop_scale(d);
+    fprintf(stderr, "[desktop] hidpi: icon-grid scale = %.2f "
+                    "(%d output%s known)\n",
+            (double)desktop_hidpi_scale,
+            g_output_scales.count,
+            g_output_scales.count == 1 ? "" : "s");
+
     // Try to get a 32-bit ARGB visual for transparency effects.
     // If that fails, use the default visual (usually 24-bit RGB).
     d->visual = find_argb_visual(d->dpy, d->screen, &d->depth);
@@ -135,6 +179,11 @@ bool desktop_init(Desktop *d, const char *wallpaper_path)
     // which fields in 'attrs' we actually set
     unsigned long attr_mask = CWColormap | CWBorderPixel | CWBackPixel | CWEventMask;
 
+    // Extra PropertyChangeMask on our own window is not required; the
+    // moonrock_scale subscription selected PropertyChangeMask on the root,
+    // which is where _MOONROCK_OUTPUT_SCALES lives. PropertyNotify events
+    // arrive through the same event queue regardless of which window they
+    // target.
     d->win = XCreateWindow(d->dpy, d->root,
         0, 0, d->width, d->height,   // Full screen at origin
         0,                             // No border width
@@ -204,6 +253,26 @@ static void desktop_repaint(Desktop *d)
 
     // Make sure everything is flushed to the X server
     XFlush(d->dpy);
+}
+
+// ── Scale change ─────────────────────────────────────────────────────
+
+// Re-layout icons and repaint after desktop_hidpi_scale changes. Called
+// on the MoonRock scale-change PropertyNotify path. Layout constants in
+// icons.h are in points, so layout_apply() naturally recomputes every
+// pixel position from the new scaled values.
+//
+// Icon source surfaces stay loaded at their original pixel sizes — they
+// are scaled per-paint via cairo_scale(cr, S(ICON_SIZE)/src_w, ...) so
+// the new scale factor automatically changes their apparent size.
+//
+// Wallpaper also stays loaded at its initial screen size; wallpaper is
+// already scaled from source to screen dimensions at load, which are
+// unaffected by scale changes (screen_w/screen_h are physical pixels).
+static void apply_desktop_scale(Desktop *d)
+{
+    icons_rescale();
+    desktop_repaint(d);
 }
 
 // ── Event Loop ──────────────────────────────────────────────────────
@@ -521,6 +590,25 @@ void desktop_run(Desktop *d)
                     dragging     = NULL;
                     drag_active  = false;
                     xdnd_started = false;
+                }
+                break;
+
+            case PropertyNotify:
+                // MoonRock rewrites _MOONROCK_OUTPUT_SCALES on hotplug and
+                // on any Displays-pane change. Ignore every other root-window
+                // property change — there are a lot of them.
+                if (ev.xproperty.window == d->root &&
+                    ev.xproperty.atom == moonrock_scale_atom(d->dpy)) {
+                    moonrock_scale_refresh(d->dpy, &g_output_scales);
+                    float old_scale = desktop_hidpi_scale;
+                    desktop_hidpi_scale = lookup_desktop_scale(d);
+                    if (desktop_hidpi_scale != old_scale) {
+                        fprintf(stderr,
+                                "[desktop] hidpi: %.2f → %.2f (relaying out)\n",
+                                (double)old_scale,
+                                (double)desktop_hidpi_scale);
+                        apply_desktop_scale(d);
+                    }
                 }
                 break;
 

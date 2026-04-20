@@ -20,6 +20,7 @@
 #define _GNU_SOURCE  // For M_PI in math.h under strict C11
 
 #include "icons.h"
+#include "desktop.h"  // desktop_hidpi_scale, S(), SF()
 #include "layout.h"
 #include "labels.h"
 
@@ -475,8 +476,16 @@ static void scan_desktop(void)
 // This matches the Finder layout from Mac OS X.
 static void layout_icons(int screen_w, int screen_h)
 {
+    // Cache the scaled cell geometry once per call. ICON_* constants are
+    // points at the 1.0x baseline; S() folds in the current HiDPI scale
+    // so the grid math below is in physical pixels from here on.
+    int cell_w = S(ICON_CELL_W);
+    int cell_h = S(ICON_CELL_H);
+    int top    = S(ICON_TOP_MARGIN);
+    int right  = S(ICON_RIGHT_MARGIN);
+
     // How many rows fit on screen (accounting for the menubar area)
-    int rows_per_col = (screen_h - ICON_TOP_MARGIN) / ICON_CELL_H;
+    int rows_per_col = (screen_h - top) / cell_h;
     if (rows_per_col < 1) rows_per_col = 1;
 
     for (int i = 0; i < icon_count; i++) {
@@ -490,8 +499,8 @@ static void layout_icons(int screen_w, int screen_h)
         // Convert grid position to pixel coordinates.
         // X: starts from the right edge and moves left with each column.
         // Y: starts below the menubar area and moves down with each row.
-        icons[i].x = screen_w - ICON_RIGHT_MARGIN - ICON_CELL_W - (col * ICON_CELL_W);
-        icons[i].y = ICON_TOP_MARGIN + (row * ICON_CELL_H);
+        icons[i].x = screen_w - right - cell_w - (col * cell_w);
+        icons[i].y = top + (row * cell_h);
     }
 }
 
@@ -562,6 +571,20 @@ void icons_shutdown(void)
 
 // ── Public API: Painting ────────────────────────────────────────────
 
+// Build a Pango font description string with the base point size multiplied
+// by desktop_hidpi_scale. At 1.0x this is "Lucida Grande 12"; at 1.75x it
+// becomes "Lucida Grande 21" so icon labels remain visually proportional
+// to the scaled cell on dense displays. Returned pointer is a static
+// buffer — only valid until the next call.
+static const char *icon_scaled_font(int base_size)
+{
+    static char buf[96];
+    int scaled = (int)(base_size * desktop_hidpi_scale + 0.5);
+    if (scaled < base_size) scaled = base_size;
+    snprintf(buf, sizeof(buf), "Lucida Grande %d", scaled);
+    return buf;
+}
+
 // Draw a rounded rectangle path (used for selection highlight).
 // This is a helper that creates the path but doesn't fill or stroke it.
 static void draw_rounded_rect(cairo_t *cr, double x, double y,
@@ -581,15 +604,23 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
     (void)screen_w;
     (void)screen_h;
 
+    // Scaled cell / icon geometry — computed once per paint. These mirror
+    // the ICON_* constants folded through S(), so the paint code below
+    // stays in physical pixels without threading the scale through every
+    // call site.
+    int cell_w  = S(ICON_CELL_W);
+    int cell_h  = S(ICON_CELL_H);
+    int icon_px = S(ICON_SIZE);
+
     for (int i = 0; i < icon_count; i++) {
         DesktopIcon *icon = &icons[i];
 
         // Center the icon image within the cell
-        int img_x = icon->x + (ICON_CELL_W - ICON_SIZE) / 2;
-        int img_y = icon->y + 2;  // Small top padding
+        int img_x = icon->x + (cell_w - icon_px) / 2;
+        int img_y = icon->y + S(2);  // Small top padding
 
-        // Y position for the label text (4px below the icon image)
-        int label_y = img_y + ICON_SIZE + 4;
+        // Y position for the label text (4pt below the icon image)
+        int label_y = img_y + icon_px + S(4);
 
         // ── Step 1: Build the Pango layout first ─────────────────────
         // We need the text height before drawing anything, because the
@@ -598,14 +629,16 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
         PangoLayout *layout = pango_cairo_create_layout(cr);
         pango_layout_set_text(layout, icon->name, -1);
 
-        // Set the font — real Snow Leopard uses Lucida Grande 12pt
+        // Set the font — real Snow Leopard uses Lucida Grande 12pt at the
+        // 1.0x baseline; icon_scaled_font() grows the point size with the
+        // output's HiDPI scale so labels stay proportional to the cell.
         PangoFontDescription *font = pango_font_description_from_string(
-            ICON_LABEL_FONT);
+            icon_scaled_font(12));
         pango_layout_set_font_description(layout, font);
         pango_font_description_free(font);
 
         // Max width, centered, ellipsis for long names, word-char wrap
-        pango_layout_set_width(layout, ICON_CELL_W * PANGO_SCALE);
+        pango_layout_set_width(layout, cell_w * PANGO_SCALE);
         pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
         pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
         pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
@@ -613,7 +646,7 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
         // Measure the rendered text dimensions
         int text_w, text_h;
         pango_layout_get_pixel_size(layout, &text_w, &text_h);
-        int text_x = icon->x + (ICON_CELL_W - text_w) / 2;
+        int text_x = icon->x + (cell_w - text_w) / 2;
 
         // ── Step 2: Draw label color rect (behind text) ───────────────
         // Snow Leopard labels color the filename background, not the icon.
@@ -623,13 +656,13 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
         if (icon->label > LABEL_NONE && icon->label < LABEL_COUNT) {
             const LabelColor *lc = &label_colors[icon->label];
 
-            // Pad 4px around the text on each side
-            double lrx = text_x - 4;
-            double lry = label_y - 2;
-            double lrw = text_w + 8;
-            double lrh = text_h + 4;
+            // Pad 4pt around the text on each side
+            double lrx = text_x - SF(4);
+            double lry = label_y - SF(2);
+            double lrw = text_w + SF(8);
+            double lrh = text_h + SF(4);
 
-            draw_rounded_rect(cr, lrx, lry, lrw, lrh, 4.0);
+            draw_rounded_rect(cr, lrx, lry, lrw, lrh, SF(4.0));
             // Alpha 200/255 — visible but lets the wallpaper hint through
             cairo_set_source_rgba(cr, lc->r, lc->g, lc->b, 200.0 / 255.0);
             cairo_fill(cr);
@@ -640,9 +673,9 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
         // Drawn AFTER the label rect so selection overlays it (blended).
         if (icon->selected) {
             draw_rounded_rect(cr,
-                icon->x + 2, icon->y + 2,
-                ICON_CELL_W - 4, ICON_CELL_H - 4,
-                8.0);  // 8px corner radius
+                icon->x + SF(2), icon->y + SF(2),
+                cell_w - SF(4), cell_h - SF(4),
+                SF(8.0));  // 8pt corner radius
 
             // #3875D7 at alpha 160/255
             cairo_set_source_rgba(cr,
@@ -657,14 +690,15 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
         cairo_save(cr);
         for (int pass = 3; pass >= 1; pass--) {
             double alpha = 0.08 * pass;  // Stronger close to icon, fading outward
-            int offset = pass + 1;
+            double offset = SF(pass + 1);
+            double grow   = SF(pass);
             cairo_set_source_rgba(cr, 0, 0, 0, alpha);
             // Rounded rect slightly larger than and below the icon
-            double sx = img_x - pass;
-            double sy = img_y - pass + offset;
-            double sw = ICON_SIZE + pass * 2;
-            double sh = ICON_SIZE + pass * 2;
-            double r  = 8.0 + pass;
+            double sx = img_x - grow;
+            double sy = img_y - grow + offset;
+            double sw = icon_px + grow * 2;
+            double sh = icon_px + grow * 2;
+            double r  = SF(8.0) + grow;
             cairo_new_sub_path(cr);
             cairo_arc(cr, sx + sw - r, sy + r,      r, -M_PI / 2, 0);
             cairo_arc(cr, sx + sw - r, sy + sh - r, r, 0,          M_PI / 2);
@@ -677,30 +711,32 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
 
         // ── Step 5: Icon image ────────────────────────────────────────
         if (icon->icon) {
-            // Scale the icon to ICON_SIZE if it doesn't match
+            // Source surfaces are loaded at their PNG's original size; scale
+            // per-paint to icon_px (the scaled target). cairo_scale collapses
+            // to identity when src_w == icon_px and scale == 1.0, so one
+            // branch handles every case — matches the dock's approach.
             int src_w = cairo_image_surface_get_width(icon->icon);
             int src_h = cairo_image_surface_get_height(icon->icon);
 
-            if (src_w != ICON_SIZE || src_h != ICON_SIZE) {
-                cairo_save(cr);
-                double scx = (double)ICON_SIZE / src_w;
-                double scy = (double)ICON_SIZE / src_h;
-                cairo_translate(cr, img_x, img_y);
-                cairo_scale(cr, scx, scy);
-                cairo_set_source_surface(cr, icon->icon, 0, 0);
-                cairo_paint(cr);
-                cairo_restore(cr);
-            } else {
-                cairo_set_source_surface(cr, icon->icon, img_x, img_y);
-                cairo_paint(cr);
-            }
+            cairo_save(cr);
+            double scx = (double)icon_px / src_w;
+            double scy = (double)icon_px / src_h;
+            cairo_translate(cr, img_x, img_y);
+            cairo_scale(cr, scx, scy);
+            cairo_set_source_surface(cr, icon->icon, 0, 0);
+            cairo_paint(cr);
+            cairo_restore(cr);
         }
 
         // ── Step 6: Label text with drop shadow ───────────────────────
         // Multiple passes create the dark halo that makes white text
-        // readable on any wallpaper (light, dark, or busy).
-        for (int dy = -1; dy <= 2; dy++) {
-            for (int dx = -1; dx <= 1; dx++) {
+        // readable on any wallpaper (light, dark, or busy). Offsets are
+        // scaled so the halo stays proportional to the rendered text on
+        // HiDPI outputs.
+        int halo = S(1);
+        if (halo < 1) halo = 1;
+        for (int dy = -halo; dy <= halo * 2; dy += halo) {
+            for (int dx = -halo; dx <= halo; dx += halo) {
                 if (dx == 0 && dy == 0) continue;  // Center is the white text itself
                 cairo_move_to(cr, text_x + dx, label_y + dy);
                 cairo_set_source_rgba(cr, 0, 0, 0, 0.6);
@@ -721,10 +757,15 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
 
 DesktopIcon *icons_handle_click(int x, int y)
 {
+    // Cell size in physical pixels at the current scale — hit-test uses the
+    // same scaled geometry that paint/layout use.
+    int cell_w = S(ICON_CELL_W);
+    int cell_h = S(ICON_CELL_H);
+
     // Check each icon to see if the click point is within its cell
     for (int i = 0; i < icon_count; i++) {
-        if (x >= icons[i].x && x < icons[i].x + ICON_CELL_W &&
-            y >= icons[i].y && y < icons[i].y + ICON_CELL_H) {
+        if (x >= icons[i].x && x < icons[i].x + cell_w &&
+            y >= icons[i].y && y < icons[i].y + cell_h) {
             return &icons[i];
         }
     }
@@ -914,17 +955,23 @@ void icons_drag_end(int screen_w, int screen_h)
     // We compute which grid cell the icon's center is closest to,
     // then check if that cell is free.
 
-    int rows_per_col = (screen_h - ICON_TOP_MARGIN) / ICON_CELL_H;
+    // Scaled cell geometry — the snap math works in physical pixels.
+    int cell_w = S(ICON_CELL_W);
+    int cell_h = S(ICON_CELL_H);
+    int top    = S(ICON_TOP_MARGIN);
+    int right  = S(ICON_RIGHT_MARGIN);
+
+    int rows_per_col = (screen_h - top) / cell_h;
     if (rows_per_col < 1) rows_per_col = 1;
 
     // Find the grid cell closest to the icon's current position
-    int center_x = drag_icon->x + ICON_CELL_W / 2;
-    int center_y = drag_icon->y + ICON_CELL_H / 2;
+    int center_x = drag_icon->x + cell_w / 2;
+    int center_y = drag_icon->y + cell_h / 2;
 
     // Convert pixel position to grid coordinates.
     // X axis: measured from the right edge, moving left
-    int col = (screen_w - ICON_RIGHT_MARGIN - center_x) / ICON_CELL_W;
-    int row = (center_y - ICON_TOP_MARGIN) / ICON_CELL_H;
+    int col = (screen_w - right - center_x) / cell_w;
+    int row = (center_y - top) / cell_h;
 
     // Clamp to valid range
     if (col < 0) col = 0;
@@ -949,9 +996,8 @@ void icons_drag_end(int screen_w, int screen_h)
     // If occupied, keep the old grid position (the icon will snap back)
 
     // Compute pixel position from grid coordinates
-    drag_icon->x = screen_w - ICON_RIGHT_MARGIN - ICON_CELL_W -
-                   (drag_icon->grid_col * ICON_CELL_W);
-    drag_icon->y = ICON_TOP_MARGIN + (drag_icon->grid_row * ICON_CELL_H);
+    drag_icon->x = screen_w - right - cell_w - (drag_icon->grid_col * cell_w);
+    drag_icon->y = top + (drag_icon->grid_row * cell_h);
 
     drag_icon = NULL;
 
@@ -959,6 +1005,17 @@ void icons_drag_end(int screen_w, int screen_h)
     // We save all icons (not just the moved one) because a single file
     // write is simpler and the file is tiny.
     layout_save_all(icons, icon_count);
+}
+
+// ── Public API: Rescale ─────────────────────────────────────────────
+
+void icons_rescale(void)
+{
+    // A scale change doesn't change which files are on the desktop — only
+    // the pixel math. Re-run layout_apply against the cached screen size
+    // so every icon's (x, y) is recomputed from the current S()-scaled
+    // ICON_* constants. Saved col/row in layout.ini stays untouched.
+    layout_apply(icons, icon_count, cached_screen_w, cached_screen_h);
 }
 
 // ── Public API: Relayout ────────────────────────────────────────────

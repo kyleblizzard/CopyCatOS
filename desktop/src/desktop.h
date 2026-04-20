@@ -13,6 +13,22 @@
 #include <X11/Xlib.h>
 #include <stdbool.h>
 
+// Per-output HiDPI scale for the output hosting the desktop's icon grid,
+// published by MoonRock on _MOONROCK_OUTPUT_SCALES. 1.0 when MoonRock isn't
+// running (the desktop still draws, just without hidpi awareness).
+extern float desktop_hidpi_scale;
+
+// Scale a point value to physical pixels, rounded to nearest int.
+// Every layout constant in icons.h is written against the 1.0x baseline.
+// S()/SF() multiply by desktop_hidpi_scale so one expression produces the
+// right pixel count on 1.0x externals, 1.5x midrange panels, and 1.75x on
+// the Legion Go S.
+#define S(x) ((int)((x) * desktop_hidpi_scale + 0.5))
+
+// Scale a point value to physical pixels as a double (no rounding).
+// Use for Cairo coordinates, corner radii, and other fractional values.
+#define SF(x) ((x) * (double)desktop_hidpi_scale)
+
 // Holds all the state for the desktop surface.
 // A single instance of this struct is created in main.c and passed
 // around to the other modules.
