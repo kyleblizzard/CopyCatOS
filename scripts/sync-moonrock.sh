@@ -56,22 +56,55 @@ echo ""
 echo "Done: $count files copied."
 echo ""
 
-# MoonRock is BSD-3-Clause (open source). The source files in moonrock use the
-# CopyCatOS All Rights Reserved header — strip that and replace it with the
-# correct BSD-3-Clause header so MoonRock stays openly licensed.
-echo "Fixing copyright headers (CopyCatOS All Rights Reserved → MoonRock BSD-3-Clause)..."
+# shell-api/ — the tiny subscriber helpers shell components (menubar, dock,
+# desktop, systemcontrol) link against to read MoonRock's per-output scale
+# atom. Canonical source lives in CopyCatOS; mirror it into the standalone
+# MoonRock repo so the pair of files is discoverable next to the compositor.
+SHELL_SRC="$(cd "$(dirname "$0")/../moonrock/shell-api" && pwd)"
+SHELL_DST="/Volumes/Development/MoonRock/shell-api"
 
-python3 - "$DST_DIR" <<'PYEOF'
+if [ -d "$SHELL_SRC" ]; then
+    mkdir -p "$SHELL_DST"
+    shell_count=0
+    echo "Syncing shell-api:"
+    echo "  From: $SHELL_SRC"
+    echo "  To:   $SHELL_DST"
+    for f in "$SHELL_SRC"/*.c "$SHELL_SRC"/*.h; do
+        if [ -f "$f" ]; then
+            basename="$(basename "$f")"
+            cp "$f" "$SHELL_DST/$basename"
+            echo "  Copied: $basename"
+            shell_count=$((shell_count + 1))
+        fi
+    done
+    echo "  shell-api files copied: $shell_count"
+    echo ""
+fi
+
+# MoonRock is BSD-3-Clause (open source). Source files in CopyCatOS use either
+# the old ARR block (legacy moonrock core files) or the one-line per-file
+# header "// CopyCatOS — by Kyle Blizzard at Blizzard.show" (newer files,
+# including shell-api). Convert both into the BSD-3 block used by the
+# standalone MoonRock repo.
+echo "Fixing copyright headers (CopyCatOS → MoonRock BSD-3-Clause)..."
+
+python3 - "$DST_DIR" "$SHELL_DST" <<'PYEOF'
 import sys, os
 
-src_dir = sys.argv[1]
+dirs = [d for d in sys.argv[1:] if d and os.path.isdir(d)]
 
-OLD = (
+OLD_ARR = (
     "// Copyright (c) 2026 Kyle Blizzard. All Rights Reserved.\n"
     "// This code is publicly visible for portfolio purposes only.\n"
     "// Unauthorized copying, forking, or distribution of this file,\n"
     "// via any medium, is strictly prohibited."
 )
+
+# Consume the blank line that always follows the one-liner in CopyCatOS,
+# so the MoonRock BSD-3 block sits flush against the next comment block —
+# matching the layout every legacy ARR file already had after conversion.
+OLD_ONELINE = "// CopyCatOS — by Kyle Blizzard at Blizzard.show\n\n"
+ONELINE_REPLACEMENT_SUFFIX = "\n"
 
 NEW = (
     "// Copyright (c) 2026 Kyle Blizzard\n"
@@ -81,25 +114,31 @@ NEW = (
     "// www.blizzard.show/moonrock/"
 )
 
-for fname in sorted(os.listdir(src_dir)):
-    if not fname.endswith(('.c', '.h')):
-        continue
-    path = os.path.join(src_dir, fname)
-    content = open(path).read()
-    if OLD not in content:
-        continue
-    content = content.replace(OLD, NEW)
-    # Remove CopyCatOS-specific branding that doesn't belong in standalone MoonRock
-    content = content.replace(
-        "MoonRock Compositor — CopyCatOS's custom OpenGL X11 compositor",
-        "MoonRock Compositor — custom OpenGL X11 compositor"
-    )
-    content = content.replace(
-        "CopyCatOS aesthetic of recreating the Snow Leopard look",
-        "MoonRock aesthetic of recreating the Snow Leopard look"
-    )
-    open(path, 'w').write(content)
-    print(f"  Fixed: {fname}")
+for src_dir in dirs:
+    for fname in sorted(os.listdir(src_dir)):
+        if not fname.endswith(('.c', '.h')):
+            continue
+        path = os.path.join(src_dir, fname)
+        content = open(path).read()
+        changed = False
+        if OLD_ARR in content:
+            content = content.replace(OLD_ARR, NEW)
+            changed = True
+        elif OLD_ONELINE in content:
+            content = content.replace(OLD_ONELINE, NEW + ONELINE_REPLACEMENT_SUFFIX)
+            changed = True
+        # Remove CopyCatOS-specific branding that doesn't belong in standalone MoonRock
+        content = content.replace(
+            "MoonRock Compositor — CopyCatOS's custom OpenGL X11 compositor",
+            "MoonRock Compositor — custom OpenGL X11 compositor"
+        )
+        content = content.replace(
+            "CopyCatOS aesthetic of recreating the Snow Leopard look",
+            "MoonRock aesthetic of recreating the Snow Leopard look"
+        )
+        if changed:
+            open(path, 'w').write(content)
+            print(f"  Fixed: {os.path.relpath(path, os.path.dirname(src_dir))}")
 
 PYEOF
 
