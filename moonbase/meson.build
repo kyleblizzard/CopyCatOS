@@ -55,21 +55,30 @@ add_project_arguments(
 # headers ship even in Phase B so downstream compile-gates against
 # their MOONBASE_<DOMAIN>_API_VERSION macros resolve today.
 
-public_headers = files(
-  'include/moonbase.h',
-  'include/moonbase_keychain.h',
-  'include/moonbase_a11y.h',
-  'include/moonbase_notifications.h',
-  'include/moonbase_power.h',
-  'include/moonbase_controller.h',
-  'include/moonbase_clipboard.h',
-  'include/moonbase_display.h',
-  'include/moonbase_services.h',
-  'include/moonbase_share.h',
-  'include/moonbase_print.h',
-  'include/moonbase_quicklook.h',
-  'include/moonbase_spotlight.h',
-)
+# Shared basename list drives both the install_headers set and the
+# MoonBase.framework/Versions/A/Headers symlink loop further down — keeping
+# one list means the framework bundle can never drift from the flat
+# ${includedir} install.
+public_header_names = [
+  'moonbase.h',
+  'moonbase_keychain.h',
+  'moonbase_a11y.h',
+  'moonbase_notifications.h',
+  'moonbase_power.h',
+  'moonbase_controller.h',
+  'moonbase_clipboard.h',
+  'moonbase_display.h',
+  'moonbase_services.h',
+  'moonbase_share.h',
+  'moonbase_print.h',
+  'moonbase_quicklook.h',
+  'moonbase_spotlight.h',
+]
+
+public_headers = []
+foreach hdr : public_header_names
+  public_headers += files('include' / hdr)
+endforeach
 
 ipc_headers = files(
   'include/moonbase/ipc/kinds.h',
@@ -157,9 +166,91 @@ pkg = import('pkgconfig')
 pkg.generate(
   libmoonbase,
   name: 'moonbase',
-  description: 'CopyCatOS application framework (libmoonbase.so.1)',
+  description: 'CopyCatOS application framework (MoonBase.framework / libmoonbase.so.1)',
   version: meson.project_version(),
   subdirs: ['.'],
+)
+
+# ---------------------------------------------------------------------
+# MoonBase.framework — Snow Leopard-style bundle install-layout
+# ---------------------------------------------------------------------
+#
+# Symlink-only overlay on top of the existing ${libdir}/libmoonbase.so.1
+# and ${includedir}/moonbase*.h installs. No bytes are duplicated — the
+# framework is the public brand for paths that already exist elsewhere.
+# On Linux ld keeps finding -lmoonbase via ${libdir}/libmoonbase.so.1
+# (unchanged); Snow Leopard-style consumers can point at
+# ${libdir}/MoonBase.framework/{Headers/moonbase.h,Versions/A/MoonBase}
+# instead, and both resolve to the same files on disk.
+#
+# Layout under ${libdir}/MoonBase.framework/:
+#     MoonBase             → Versions/Current/MoonBase
+#     Headers              → Versions/Current/Headers
+#     Versions/Current     → A
+#     Versions/A/MoonBase  → ../../../libmoonbase.so.1
+#     Versions/A/Headers/<hdr>.h  → ${includedir}/<hdr>.h (per public header)
+#     Versions/A/Headers/moonbase/ipc/kinds.h → ${includedir}/moonbase/ipc/kinds.h
+#
+# In-framework links stay relative so a whole-framework relocation stays
+# valid; crossings out to ${includedir} are absolute because libdir and
+# includedir can have different shapes (lib vs lib64, /usr vs /usr/local)
+# and there is no reliable relative path between them at configure time.
+
+mb_framework_dir       = get_option('libdir') / 'MoonBase.framework'
+mb_framework_versions  = mb_framework_dir / 'Versions'
+mb_framework_version_a = mb_framework_versions / 'A'
+mb_framework_headers_a = mb_framework_version_a / 'Headers'
+
+mb_absolute_includedir = get_option('prefix') / get_option('includedir')
+
+# Install order matters: meson verifies each symlink's target exists at
+# install time. Populate Versions/A/ (binary + per-header links) first,
+# then Versions/Current, then the top-level convenience symlinks whose
+# targets dereference through Current back into A/.
+
+# Versions/A/MoonBase → ../../../libmoonbase.so.1
+# Three ups land in ${libdir}, which is where libmoonbase.so.1 lives.
+install_symlink(
+  'MoonBase',
+  pointing_to: '../../../libmoonbase.so.1',
+  install_dir: mb_framework_version_a,
+)
+
+# Per-header symlinks inside Versions/A/Headers/
+foreach hdr : public_header_names
+  install_symlink(
+    hdr,
+    pointing_to: mb_absolute_includedir / hdr,
+    install_dir: mb_framework_headers_a,
+  )
+endforeach
+
+# Nested IPC header: MoonBase.framework/Versions/A/Headers/moonbase/ipc/kinds.h
+install_symlink(
+  'kinds.h',
+  pointing_to: mb_absolute_includedir / 'moonbase' / 'ipc' / 'kinds.h',
+  install_dir: mb_framework_headers_a / 'moonbase' / 'ipc',
+)
+
+# Versions/Current → A
+install_symlink(
+  'Current',
+  pointing_to: 'A',
+  install_dir: mb_framework_versions,
+)
+
+# Top-level MoonBase → Versions/Current/MoonBase
+install_symlink(
+  'MoonBase',
+  pointing_to: 'Versions/Current/MoonBase',
+  install_dir: mb_framework_dir,
+)
+
+# Top-level Headers → Versions/Current/Headers
+install_symlink(
+  'Headers',
+  pointing_to: 'Versions/Current/Headers',
+  install_dir: mb_framework_dir,
 )
 
 # ---------------------------------------------------------------------
