@@ -2,27 +2,31 @@
 
 # moonbase — CopyCatOS application framework library
 #
-# Phase B skeleton: builds libmoonbase.so.1 with every public symbol
-# from the Phase A headers defined. Three symbols are real
-# (moonbase_last_error, moonbase_error_string, moonbase_release);
-# the other 41 are stubs that return MB_ENOSYS or set last-error
-# and return a null-sentinel. Phase C replaces the stub bodies with
-# real IPC to MoonRock — the ABI surface does not change.
+# Builds the real ELF shared library inside MoonBase.framework/ as the
+# bare file 'MoonBase' (no 'lib' prefix, no '.so.1' suffix). The ELF
+# carries SONAME=MoonBase, so every app links with '-l:MoonBase' and
+# ld.so at runtime looks up a file literally named MoonBase under the
+# framework path registered with /etc/ld.so.conf.d/moonbase.conf.
 #
 # Targets:
-#   libmoonbase.so.1.0.0 / libmoonbase.so.1 / libmoonbase.so
-#   moonbase-launch      -- bwrap-based bundle launcher scaffold
-#   mb-hello             -- tests/hello.c, exercises init+quit symbols
+#   ${libdir}/MoonBase.framework/Versions/A/MoonBase   — the ELF
+#   ${libdir}/MoonBase.framework/Versions/A/Headers/   — public API
+#   ${libdir}/MoonBase.framework/Versions/Current → A
+#   ${libdir}/MoonBase.framework/{MoonBase,Headers} → Versions/Current/…
+#   moonbase-launch      — bwrap-based bundle launcher
+#   mb-*                 — unit + integration tests
 #
 # Generated:
-#   moonbase.pc          -- pkg-config file for third-party consumers
+#   moonbase.pc          — pkg-config file (Libs: -l:MoonBase)
+#   moonbase.conf        — ld.so.conf.d entry for framework path
 #
 # Build:
 #   meson setup build
 #   meson compile -C build
 #
 # Install:
-#   meson install -C build
+#   sudo meson install -C build
+#   (install script runs ldconfig when DESTDIR is unset)
 
 project('moonbase', 'c',
   version: '1.0.0',
@@ -50,7 +54,7 @@ add_project_arguments(
 # Public headers
 # ---------------------------------------------------------------------
 #
-# Phase A froze this set. Every app linking libmoonbase.so.1 includes
+# Phase A froze this set. Every app linking MoonBase includes
 # through <moonbase.h> + one or more companions. All companion
 # headers ship even in Phase B so downstream compile-gates against
 # their MOONBASE_<DOMAIN>_API_VERSION macros resolve today.
@@ -88,7 +92,7 @@ install_headers(public_headers)
 install_headers(ipc_headers, subdir: 'moonbase/ipc')
 
 # ---------------------------------------------------------------------
-# libmoonbase.so.1
+# MoonBase — framework binary
 # ---------------------------------------------------------------------
 
 moonbase_lib_sources = files(
@@ -148,46 +152,66 @@ glesv2_dep = dependency('glesv2')
 libpng_dep  = dependency('libpng')
 libjpeg_dep = dependency('libjpeg')
 
+# The shared library builds with:
+#   - name 'MoonBase'        : output basename before prefix/suffix
+#   - name_prefix ''         : drop the Linux 'lib' prefix
+#   - no version/soversion   : meson's default suffix '.so' is accepted,
+#                              but the custom_target below copies it to
+#                              a bare 'MoonBase' (no extension) for the
+#                              framework install path
+#   - link_args -Wl,-soname  : burns DT_SONAME=MoonBase into the ELF so
+#                              '-l:MoonBase' consumers end up with
+#                              DT_NEEDED=MoonBase at link time, which
+#                              ld.so resolves via ld.so.conf.d/moonbase.conf
+#   - install: false         : handled by moonbase_framework_binary below
 libmoonbase = shared_library(
-  'moonbase',
+  'MoonBase',
   moonbase_lib_sources,
+  name_prefix: '',
   include_directories: include_directories('include', 'src'),
-  version: '1.0.0',
-  soversion: '1',
   dependencies: [threads_dep, cairo_dep, libsecret_dep, egl_dep, glesv2_dep],
-  install: true,
+  link_args: ['-Wl,-soname,MoonBase'],
+  install: false,
 )
 
 # pkg-config so third-party code can `pkg-config --cflags --libs moonbase`.
-# subdirs: the generated .pc adds -I${includedir} so top-level
-# headers resolve as <moonbase.h>; the `moonbase/ipc` subdir makes
-# <moonbase/ipc/kinds.h> resolve the same way.
+# The Libs: line points at MoonBase.framework/Versions/Current and uses
+# GNU ld's '-l:<exact-filename>' form so the linker picks up the bare
+# 'MoonBase' file (not 'libMoonBase.so'). subdirs['.'] adds -I${includedir}
+# so top-level headers resolve as <moonbase.h>.
 pkg = import('pkgconfig')
 pkg.generate(
-  libmoonbase,
   name: 'moonbase',
-  description: 'CopyCatOS application framework (MoonBase.framework / libmoonbase.so.1)',
+  description: 'CopyCatOS application framework (MoonBase.framework)',
   version: meson.project_version(),
   subdirs: ['.'],
+  libraries: [
+    '-L${libdir}/MoonBase.framework/Versions/Current',
+    '-l:MoonBase',
+  ],
 )
 
 # ---------------------------------------------------------------------
 # MoonBase.framework — Snow Leopard-style bundle install-layout
 # ---------------------------------------------------------------------
 #
-# Symlink-only overlay on top of the existing ${libdir}/libmoonbase.so.1
-# and ${includedir}/moonbase*.h installs. No bytes are duplicated — the
-# framework is the public brand for paths that already exist elsewhere.
-# On Linux ld keeps finding -lmoonbase via ${libdir}/libmoonbase.so.1
-# (unchanged); Snow Leopard-style consumers can point at
-# ${libdir}/MoonBase.framework/{Headers/moonbase.h,Versions/A/MoonBase}
-# instead, and both resolve to the same files on disk.
+# The framework is the *only* install path for the shared library — there
+# is no legacy ${libdir}/libmoonbase.so* anywhere on disk. The real ELF
+# lives inside the bundle as:
+#
+#     ${libdir}/MoonBase.framework/Versions/A/MoonBase
+#
+# Headers are installed twice on purpose: a flat ${includedir}/moonbase.h
+# tree (for distros that prefer pkg-config's default search paths) plus
+# per-header symlinks inside MoonBase.framework/Versions/A/Headers/ that
+# cross back into ${includedir}. Snow Leopard-style consumers use the
+# framework's Headers/ path; a simple `-I${includedir}` also works.
 #
 # Layout under ${libdir}/MoonBase.framework/:
 #     MoonBase             → Versions/Current/MoonBase
 #     Headers              → Versions/Current/Headers
 #     Versions/Current     → A
-#     Versions/A/MoonBase  → ../../../libmoonbase.so.1
+#     Versions/A/MoonBase  : the ELF shared library (SONAME=MoonBase)
 #     Versions/A/Headers/<hdr>.h  → ${includedir}/<hdr>.h (per public header)
 #     Versions/A/Headers/moonbase/ipc/kinds.h → ${includedir}/moonbase/ipc/kinds.h
 #
@@ -208,11 +232,45 @@ mb_absolute_includedir = get_option('prefix') / get_option('includedir')
 # then Versions/Current, then the top-level convenience symlinks whose
 # targets dereference through Current back into A/.
 
-# Versions/A/MoonBase → ../../../libmoonbase.so.1
-# Three ups land in ${libdir}, which is where libmoonbase.so.1 lives.
+# Versions/A/MoonBase — the real ELF, copied out of the build tree under
+# its bare framework name. Meson's shared_library() emits MoonBase.so
+# (no lib-prefix thanks to name_prefix: '', '.so' suffix because meson
+# 1.11 rejects an empty suffix); this custom_target strips the .so so
+# the on-disk filename matches DT_SONAME=MoonBase exactly.
+moonbase_framework_binary = custom_target(
+  'MoonBase.bin',
+  input: libmoonbase,
+  output: 'MoonBase',
+  command: [find_program('cp'), '@INPUT@', '@OUTPUT@'],
+  install: true,
+  install_dir: mb_framework_version_a,
+  install_mode: 'rwxr-xr-x',
+  build_by_default: true,
+)
+
+# Versions/A/libMoonBase.so → MoonBase
+#
+# Not a compatibility symlink. glibc's ldconfig scans directories listed
+# in ld.so.conf.d/*.conf and filters entries by the 'lib*.so*' filename
+# pattern *before* opening each candidate to read DT_SONAME. A file
+# literally named 'MoonBase' is invisible to ldconfig without a
+# matching-pattern name somewhere pointing at it — meaning ld.so.cache
+# never learns MoonBase exists and every consumer fails to resolve
+# DT_NEEDED=MoonBase at exec time.
+#
+# With this symlink, ldconfig:
+#   1. matches libMoonBase.so against its lib*.so* pattern
+#   2. follows the link to MoonBase and reads DT_SONAME=MoonBase
+#   3. caches entry: 'MoonBase' → Versions/A/libMoonBase.so
+#
+# At app launch ld.so hits the cache under the SONAME key 'MoonBase'
+# and loads the file (via the symlink, transparently). Nothing in the
+# build system ever links to libMoonBase by name — consumers use
+# -l:MoonBase, which produces DT_NEEDED=MoonBase, resolved through the
+# SONAME key only. The filename is a pure ldconfig-visibility shim.
 install_symlink(
-  'MoonBase',
-  pointing_to: '../../../libmoonbase.so.1',
+  'libMoonBase.so',
+  pointing_to: 'MoonBase',
   install_dir: mb_framework_version_a,
 )
 
@@ -254,6 +312,45 @@ install_symlink(
 )
 
 # ---------------------------------------------------------------------
+# ld.so registration — /etc/ld.so.conf.d/moonbase.conf
+# ---------------------------------------------------------------------
+#
+# ld.so resolves DT_NEEDED=MoonBase at app launch time. Without this
+# file the loader would only search the default system library paths
+# (/lib, /lib64, /usr/lib, /usr/lib64) and miss the framework. The
+# generated conf contains a single absolute directory pointing at
+# MoonBase.framework/Versions/Current; ldconfig follows the symlink
+# chain into A/ and caches MoonBase from there.
+
+moonbase_ld_conf_data = configuration_data()
+moonbase_ld_conf_data.set(
+  'FRAMEWORK_VERSIONS_CURRENT',
+  get_option('prefix') / mb_framework_versions / 'Current',
+)
+moonbase_ld_conf = configure_file(
+  input: files('packaging/moonbase.conf.in'),
+  output: 'moonbase.conf',
+  configuration: moonbase_ld_conf_data,
+)
+install_data(
+  moonbase_ld_conf,
+  install_dir: '/etc/ld.so.conf.d',
+)
+
+# Refresh ld.so.cache after install so DT_NEEDED=MoonBase resolves on the
+# very next exec. Skipped when DESTDIR is set — staged installs (rpm,
+# deb, pacman, nobara-user's --destdir) run ldconfig from their own
+# package post-install hooks against the live rootfs, not the staging
+# tree. `|| true` keeps `sudo-less` installs from failing loudly; the
+# user just needs to `sudo ldconfig` themselves.
+meson.add_install_script(
+  'sh', '-c',
+  'if [ -z "$DESTDIR" ] && command -v ldconfig >/dev/null 2>&1; then '
+  + 'ldconfig || true; '
+  + 'fi',
+)
+
+# ---------------------------------------------------------------------
 # moonbase-launch — bundle-aware, sandbox-aware launcher
 # ---------------------------------------------------------------------
 #
@@ -266,6 +363,7 @@ moonbase_launch = executable(
   include_directories: include_directories('include', 'src'),
   link_with: libmoonbase,
   install: true,
+  install_rpath: get_option('prefix') / mb_framework_versions / 'Current',
 )
 
 # ---------------------------------------------------------------------
@@ -292,6 +390,7 @@ moonbase_consent = executable(
   link_with: libmoonbase,
   install: true,
   install_dir: get_option('libexecdir'),
+  install_rpath: get_option('prefix') / mb_framework_versions / 'Current',
 )
 
 # ---------------------------------------------------------------------
@@ -314,6 +413,7 @@ moonbase_version = executable(
   include_directories: include_directories('include'),
   link_with: libmoonbase,
   install: true,
+  install_rpath: get_option('prefix') / mb_framework_versions / 'Current',
 )
 
 # ---------------------------------------------------------------------
@@ -1016,7 +1116,7 @@ textedit_appdev = custom_target('textedit-appdev',
 # examples/keychain-access — Keychain Access.appdev v0.1
 # ---------------------------------------------------------------------
 #
-# Reference app 3 of 4 required before the libmoonbase.so.1 public-SDK
+# Reference app 3 of 4 required before the MoonBase public-SDK
 # freeze. Drives every public symbol in moonbase_keychain.h through a
 # real bundle: list / store / fetch / delete / generate_password /
 # secret_free. v0.1 uses auto-generated labels + 20-char passwords so
@@ -1060,7 +1160,7 @@ keychain_access_appdev = custom_target('keychain-access-appdev',
 # examples/preview — Preview.appdev v0.1
 # ---------------------------------------------------------------------
 #
-# Reference app 4 of 4 before the libmoonbase.so.1 public-SDK freeze.
+# Reference app 4 of 4 before the MoonBase public-SDK freeze.
 # Pressure-tests the GL render path, MB_EV_DRAG_* delivery, and the
 # moonbase_prefs_* store in one bundle: open an image (argv or
 # drag-drop), upload it as a GL texture, draw with letterboxing,
@@ -1098,7 +1198,7 @@ preview_appdev = custom_target('preview-appdev',
 # examples/activity-monitor — Activity Monitor.appdev v0.1
 # ---------------------------------------------------------------------
 #
-# Fourth and final reference app before the libmoonbase.so.1 public-SDK
+# Fourth and final reference app before the MoonBase public-SDK
 # freeze. Exercises long-lived periodic sampling (wait_event with a
 # 1s timeout), Cairo-drawn list rows (no widget library required), and
 # a declared system:process-list entitlement in Info.appc. Pure libc —
