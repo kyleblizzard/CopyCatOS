@@ -37,7 +37,7 @@
 // a whitelisted Secret Service filter) is deferred; the API gate is
 // the load-bearing check today.
 
-#include "moonbase.h"
+#include "CopyCatAppKit.h"
 #include "moonbase_keychain.h"
 #include "consents.h"
 #include "entitlements.h"

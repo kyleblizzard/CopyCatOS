@@ -14,7 +14,7 @@
 // checks the init return; the Phase B scaffold accepts MB_ENOSYS as
 // a signal that nothing's wired yet without refusing to run.
 
-#include <moonbase.h>
+#include <CopyCatAppKit.h>
 
 int main(void) {
     (void)moonbase_init(0, NULL);

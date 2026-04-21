@@ -7,7 +7,7 @@ copyright        = "by Kyle Blizzard @ Blizzard.show"
 category         = "utility"
 
 [executable]
-path                = "Contents/MacOS/hello"
+path                = "Contents/CopyCatOS/hello"
 language            = "c"
 render-mode-default = "cairo"
 

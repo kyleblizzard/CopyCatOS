@@ -9,7 +9,7 @@
 //
 // Scope for this header is the *schema* — the parsed, validated,
 // structurally-sound view of Info.appc. Disk-resolution of the
-// executable (Contents/MacOS/ vs Contents/Resources/) lives in the
+// executable (Contents/CopyCatOS/ vs Contents/Resources/) lives in the
 // bundle loader in a later slice. Keeping the two separate lets unit
 // tests parse Info.appc from memory buffers without ever touching the
 // filesystem.

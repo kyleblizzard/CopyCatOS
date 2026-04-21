@@ -7,7 +7,7 @@ copyright        = "by Kyle Blizzard @ Blizzard.show"
 category         = "utility"
 
 [executable]
-path                = "Contents/MacOS/activity-monitor"
+path                = "Contents/CopyCatOS/activity-monitor"
 language            = "c"
 render-mode-default = "cairo"
 

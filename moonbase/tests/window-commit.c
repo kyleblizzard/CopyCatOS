@@ -25,7 +25,7 @@
 // 640 * 4 = 2560 (already aligned), so this test pins the whole chain
 // without any rounding slop.
 
-#include "moonbase.h"
+#include "CopyCatAppKit.h"
 #include "../src/server/server.h"
 #include "../src/ipc/cbor.h"
 #include "moonbase/ipc/kinds.h"

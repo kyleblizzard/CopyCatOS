@@ -19,7 +19,7 @@
 //   * frames WITHOUT fds (like the BYE that moonbase_quit sends)
 //     continue to surface with frame_fd_count == 0
 
-#include "moonbase.h"
+#include "CopyCatAppKit.h"
 #include "../src/server/server.h"
 #include "../src/ipc/transport.h"
 #include "moonbase/ipc/kinds.h"

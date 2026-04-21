@@ -18,7 +18,7 @@
 //     compare against their own handle, not raw ids)
 //   * moonbase_quit posts MB_EV_APP_WILL_QUIT before tearing down
 
-#include "moonbase.h"
+#include "CopyCatAppKit.h"
 #include "../src/server/server.h"
 #include "../src/ipc/cbor.h"
 #include "moonbase/ipc/kinds.h"

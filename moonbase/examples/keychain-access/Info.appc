@@ -7,7 +7,7 @@ copyright        = "by Kyle Blizzard @ Blizzard.show"
 category         = "utility"
 
 [executable]
-path                = "Contents/MacOS/keychain-access"
+path                = "Contents/CopyCatOS/keychain-access"
 language            = "c"
 render-mode-default = "cairo"
 

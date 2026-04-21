@@ -7,7 +7,7 @@ copyright        = "by Kyle Blizzard @ Blizzard.show"
 category         = "utility"
 
 [executable]
-path                = "Contents/MacOS/gl-hello"
+path                = "Contents/CopyCatOS/gl-hello"
 language            = "c"
 render-mode-default = "gl"
 

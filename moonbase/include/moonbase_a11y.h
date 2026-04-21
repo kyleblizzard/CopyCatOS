@@ -16,7 +16,7 @@
 #ifndef MOONBASE_A11Y_H
 #define MOONBASE_A11Y_H
 
-#include <moonbase.h>
+#include <CopyCatAppKit.h>
 
 #ifdef __cplusplus
 extern "C" {

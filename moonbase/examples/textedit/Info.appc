@@ -7,7 +7,7 @@ copyright        = "by Kyle Blizzard @ Blizzard.show"
 category         = "productivity"
 
 [executable]
-path                = "Contents/MacOS/textedit"
+path                = "Contents/CopyCatOS/textedit"
 language            = "c"
 render-mode-default = "cairo"
 

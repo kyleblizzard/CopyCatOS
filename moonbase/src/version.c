@@ -14,7 +14,7 @@
 // Kept in its own file so the intent is obvious and so Phase C
 // changes to init.c or error.c never need to touch version code.
 
-#include "moonbase.h"
+#include "CopyCatAppKit.h"
 
 uint32_t moonbase_runtime_version(void) {
     return (uint32_t)MOONBASE_API_VERSION;

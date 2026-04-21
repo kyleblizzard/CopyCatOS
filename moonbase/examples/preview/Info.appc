@@ -7,7 +7,7 @@ copyright        = "by Kyle Blizzard @ Blizzard.show"
 category         = "graphics"
 
 [executable]
-path                = "Contents/MacOS/preview"
+path                = "Contents/CopyCatOS/preview"
 language            = "c"
 render-mode-default = "gl"
 

@@ -26,7 +26,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "moonbase.h"   // for MOONBASE_API_VERSION
+#include "CopyCatAppKit.h"   // for MOONBASE_API_VERSION
 
 // -------------------------------------------------------------------
 // helpers
@@ -213,7 +213,9 @@ mb_bundle_err_t mb_bundle_load(const char *path, mb_bundle_t *out,
         return MB_BUNDLE_ERR_API_VERSION;
     }
 
-    // Executable path — must resolve inside bundle and under MacOS/ or Resources/.
+    // Executable path — must resolve inside bundle and under
+    // Contents/CopyCatOS/ (canonical), Contents/MacOS/ (legacy soft-transition),
+    // or Contents/Resources/.
     char exe_full[PATH_MAX];
     if (join_path(exe_full, sizeof(exe_full), abs, out->info.exec_path) != 0) {
         mb_info_appc_free(&out->info);
@@ -236,13 +238,15 @@ mb_bundle_err_t mb_bundle_load(const char *path, mb_bundle_t *out,
                 out->info.exec_path, exe_abs, abs);
         return MB_BUNDLE_ERR_EXEC_ESCAPE;
     }
-    // Location check — must be under Contents/MacOS/ or Contents/Resources/.
+    // Location check — must be under Contents/CopyCatOS/ (canonical),
+    // Contents/MacOS/ (legacy soft-transition), or Contents/Resources/.
     const char *rel = exe_abs + abs_len + 1;
-    if (strncmp(rel, "Contents/MacOS/", 15) != 0
+    if (strncmp(rel, "Contents/CopyCatOS/", 19) != 0
+        && strncmp(rel, "Contents/MacOS/", 15) != 0
         && strncmp(rel, "Contents/Resources/", 19) != 0) {
         mb_info_appc_free(&out->info);
         set_err(err, err_cap,
-                "[executable].path must live under Contents/MacOS/ or Contents/Resources/, not %s",
+                "[executable].path must live under Contents/CopyCatOS/ or Contents/Resources/, not %s",
                 rel);
         return MB_BUNDLE_ERR_EXEC_LOCATION;
     }

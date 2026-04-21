@@ -24,7 +24,7 @@
 // queue. The test fails (nonzero exit from the child) if any phase's
 // allow / remember / queue state doesn't match the per-phase expectation.
 
-#include "moonbase.h"
+#include "CopyCatAppKit.h"
 #include "../src/ipc/consent.h"
 #include "../src/ipc/transport.h"
 #include "../src/ipc/cbor.h"

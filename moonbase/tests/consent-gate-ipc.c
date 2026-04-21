@@ -25,7 +25,7 @@
 // the raw mb_ipc_consent_request wire). This test is the only one
 // that pins the gate's deny-on-missing + IPC fallback end-to-end.
 
-#include "moonbase.h"
+#include "CopyCatAppKit.h"
 #include "consents.h"
 #include "../src/ipc/consent.h"
 #include "../src/server/server.h"

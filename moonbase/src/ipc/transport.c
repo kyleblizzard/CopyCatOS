@@ -13,7 +13,7 @@
 #include "cbor.h"
 #include "debug.h"
 #include "../internal.h"
-#include "moonbase.h"
+#include "CopyCatAppKit.h"
 #include "moonbase/ipc/kinds.h"
 
 #include <errno.h>

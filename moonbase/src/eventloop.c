@@ -33,7 +33,7 @@
 // from the thread that called moonbase_init(). moonbase_dispatch_main
 // (the only cross-thread entry) is a later-slice concern.
 
-#include "moonbase.h"
+#include "CopyCatAppKit.h"
 #include "internal.h"
 #include "ipc/transport.h"
 #include "ipc/cbor.h"

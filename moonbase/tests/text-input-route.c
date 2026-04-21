@@ -32,7 +32,7 @@
 // Server-side XLookupString emission is covered separately by the
 // Xvfb end-to-end run, not by this unit test.
 
-#include "moonbase.h"
+#include "CopyCatAppKit.h"
 #include "../src/server/server.h"
 #include "../src/ipc/cbor.h"
 #include "moonbase/ipc/kinds.h"

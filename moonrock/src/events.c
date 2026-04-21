@@ -10,7 +10,7 @@
 #include "moonrock.h"
 #include "moonbase_host.h"
 #include "moonbase_xdnd.h"
-#include "moonbase.h"     // MB_MOD_*
+#include "CopyCatAppKit.h"     // MB_MOD_*
 #include "moonrock_display.h"   // display_scale_request_atom + handler
 #include "struts.h"
 #include "resize.h"

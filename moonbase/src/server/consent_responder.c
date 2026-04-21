@@ -21,7 +21,7 @@
 #include "consent_responder.h"
 
 #include "ipc/cbor.h"
-#include "moonbase.h"              // mb_error_t, MB_E*
+#include "CopyCatAppKit.h"              // mb_error_t, MB_E*
 #include "moonbase/ipc/kinds.h"
 
 #include <errno.h>

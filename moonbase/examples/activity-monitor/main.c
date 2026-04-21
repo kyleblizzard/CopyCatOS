@@ -42,7 +42,7 @@
 //
 // Everything measures in points; MoonBase scales the Cairo surface.
 
-#include <moonbase.h>
+#include <CopyCatAppKit.h>
 
 #include <cairo/cairo.h>
 

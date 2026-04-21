@@ -46,7 +46,7 @@
 
 #include <stdbool.h>
 
-#include "moonbase.h"  // mb_error_t
+#include "CopyCatAppKit.h"  // mb_error_t
 
 // What the reader found for (group, value) in consents.toml.
 typedef enum {

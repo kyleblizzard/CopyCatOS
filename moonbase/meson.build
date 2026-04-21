@@ -56,6 +56,7 @@ add_project_arguments(
 # their MOONBASE_<DOMAIN>_API_VERSION macros resolve today.
 
 public_headers = files(
+  'include/CopyCatAppKit.h',
   'include/moonbase.h',
   'include/moonbase_keychain.h',
   'include/moonbase_a11y.h',
@@ -698,7 +699,7 @@ test('info-appc', mb_info_appc, timeout: 10)
 # happy path plus every failure in bundle-spec.md §8 except quarantine
 # (its own slice): bad suffix, not-a-directory, missing Info.appc,
 # executable missing, executable not-executable, executable outside
-# MacOS/Resources, relative-symlink escape via realpath, absolute
+# CopyCatOS/Resources, relative-symlink escape via realpath, absolute
 # symlink anywhere in the tree, file at bundle root outside Contents/,
 # and minimum-moonbase newer than library.
 
@@ -808,13 +809,14 @@ test('data-dir-isolation', mb_data_dir_isolation,
 # examples/hello — reference MoonBase app + assembled .appd bundle
 # ---------------------------------------------------------------------
 #
-# Produces build/hello.appd/Contents/{Info.appc, MacOS/hello}. Layout
-# matches bundle-spec.md §1 and passes mb_bundle_load's validator. Not
-# installed system-wide — the bundle is a build artifact the user runs
-# from the build tree via `moonbase-launch build/hello.appd`.
+# Produces build/hello.appd/Contents/{Info.appc, CopyCatOS/hello} plus
+# a Contents/MacOS → CopyCatOS compat symlink and a sibling hello.app
+# symlink → hello.appd. Layout matches bundle-spec.md §1 and passes
+# mb_bundle_load's validator. Not installed system-wide — the bundle
+# is a build artifact the user runs from the build tree via
+# `moonbase-launch build/hello.appd` (or `build/hello.app`).
 # (.appd is the developer directory format; the shipping single-file
-# .app is produced from the same tree by a later slice once the ELF-stub
-# packager lands.)
+# .app becomes a real ELF-stub artifact once the packager lands.)
 #
 # No Resources/ contents are shipped yet; §8 validation doesn't require
 # them and a real AppIcon.icns slice lands once the icon loader uses it.
@@ -835,10 +837,11 @@ hello_appd = custom_target('hello-appd',
     find_program('sh'), '-c',
     'set -eu; '
     + 'rm -rf "$0"; rm -f "$3"; '
-    + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
+    + 'mkdir -p "$0/Contents/CopyCatOS" "$0/Contents/Resources"; '
     + 'cp "$1" "$0/Contents/Info.appc"; '
-    + 'cp "$2" "$0/Contents/MacOS/hello"; '
-    + 'chmod 0755 "$0/Contents/MacOS/hello"; '
+    + 'cp "$2" "$0/Contents/CopyCatOS/hello"; '
+    + 'chmod 0755 "$0/Contents/CopyCatOS/hello"; '
+    + 'ln -s CopyCatOS "$0/Contents/MacOS"; '
     + 'ln -s "$(basename "$0")" "$3"',
     '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
   ],
@@ -872,10 +875,11 @@ gl_hello_appd = custom_target('gl-hello-appd',
     find_program('sh'), '-c',
     'set -eu; '
     + 'rm -rf "$0"; rm -f "$3"; '
-    + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
+    + 'mkdir -p "$0/Contents/CopyCatOS" "$0/Contents/Resources"; '
     + 'cp "$1" "$0/Contents/Info.appc"; '
-    + 'cp "$2" "$0/Contents/MacOS/gl-hello"; '
-    + 'chmod 0755 "$0/Contents/MacOS/gl-hello"; '
+    + 'cp "$2" "$0/Contents/CopyCatOS/gl-hello"; '
+    + 'chmod 0755 "$0/Contents/CopyCatOS/gl-hello"; '
+    + 'ln -s CopyCatOS "$0/Contents/MacOS"; '
     + 'ln -s "$(basename "$0")" "$3"',
     '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
   ],
@@ -907,10 +911,11 @@ textedit_appd = custom_target('textedit-appd',
     find_program('sh'), '-c',
     'set -eu; '
     + 'rm -rf "$0"; rm -f "$3"; '
-    + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
+    + 'mkdir -p "$0/Contents/CopyCatOS" "$0/Contents/Resources"; '
     + 'cp "$1" "$0/Contents/Info.appc"; '
-    + 'cp "$2" "$0/Contents/MacOS/textedit"; '
-    + 'chmod 0755 "$0/Contents/MacOS/textedit"; '
+    + 'cp "$2" "$0/Contents/CopyCatOS/textedit"; '
+    + 'chmod 0755 "$0/Contents/CopyCatOS/textedit"; '
+    + 'ln -s CopyCatOS "$0/Contents/MacOS"; '
     + 'ln -s "$(basename "$0")" "$3"',
     '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
   ],
@@ -950,10 +955,11 @@ keychain_access_appd = custom_target('keychain-access-appd',
     find_program('sh'), '-c',
     'set -eu; '
     + 'rm -rf "$0"; rm -f "$3"; '
-    + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
+    + 'mkdir -p "$0/Contents/CopyCatOS" "$0/Contents/Resources"; '
     + 'cp "$1" "$0/Contents/Info.appc"; '
-    + 'cp "$2" "$0/Contents/MacOS/keychain-access"; '
-    + 'chmod 0755 "$0/Contents/MacOS/keychain-access"; '
+    + 'cp "$2" "$0/Contents/CopyCatOS/keychain-access"; '
+    + 'chmod 0755 "$0/Contents/CopyCatOS/keychain-access"; '
+    + 'ln -s CopyCatOS "$0/Contents/MacOS"; '
     + 'ln -s "$(basename "$0")" "$3"',
     '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
   ],
@@ -987,10 +993,11 @@ preview_appd = custom_target('preview-appd',
     find_program('sh'), '-c',
     'set -eu; '
     + 'rm -rf "$0"; rm -f "$3"; '
-    + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
+    + 'mkdir -p "$0/Contents/CopyCatOS" "$0/Contents/Resources"; '
     + 'cp "$1" "$0/Contents/Info.appc"; '
-    + 'cp "$2" "$0/Contents/MacOS/preview"; '
-    + 'chmod 0755 "$0/Contents/MacOS/preview"; '
+    + 'cp "$2" "$0/Contents/CopyCatOS/preview"; '
+    + 'chmod 0755 "$0/Contents/CopyCatOS/preview"; '
+    + 'ln -s CopyCatOS "$0/Contents/MacOS"; '
     + 'ln -s "$(basename "$0")" "$3"',
     '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
   ],
@@ -1023,10 +1030,11 @@ activity_monitor_appd = custom_target('activity-monitor-appd',
     find_program('sh'), '-c',
     'set -eu; '
     + 'rm -rf "$0"; rm -f "$3"; '
-    + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
+    + 'mkdir -p "$0/Contents/CopyCatOS" "$0/Contents/Resources"; '
     + 'cp "$1" "$0/Contents/Info.appc"; '
-    + 'cp "$2" "$0/Contents/MacOS/activity-monitor"; '
-    + 'chmod 0755 "$0/Contents/MacOS/activity-monitor"; '
+    + 'cp "$2" "$0/Contents/CopyCatOS/activity-monitor"; '
+    + 'chmod 0755 "$0/Contents/CopyCatOS/activity-monitor"; '
+    + 'ln -s CopyCatOS "$0/Contents/MacOS"; '
     + 'ln -s "$(basename "$0")" "$3"',
     '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
   ],

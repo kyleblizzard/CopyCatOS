@@ -13,7 +13,7 @@
 // Direct invocations during development fall back to "unknown.bundle"
 // / "0.0.0", which the compositor treats as a dev client.
 
-#include "moonbase.h"
+#include "CopyCatAppKit.h"
 #include "internal.h"
 #include "ipc/transport.h"
 

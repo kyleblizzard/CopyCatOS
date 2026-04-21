@@ -11,7 +11,7 @@
 #ifndef MOONBASE_INTERNAL_H
 #define MOONBASE_INTERNAL_H
 
-#include "moonbase.h"
+#include "CopyCatAppKit.h"
 
 // Record the given error on the calling thread's last-error slot. The
 // public getter moonbase_last_error() reads from this same slot.

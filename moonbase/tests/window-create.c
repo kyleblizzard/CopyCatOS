@@ -17,7 +17,7 @@
 //   * the WINDOW_CLOSE message is delivered post-create
 //   * the child exits 0 and the server sees one clean EV_DISCONNECTED
 
-#include "moonbase.h"
+#include "CopyCatAppKit.h"
 #include "../src/server/server.h"
 #include "../src/ipc/cbor.h"
 #include "moonbase/ipc/kinds.h"
