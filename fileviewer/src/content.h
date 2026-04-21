@@ -103,7 +103,7 @@ void content_paint(FinderState *fs);
 bool content_handle_click(FinderState *fs, int x, int y);
 
 // Handle a double-click in the content area.
-//   - A .app / .appd bundle directory → fork + exec moonbase-launch.
+//   - A .app / .appdev bundle directory → fork + exec moonbase-launch.
 //   - Any other directory → navigate into it.
 //   - A regular file → fork + exec xdg-open.
 void content_handle_double_click(FinderState *fs, int x, int y);

@@ -92,7 +92,7 @@ static const ExtIconMap ext_icon_map[] = {
 // ── Helper: MoonBase bundle detection ───────────────────────────────
 //
 // A MoonBase bundle is a directory whose name ends in ".app" (future
-// single-file shipping format, still a directory today) or ".appd"
+// single-file shipping format, still a directory today) or ".appdev"
 // (developer directory) and that has a Contents/Info.appc file inside.
 // We still accept the legacy ".appc" / ".appcd" names during the
 // rename-pass transition. We only check structure here — the launcher
@@ -105,14 +105,14 @@ static bool is_appc_bundle(const char *path)
 {
     if (!path) return false;
     size_t len = strlen(path);
-    // Accept all four bundle suffixes during the .appc/.appcd → .app/.appd
+    // Accept all four bundle suffixes during the .appc/.appcd → .app/.appdev
     // rename. Once the reference apps ship and the ABI freezes, .appc and
     // .appcd drop out and .app becomes single-file-only.
-    bool is_app   = (len >= 4 && strcmp(path + len - 4, ".app")   == 0);
-    bool is_appd  = (len >= 5 && strcmp(path + len - 5, ".appd")  == 0);
-    bool is_appc  = (len >= 5 && strcmp(path + len - 5, ".appc")  == 0);
-    bool is_appcd = (len >= 6 && strcmp(path + len - 6, ".appcd") == 0);
-    if (!is_app && !is_appd && !is_appc && !is_appcd) return false;
+    bool is_app    = (len >= 4 && strcmp(path + len - 4, ".app")    == 0);
+    bool is_appdev = (len >= 7 && strcmp(path + len - 7, ".appdev") == 0);
+    bool is_appc   = (len >= 5 && strcmp(path + len - 5, ".appc")   == 0);
+    bool is_appcd  = (len >= 6 && strcmp(path + len - 6, ".appcd")  == 0);
+    if (!is_app && !is_appdev && !is_appc && !is_appcd) return false;
 
     char info[1024];
     int n = snprintf(info, sizeof(info), "%s/Contents/Info.appc", path);
@@ -966,7 +966,7 @@ void content_handle_double_click(FinderState *fs, int x, int y)
     }
 
     // If we found a file, open it. Three branches:
-    //   1. MoonBase bundle (.app / .appd directory with Contents/Info.appc): hand to
+    //   1. MoonBase bundle (.app / .appdev directory with Contents/Info.appc): hand to
     //      moonbase-launch so bwrap + entitlements + consent run.
     //   2. Plain directory: navigate into it.
     //   3. Regular file: xdg-open.

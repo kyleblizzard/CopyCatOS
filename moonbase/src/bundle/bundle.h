@@ -1,6 +1,6 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// bundle — on-disk .app / .appd loader.
+// bundle — on-disk .app / .appdev loader.
 //
 // The parser in info_appc.[ch] validates the shape of Info.appc; this
 // layer takes a bundle directory on disk and runs the rest of the
@@ -23,7 +23,7 @@
 typedef enum {
     MB_BUNDLE_OK = 0,
     MB_BUNDLE_ERR_NOT_DIR,              // path not a directory
-    MB_BUNDLE_ERR_BAD_SUFFIX,           // path doesn't end in .app/.appd (or legacy .appc/.appcd)
+    MB_BUNDLE_ERR_BAD_SUFFIX,           // path doesn't end in .app/.appdev (or legacy .appc/.appcd)
     MB_BUNDLE_ERR_NO_INFO,              // Contents/Info.appc missing
     MB_BUNDLE_ERR_INFO_APPC,            // Info.appc failed validation
     MB_BUNDLE_ERR_API_VERSION,          // minimum-moonbase > library version

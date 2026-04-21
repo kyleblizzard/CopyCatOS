@@ -15,7 +15,7 @@
 # the per-app data dir is writable.
 #
 # Inputs (positional):
-#   $1 = absolute path to the bundle directory (.app / .appd)
+#   $1 = absolute path to the bundle directory (.app / .appdev)
 #   $2 = absolute path to the app's writable data directory
 #        (~/.local/share/moonbase/<bundle-id>/)
 #   $3 = unshare_net: "1" (default) unshares the host netns,
