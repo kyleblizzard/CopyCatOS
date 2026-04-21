@@ -805,13 +805,15 @@ test('data-dir-isolation', mb_data_dir_isolation,
 )
 
 # ---------------------------------------------------------------------
-# examples/hello — reference MoonBase app + assembled .appc bundle
+# examples/hello — reference MoonBase app + assembled .appcd bundle
 # ---------------------------------------------------------------------
 #
-# Produces build/hello.appc/Contents/{Info.appc, MacOS/hello}. Layout
+# Produces build/hello.appcd/Contents/{Info.appc, MacOS/hello}. Layout
 # matches bundle-spec.md §1 and passes mb_bundle_load's validator. Not
 # installed system-wide — the bundle is a build artifact the user runs
-# from the build tree via `moonbase-launch build/hello.appc`.
+# from the build tree via `moonbase-launch build/hello.appcd`.
+# (.appcd is the developer directory format; the shipping single-file
+# .appc is produced from the same tree by a later slice.)
 #
 # No Resources/ contents are shipped yet; §8 validation doesn't require
 # them and a real AppIcon.icns slice lands once the icon loader uses it.
@@ -826,7 +828,7 @@ hello_exe = executable(
 )
 
 hello_appc = custom_target('hello-appc',
-  output: 'hello.appc',
+  output: 'hello.appcd',
   input: [files('examples/hello/Info.appc'), hello_exe],
   command: [
     find_program('sh'), '-c',
@@ -850,7 +852,7 @@ hello_appc = custom_target('hello-appc',
 # and commits every redraw. Paired with a declared render-mode of
 # "gl" in Info.appc so moonbase-launch binds /dev/dri into the
 # sandbox. Not installed — run from the build tree:
-#   moonbase-launch build/gl-hello.appc
+#   moonbase-launch build/gl-hello.appcd
 
 gl_hello_exe = executable(
   'gl-hello',
@@ -862,7 +864,7 @@ gl_hello_exe = executable(
 )
 
 gl_hello_appc = custom_target('gl-hello-appc',
-  output: 'gl-hello.appc',
+  output: 'gl-hello.appcd',
   input: [files('examples/gl-hello/Info.appc'), gl_hello_exe],
   command: [
     find_program('sh'), '-c',
@@ -878,12 +880,12 @@ gl_hello_appc = custom_target('gl-hello-appc',
 )
 
 # ---------------------------------------------------------------------
-# examples/textedit — TextEdit.appc v0.1
+# examples/textedit — TextEdit.appcd v0.1
 # ---------------------------------------------------------------------
 #
 # Smallest useful Cairo app on MoonBase: one window, one in-memory byte
 # buffer, TEXT_INPUT + KEY_DOWN drive editing. Same bundle-assembly
-# shape as hello.appc. No menus, no file I/O, no selection yet —
+# shape as hello.appcd. No menus, no file I/O, no selection yet —
 # TextEdit grows into those as their framework slices land.
 
 textedit_exe = executable(
@@ -896,7 +898,7 @@ textedit_exe = executable(
 )
 
 textedit_appc = custom_target('textedit-appc',
-  output: 'textedit.appc',
+  output: 'textedit.appcd',
   input: [files('examples/textedit/Info.appc'), textedit_exe],
   command: [
     find_program('sh'), '-c',
@@ -912,7 +914,7 @@ textedit_appc = custom_target('textedit-appc',
 )
 
 # ---------------------------------------------------------------------
-# examples/keychain-access — Keychain Access.appc v0.1
+# examples/keychain-access — Keychain Access.appcd v0.1
 # ---------------------------------------------------------------------
 #
 # Reference app 3 of 4 required before the libmoonbase.so.1 public-SDK
@@ -938,7 +940,7 @@ keychain_access_exe = executable(
 )
 
 keychain_access_appc = custom_target('keychain-access-appc',
-  output: 'keychain-access.appc',
+  output: 'keychain-access.appcd',
   input: [files('examples/keychain-access/Info.appc'), keychain_access_exe],
   command: [
     find_program('sh'), '-c',
@@ -954,7 +956,7 @@ keychain_access_appc = custom_target('keychain-access-appc',
 )
 
 # ---------------------------------------------------------------------
-# examples/preview — Preview.appc v0.1
+# examples/preview — Preview.appcd v0.1
 # ---------------------------------------------------------------------
 #
 # Reference app 4 of 4 before the libmoonbase.so.1 public-SDK freeze.
@@ -974,7 +976,7 @@ preview_exe = executable(
 )
 
 preview_appc = custom_target('preview-appc',
-  output: 'preview.appc',
+  output: 'preview.appcd',
   input: [files('examples/preview/Info.appc'), preview_exe],
   command: [
     find_program('sh'), '-c',
@@ -990,7 +992,7 @@ preview_appc = custom_target('preview-appc',
 )
 
 # ---------------------------------------------------------------------
-# examples/activity-monitor — Activity Monitor.appc v0.1
+# examples/activity-monitor — Activity Monitor.appcd v0.1
 # ---------------------------------------------------------------------
 #
 # Fourth and final reference app before the libmoonbase.so.1 public-SDK
@@ -1009,7 +1011,7 @@ activity_monitor_exe = executable(
 )
 
 activity_monitor_appc = custom_target('activity-monitor-appc',
-  output: 'activity-monitor.appc',
+  output: 'activity-monitor.appcd',
   input: [files('examples/activity-monitor/Info.appc'), activity_monitor_exe],
   command: [
     find_program('sh'), '-c',

@@ -772,14 +772,17 @@ DesktopIcon *icons_handle_click(int x, int y)
     return NULL;  // Click was on empty space
 }
 
-// A .appc bundle is a directory whose name ends in ".appc" and that has
-// a Contents/Info.appc file inside. Desktop icons that point at bundles
-// are handed to moonbase-launch so the bwrap sandbox + consent flow run.
+// A MoonBase bundle is a directory whose name ends in ".appc" (legacy) or
+// ".appcd" (new developer format) and that has a Contents/Info.appc file
+// inside. Desktop icons that point at bundles are handed to moonbase-launch
+// so the bwrap sandbox + consent flow run.
 static int path_is_appc_bundle(const char *path)
 {
     if (!path) return 0;
     size_t len = strlen(path);
-    if (len < 5 || strcmp(path + len - 5, ".appc") != 0) return 0;
+    int is_appc  = (len >= 5 && strcmp(path + len - 5, ".appc")  == 0);
+    int is_appcd = (len >= 6 && strcmp(path + len - 6, ".appcd") == 0);
+    if (!is_appc && !is_appcd) return 0;
 
     char info[1024];
     int n = snprintf(info, sizeof(info), "%s/Contents/Info.appc", path);

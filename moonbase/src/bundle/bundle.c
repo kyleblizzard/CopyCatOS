@@ -1,7 +1,12 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// bundle — on-disk .appc loader. Implements the pipeline from
+// bundle — on-disk .appc / .appcd loader. Implements the pipeline from
 // bundle-spec.md §8 except quarantine, which lives in its own slice.
+//
+// Transitional dual-suffix: during the short switch to single-file .appc,
+// both .appc (legacy directory) and .appcd (developer directory) load as
+// directory bundles. After the reference apps ship and the ABI freezes,
+// .appc becomes single-file only and .appcd is the one dev directory form.
 
 #include "bundle.h"
 
@@ -126,8 +131,9 @@ mb_bundle_err_t mb_bundle_load(const char *path, mb_bundle_t *out,
         set_err(err, err_cap, "bundle path is empty");
         return MB_BUNDLE_ERR_NOT_DIR;
     }
-    if (!ends_with(path, ".appc")) {
-        set_err(err, err_cap, "bundle path does not end in .appc: %s", path);
+    if (!ends_with(path, ".appc") && !ends_with(path, ".appcd")) {
+        set_err(err, err_cap,
+                "bundle path does not end in .appc or .appcd: %s", path);
         return MB_BUNDLE_ERR_BAD_SUFFIX;
     }
 

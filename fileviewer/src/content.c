@@ -102,7 +102,11 @@ static bool is_appc_bundle(const char *path)
 {
     if (!path) return false;
     size_t len = strlen(path);
-    if (len < 5 || strcmp(path + len - 5, ".appc") != 0) return false;
+    // Transitional dual-suffix: accept both legacy .appc directories and
+    // the new .appcd developer directory format.
+    bool is_appc  = (len >= 5 && strcmp(path + len - 5, ".appc")  == 0);
+    bool is_appcd = (len >= 6 && strcmp(path + len - 6, ".appcd") == 0);
+    if (!is_appc && !is_appcd) return false;
 
     char info[1024];
     int n = snprintf(info, sizeof(info), "%s/Contents/Info.appc", path);

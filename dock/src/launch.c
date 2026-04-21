@@ -34,15 +34,18 @@
 #include <sys/wait.h>
 #include <X11/Xatom.h>
 
-// A .appc bundle is a directory whose name ends in ".appc" and that has
-// a Contents/Info.appc file inside. Used to decide whether a pinned
-// dock item should be execed directly or handed to moonbase-launch so
-// bwrap, entitlements, and the consent flow run.
+// A MoonBase bundle is a directory whose name ends in ".appc" (legacy) or
+// ".appcd" (new developer format) and that has a Contents/Info.appc file
+// inside. Used to decide whether a pinned dock item should be execed
+// directly or handed to moonbase-launch so bwrap, entitlements, and the
+// consent flow run.
 static int is_appc_bundle(const char *path)
 {
     if (!path) return 0;
     size_t len = strlen(path);
-    if (len < 5 || strcmp(path + len - 5, ".appc") != 0) return 0;
+    int is_appc  = (len >= 5 && strcmp(path + len - 5, ".appc")  == 0);
+    int is_appcd = (len >= 6 && strcmp(path + len - 6, ".appcd") == 0);
+    if (!is_appc && !is_appcd) return 0;
 
     char info[1024];
     int n = snprintf(info, sizeof(info), "%s/Contents/Info.appc", path);
