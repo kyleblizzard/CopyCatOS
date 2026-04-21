@@ -1,6 +1,6 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// Preview.appc — reference app 3 of 4 before the libmoonbase.so.1
+// Preview.app — reference app 3 of 4 before the libmoonbase.so.1
 // public-SDK freeze. Exists to pressure-test three distinct ABI
 // surfaces in a single bundle:
 //   • MOONBASE_RENDER_GL        — open an image, upload to a texture,

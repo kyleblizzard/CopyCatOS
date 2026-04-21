@@ -1,6 +1,6 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// activity-monitor — reference .appc 4 of 4 for the libmoonbase.so.1
+// activity-monitor — reference .app 4 of 4 for the libmoonbase.so.1
 // public-SDK freeze. Exercises the three ABI surfaces CLAUDE.md calls
 // out for this slot:
 //

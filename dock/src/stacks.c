@@ -916,17 +916,21 @@ static int stacks_hit_test(int mx, int my)
     return index;
 }
 
-// A MoonBase bundle is a directory whose name ends in ".appc" (legacy) or
-// ".appcd" (new developer format) and that has a Contents/Info.appc file
-// inside. Used to decide whether a stack entry should be handed to
+// A MoonBase bundle is a directory whose name ends in ".app" (single-file
+// shipping format — currently still a directory; single-file ELF-stub
+// form lands in its own slice) or ".appd" (developer directory). The
+// legacy ".appc" and ".appcd" names still load during the rename-pass
+// transition. Used to decide whether a stack entry should be handed to
 // moonbase-launch or opened with xdg-open.
 static int stacks_path_is_appc_bundle(const char *path)
 {
     if (!path) return 0;
     size_t len = strlen(path);
+    int is_app   = (len >= 4 && strcmp(path + len - 4, ".app")   == 0);
+    int is_appd  = (len >= 5 && strcmp(path + len - 5, ".appd")  == 0);
     int is_appc  = (len >= 5 && strcmp(path + len - 5, ".appc")  == 0);
     int is_appcd = (len >= 6 && strcmp(path + len - 6, ".appcd") == 0);
-    if (!is_appc && !is_appcd) return 0;
+    if (!is_app && !is_appd && !is_appc && !is_appcd) return 0;
 
     char info[1024];
     int n = snprintf(info, sizeof(info), "%s/Contents/Info.appc", path);
@@ -939,7 +943,7 @@ static int stacks_path_is_appc_bundle(const char *path)
 // ---------------------------------------------------------------------------
 // stacks_open_entry — Open a file, directory, or MoonBase bundle.
 //
-// MoonBase .appc bundles go through moonbase-launch so the bwrap sandbox
+// MoonBase .app bundles go through moonbase-launch so the bwrap sandbox
 // and consent flow run. Everything else falls through to xdg-open, the
 // standard Linux handler.
 // ---------------------------------------------------------------------------

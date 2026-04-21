@@ -7,7 +7,7 @@
 // window is closed or the user hits Cmd-Q. Proves the end-to-end path:
 // libmoonbase.so.1 loads inside a bwrap sandbox, the IPC handshake with
 // MoonRock succeeds, a Cairo window round-trips a commit, and events
-// reach an installed .appc launched via moonbase-launch.
+// reach an installed .app launched via moonbase-launch.
 //
 // Uses the app-owns-loop path (moonbase_wait_event). moonbase_run() is
 // the MoonBase-owns-loop convenience shape; it is still ENOSYS in the

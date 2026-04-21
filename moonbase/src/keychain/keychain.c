@@ -90,7 +90,7 @@ static const SecretSchema *mb_keychain_schema(void) {
 
 // Resolve the effective `service` attribute. Callers pass NULL to mean
 // "my own bundle". MOONBASE_BUNDLE_ID is set by moonbase-launch for
-// every launched .appc; when it's absent (developer-run, tests)
+// every launched bundle; when it's absent (developer-run, tests)
 // "unknown.bundle" is the documented fallback.
 static const char *effective_service(const char *service) {
     if (service && service[0] != '\0') return service;

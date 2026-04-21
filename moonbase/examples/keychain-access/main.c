@@ -1,10 +1,10 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// keychain-access — reference .appc exercising moonbase_keychain.h.
+// keychain-access — reference .app exercising moonbase_keychain.h.
 //
 // Third of the four pre-freeze reference apps. The goal is coverage of
 // every public symbol in moonbase_keychain.h end-to-end through a real
-// .appc launched via moonbase-launch:
+// .app launched via moonbase-launch:
 //
 //   moonbase_keychain_list / _count / _service / _label / _account / _free
 //   moonbase_keychain_store

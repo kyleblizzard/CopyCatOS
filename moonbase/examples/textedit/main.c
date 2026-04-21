@@ -20,7 +20,7 @@
 //   * no font metrics beyond what Cairo's toy text API gives us
 //
 // Everything above exists solely so the Tier 1 TEXT_INPUT + KEY_DOWN +
-// focus + commit paths round-trip end-to-end through a real .appc
+// focus + commit paths round-trip end-to-end through a real .app
 // launched via moonbase-launch. When real menus / files / selection
 // land in the framework, TextEdit grows into them — the skeleton here
 // doesn't need to be thrown away for any of that.
@@ -261,7 +261,7 @@ static void paint(mb_window_t *w)
 
 // ---------------------------------------------------------------------
 // main — standard app-owns-loop pattern. moonbase_run() is still
-// ENOSYS in this framework slice (same as hello.appc); we drive the
+// ENOSYS in this framework slice (same as hello.app); we drive the
 // loop ourselves and call paint() after any mutation so the surface
 // reflects the buffer immediately, not on the next REDRAW event.
 // ---------------------------------------------------------------------

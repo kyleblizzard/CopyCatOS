@@ -133,7 +133,7 @@ libsecret_dep = dependency('libsecret-1')
 egl_dep   = dependency('egl')
 glesv2_dep = dependency('glesv2')
 
-# Preview.appc decodes PNG and JPEG via the distro-stock libraries.
+# Preview.appd decodes PNG and JPEG via the distro-stock libraries.
 # Pulled in only for the example executable, not for libmoonbase itself —
 # the framework doesn't own image decode.
 libpng_dep  = dependency('libpng')
@@ -167,7 +167,7 @@ pkg.generate(
 # ---------------------------------------------------------------------
 #
 # Links libmoonbase so it can call mb_bundle_load (bundle-spec.md §8
-# validation) on the target .appc before building the bwrap argv.
+# validation) on the target .app/.appd before building the bwrap argv.
 
 moonbase_launch = executable(
   'moonbase-launch',
@@ -805,15 +805,16 @@ test('data-dir-isolation', mb_data_dir_isolation,
 )
 
 # ---------------------------------------------------------------------
-# examples/hello — reference MoonBase app + assembled .appcd bundle
+# examples/hello — reference MoonBase app + assembled .appd bundle
 # ---------------------------------------------------------------------
 #
-# Produces build/hello.appcd/Contents/{Info.appc, MacOS/hello}. Layout
+# Produces build/hello.appd/Contents/{Info.appc, MacOS/hello}. Layout
 # matches bundle-spec.md §1 and passes mb_bundle_load's validator. Not
 # installed system-wide — the bundle is a build artifact the user runs
-# from the build tree via `moonbase-launch build/hello.appcd`.
-# (.appcd is the developer directory format; the shipping single-file
-# .appc is produced from the same tree by a later slice.)
+# from the build tree via `moonbase-launch build/hello.appd`.
+# (.appd is the developer directory format; the shipping single-file
+# .app is produced from the same tree by a later slice once the ELF-stub
+# packager lands.)
 #
 # No Resources/ contents are shipped yet; §8 validation doesn't require
 # them and a real AppIcon.icns slice lands once the icon loader uses it.
@@ -827,18 +828,19 @@ hello_exe = executable(
   install: false,
 )
 
-hello_appc = custom_target('hello-appc',
-  output: 'hello.appcd',
+hello_appd = custom_target('hello-appd',
+  output: ['hello.appd', 'hello.app'],
   input: [files('examples/hello/Info.appc'), hello_exe],
   command: [
     find_program('sh'), '-c',
     'set -eu; '
-    + 'rm -rf "$0"; '
+    + 'rm -rf "$0"; rm -f "$3"; '
     + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
     + 'cp "$1" "$0/Contents/Info.appc"; '
     + 'cp "$2" "$0/Contents/MacOS/hello"; '
-    + 'chmod 0755 "$0/Contents/MacOS/hello"',
-    '@OUTPUT@', '@INPUT0@', '@INPUT1@',
+    + 'chmod 0755 "$0/Contents/MacOS/hello"; '
+    + 'ln -s "$(basename "$0")" "$3"',
+    '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
   ],
   build_by_default: true,
 )
@@ -852,7 +854,7 @@ hello_appc = custom_target('hello-appc',
 # and commits every redraw. Paired with a declared render-mode of
 # "gl" in Info.appc so moonbase-launch binds /dev/dri into the
 # sandbox. Not installed — run from the build tree:
-#   moonbase-launch build/gl-hello.appcd
+#   moonbase-launch build/gl-hello.appd
 
 gl_hello_exe = executable(
   'gl-hello',
@@ -863,29 +865,30 @@ gl_hello_exe = executable(
   install: false,
 )
 
-gl_hello_appc = custom_target('gl-hello-appc',
-  output: 'gl-hello.appcd',
+gl_hello_appd = custom_target('gl-hello-appd',
+  output: ['gl-hello.appd', 'gl-hello.app'],
   input: [files('examples/gl-hello/Info.appc'), gl_hello_exe],
   command: [
     find_program('sh'), '-c',
     'set -eu; '
-    + 'rm -rf "$0"; '
+    + 'rm -rf "$0"; rm -f "$3"; '
     + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
     + 'cp "$1" "$0/Contents/Info.appc"; '
     + 'cp "$2" "$0/Contents/MacOS/gl-hello"; '
-    + 'chmod 0755 "$0/Contents/MacOS/gl-hello"',
-    '@OUTPUT@', '@INPUT0@', '@INPUT1@',
+    + 'chmod 0755 "$0/Contents/MacOS/gl-hello"; '
+    + 'ln -s "$(basename "$0")" "$3"',
+    '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
   ],
   build_by_default: true,
 )
 
 # ---------------------------------------------------------------------
-# examples/textedit — TextEdit.appcd v0.1
+# examples/textedit — TextEdit.appd v0.1
 # ---------------------------------------------------------------------
 #
 # Smallest useful Cairo app on MoonBase: one window, one in-memory byte
 # buffer, TEXT_INPUT + KEY_DOWN drive editing. Same bundle-assembly
-# shape as hello.appcd. No menus, no file I/O, no selection yet —
+# shape as hello.appd. No menus, no file I/O, no selection yet —
 # TextEdit grows into those as their framework slices land.
 
 textedit_exe = executable(
@@ -897,24 +900,25 @@ textedit_exe = executable(
   install: false,
 )
 
-textedit_appc = custom_target('textedit-appc',
-  output: 'textedit.appcd',
+textedit_appd = custom_target('textedit-appd',
+  output: ['textedit.appd', 'textedit.app'],
   input: [files('examples/textedit/Info.appc'), textedit_exe],
   command: [
     find_program('sh'), '-c',
     'set -eu; '
-    + 'rm -rf "$0"; '
+    + 'rm -rf "$0"; rm -f "$3"; '
     + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
     + 'cp "$1" "$0/Contents/Info.appc"; '
     + 'cp "$2" "$0/Contents/MacOS/textedit"; '
-    + 'chmod 0755 "$0/Contents/MacOS/textedit"',
-    '@OUTPUT@', '@INPUT0@', '@INPUT1@',
+    + 'chmod 0755 "$0/Contents/MacOS/textedit"; '
+    + 'ln -s "$(basename "$0")" "$3"',
+    '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
   ],
   build_by_default: true,
 )
 
 # ---------------------------------------------------------------------
-# examples/keychain-access — Keychain Access.appcd v0.1
+# examples/keychain-access — Keychain Access.appd v0.1
 # ---------------------------------------------------------------------
 #
 # Reference app 3 of 4 required before the libmoonbase.so.1 public-SDK
@@ -939,24 +943,25 @@ keychain_access_exe = executable(
   install: false,
 )
 
-keychain_access_appc = custom_target('keychain-access-appc',
-  output: 'keychain-access.appcd',
+keychain_access_appd = custom_target('keychain-access-appd',
+  output: ['keychain-access.appd', 'keychain-access.app'],
   input: [files('examples/keychain-access/Info.appc'), keychain_access_exe],
   command: [
     find_program('sh'), '-c',
     'set -eu; '
-    + 'rm -rf "$0"; '
+    + 'rm -rf "$0"; rm -f "$3"; '
     + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
     + 'cp "$1" "$0/Contents/Info.appc"; '
     + 'cp "$2" "$0/Contents/MacOS/keychain-access"; '
-    + 'chmod 0755 "$0/Contents/MacOS/keychain-access"',
-    '@OUTPUT@', '@INPUT0@', '@INPUT1@',
+    + 'chmod 0755 "$0/Contents/MacOS/keychain-access"; '
+    + 'ln -s "$(basename "$0")" "$3"',
+    '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
   ],
   build_by_default: true,
 )
 
 # ---------------------------------------------------------------------
-# examples/preview — Preview.appcd v0.1
+# examples/preview — Preview.appd v0.1
 # ---------------------------------------------------------------------
 #
 # Reference app 4 of 4 before the libmoonbase.so.1 public-SDK freeze.
@@ -975,24 +980,25 @@ preview_exe = executable(
   install: false,
 )
 
-preview_appc = custom_target('preview-appc',
-  output: 'preview.appcd',
+preview_appd = custom_target('preview-appd',
+  output: ['preview.appd', 'preview.app'],
   input: [files('examples/preview/Info.appc'), preview_exe],
   command: [
     find_program('sh'), '-c',
     'set -eu; '
-    + 'rm -rf "$0"; '
+    + 'rm -rf "$0"; rm -f "$3"; '
     + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
     + 'cp "$1" "$0/Contents/Info.appc"; '
     + 'cp "$2" "$0/Contents/MacOS/preview"; '
-    + 'chmod 0755 "$0/Contents/MacOS/preview"',
-    '@OUTPUT@', '@INPUT0@', '@INPUT1@',
+    + 'chmod 0755 "$0/Contents/MacOS/preview"; '
+    + 'ln -s "$(basename "$0")" "$3"',
+    '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
   ],
   build_by_default: true,
 )
 
 # ---------------------------------------------------------------------
-# examples/activity-monitor — Activity Monitor.appcd v0.1
+# examples/activity-monitor — Activity Monitor.appd v0.1
 # ---------------------------------------------------------------------
 #
 # Fourth and final reference app before the libmoonbase.so.1 public-SDK
@@ -1010,18 +1016,19 @@ activity_monitor_exe = executable(
   install: false,
 )
 
-activity_monitor_appc = custom_target('activity-monitor-appc',
-  output: 'activity-monitor.appcd',
+activity_monitor_appd = custom_target('activity-monitor-appd',
+  output: ['activity-monitor.appd', 'activity-monitor.app'],
   input: [files('examples/activity-monitor/Info.appc'), activity_monitor_exe],
   command: [
     find_program('sh'), '-c',
     'set -eu; '
-    + 'rm -rf "$0"; '
+    + 'rm -rf "$0"; rm -f "$3"; '
     + 'mkdir -p "$0/Contents/MacOS" "$0/Contents/Resources"; '
     + 'cp "$1" "$0/Contents/Info.appc"; '
     + 'cp "$2" "$0/Contents/MacOS/activity-monitor"; '
-    + 'chmod 0755 "$0/Contents/MacOS/activity-monitor"',
-    '@OUTPUT@', '@INPUT0@', '@INPUT1@',
+    + 'chmod 0755 "$0/Contents/MacOS/activity-monitor"; '
+    + 'ln -s "$(basename "$0")" "$3"',
+    '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
   ],
   build_by_default: true,
 )

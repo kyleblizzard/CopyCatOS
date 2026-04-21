@@ -1,9 +1,9 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// quarantine — first-launch trust check for .appc bundles.
+// quarantine — first-launch trust check for .app bundles.
 //
 // Policy (bundle-spec.md §7):
-//   A downloaded .appc carries a quarantine xattr on its bundle
+//   A downloaded .app carries a quarantine xattr on its bundle
 //   directory. moonbase-launch reads that xattr before it assembles
 //   the sandbox argv:
 //

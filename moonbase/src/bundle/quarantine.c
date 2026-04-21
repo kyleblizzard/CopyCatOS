@@ -1,6 +1,6 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// quarantine — xattr-based first-launch trust for .appc bundles.
+// quarantine — xattr-based first-launch trust for .app bundles.
 // See quarantine.h for the state machine.
 
 #include "quarantine.h"

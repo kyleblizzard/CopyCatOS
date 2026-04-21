@@ -34,18 +34,22 @@
 #include <sys/wait.h>
 #include <X11/Xatom.h>
 
-// A MoonBase bundle is a directory whose name ends in ".appc" (legacy) or
-// ".appcd" (new developer format) and that has a Contents/Info.appc file
-// inside. Used to decide whether a pinned dock item should be execed
-// directly or handed to moonbase-launch so bwrap, entitlements, and the
-// consent flow run.
+// A MoonBase bundle is a directory whose name ends in ".app" (single-file
+// shipping format — currently still a directory; single-file ELF-stub
+// form lands in its own slice) or ".appd" (developer directory). The
+// legacy ".appc" and ".appcd" names still load during the rename-pass
+// transition. Used to decide whether a pinned dock item should be
+// execed directly or handed to moonbase-launch so bwrap, entitlements,
+// and the consent flow run.
 static int is_appc_bundle(const char *path)
 {
     if (!path) return 0;
     size_t len = strlen(path);
+    int is_app   = (len >= 4 && strcmp(path + len - 4, ".app")   == 0);
+    int is_appd  = (len >= 5 && strcmp(path + len - 5, ".appd")  == 0);
     int is_appc  = (len >= 5 && strcmp(path + len - 5, ".appc")  == 0);
     int is_appcd = (len >= 6 && strcmp(path + len - 6, ".appcd") == 0);
-    if (!is_appc && !is_appcd) return 0;
+    if (!is_app && !is_appd && !is_appc && !is_appcd) return 0;
 
     char info[1024];
     int n = snprintf(info, sizeof(info), "%s/Contents/Info.appc", path);
@@ -195,7 +199,7 @@ void launch_app(DockState *state, DockItem *item)
         freopen("/dev/null", "w", stdout);
         freopen("/dev/null", "w", stderr);
 
-        // If this is a MoonBase .appc bundle, route through moonbase-launch
+        // If this is a MoonBase .app bundle, route through moonbase-launch
         // so the bwrap sandbox, entitlement filters, and consent flow run.
         // Plain commands take the direct execlp path below.
         if (is_appc_bundle(item->exec_path)) {

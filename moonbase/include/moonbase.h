@@ -11,7 +11,7 @@
 // the same libmoonbase.so.1.
 //
 // Design invariants:
-//   * Framework library, not host. Each .appc runs as its own process,
+//   * Framework library, not host. Each .app runs as its own process,
 //     links libmoonbase.so.1, and talks to the MoonRock compositor over
 //     a single Unix-domain socket (see IPC.md).
 //   * MoonRock draws 100% of Aqua chrome (title bar, traffic lights,
@@ -525,7 +525,7 @@ int moonbase_has_entitlement(const char *name);
 const char *moonbase_bundle_id(void);        // e.g. "show.blizzard.textedit"
 const char *moonbase_bundle_name(void);      // display name
 const char *moonbase_bundle_version(void);   // e.g. "1.0.0"
-const char *moonbase_bundle_path(void);      // absolute path to .appc
+const char *moonbase_bundle_path(void);      // absolute path to bundle root
 
 // Resolve a file inside Contents/Resources/, following the locale
 // fallback chain (user locale → user fallback list → bundle base

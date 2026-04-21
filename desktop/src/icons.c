@@ -772,17 +772,21 @@ DesktopIcon *icons_handle_click(int x, int y)
     return NULL;  // Click was on empty space
 }
 
-// A MoonBase bundle is a directory whose name ends in ".appc" (legacy) or
-// ".appcd" (new developer format) and that has a Contents/Info.appc file
-// inside. Desktop icons that point at bundles are handed to moonbase-launch
-// so the bwrap sandbox + consent flow run.
+// A MoonBase bundle is a directory whose name ends in ".app" (single-file
+// shipping format — currently still a directory; single-file ELF-stub
+// form lands in its own slice) or ".appd" (developer directory). The
+// legacy ".appc" and ".appcd" names still load during the rename-pass
+// transition. Desktop icons that point at bundles are handed to
+// moonbase-launch so the bwrap sandbox + consent flow run.
 static int path_is_appc_bundle(const char *path)
 {
     if (!path) return 0;
     size_t len = strlen(path);
+    int is_app   = (len >= 4 && strcmp(path + len - 4, ".app")   == 0);
+    int is_appd  = (len >= 5 && strcmp(path + len - 5, ".appd")  == 0);
     int is_appc  = (len >= 5 && strcmp(path + len - 5, ".appc")  == 0);
     int is_appcd = (len >= 6 && strcmp(path + len - 6, ".appcd") == 0);
-    if (!is_appc && !is_appcd) return 0;
+    if (!is_app && !is_appd && !is_appc && !is_appcd) return 0;
 
     char info[1024];
     int n = snprintf(info, sizeof(info), "%s/Contents/Info.appc", path);
@@ -798,7 +802,7 @@ void icons_handle_double_click(DesktopIcon *icon)
 
     fprintf(stderr, "[icons] Opening: %s\n", icon->path);
 
-    // MoonBase .appc bundles go through moonbase-launch so the sandbox,
+    // MoonBase .app bundles go through moonbase-launch so the sandbox,
     // entitlements, and consent flow all run.
     if (path_is_appc_bundle(icon->path)) {
         pid_t pid = fork();

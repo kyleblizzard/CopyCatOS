@@ -1,6 +1,6 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// gl-hello.appc — minimum end-to-end proof of the MOONBASE_RENDER_GL
+// gl-hello.app — minimum end-to-end proof of the MOONBASE_RENDER_GL
 // ABI. Creates a 480×320-point GL window, clears it to a steady Aqua
 // blue, and draws a single white-to-gold triangle. Re-renders on
 // every MB_EV_WINDOW_REDRAW. Closes on Cmd-Q or the red traffic

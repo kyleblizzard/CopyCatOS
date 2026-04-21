@@ -2,7 +2,8 @@
 
 // moonbase-launch — bundle-aware, sandbox-aware launcher.
 //
-// Given a .appc path:
+// Given a bundle path (.app / .appd; legacy .appc / .appcd during the
+// rename):
 //   1. Load + validate the bundle with mb_bundle_load (bundle-spec.md §8).
 //   2. Compute the per-app data dir (~/.local/share/moonbase/<bundle-id>/)
 //      and create it (along with the Apple-style subdirs) if missing.
@@ -89,7 +90,7 @@ static void usage(const char *argv0) {
         "moonbase-launch\n"
         "\n"
         "Usage:\n"
-        "  %s <bundle.appc> [-- <app-args>...]\n"
+        "  %s <bundle.app|.appd> [-- <app-args>...]\n"
         "\n"
         "Options:\n"
         "  MOONBASE_SANDBOX_DIR   override sandbox/ profile search dir\n"
