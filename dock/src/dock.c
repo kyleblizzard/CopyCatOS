@@ -413,7 +413,7 @@ int dock_hit_test(DockState *state, int mx, int my)
 }
 
 // Publish all icon screen positions on the root window as the X property
-// _CC_DOCK_ICON_POSITIONS. moonrock reads this when minimizing a window so
+// _MOONROCK_DOCK_ICON_POSITIONS. moonrock reads this when minimizing a window so
 // the genie animation can aim at the real dock icon instead of a hardcoded
 // center-of-screen fallback.
 //
@@ -465,7 +465,7 @@ static void dock_publish_icon_positions(DockState *state)
     // for the string length (a few KB), which is negligible at 60fps.
     static Atom prop = None;
     if (prop == None)
-        prop = XInternAtom(state->dpy, "_CC_DOCK_ICON_POSITIONS", False);
+        prop = XInternAtom(state->dpy, "_MOONROCK_DOCK_ICON_POSITIONS", False);
 
     XChangeProperty(state->dpy, state->root, prop, XA_STRING,
                     8,               // 8-bit format (byte array / string)

@@ -112,7 +112,7 @@ struct CCWM {
     Atom atom_net_wm_ping;       // _NET_WM_PING for responsiveness detection
     Atom atom_wm_change_state;   // WM_CHANGE_STATE — minimize request from apps/menubar
     Atom atom_utf8_string;
-    // _CC_DOCK_ICON_POSITIONS — published by dock on the root window each frame.
+    // _MOONROCK_DOCK_ICON_POSITIONS — published by dock on the root window each frame.
     // Format: newline-separated "process:exec_base:screen_x:screen_y\n" entries.
     // moonrock reads this when minimizing to aim the genie animation at the real
     // dock icon instead of a hardcoded center-of-screen fallback.

@@ -278,7 +278,7 @@ static void on_configure_request(CCWM *wm, XEvent *e)
 
 // ── Dock icon position lookup ──
 //
-// Reads _CC_DOCK_ICON_POSITIONS from the root window (published by dock
+// Reads _MOONROCK_DOCK_ICON_POSITIONS from the root window (published by dock
 // after every paint) and returns the screen-absolute center of the dock icon
 // whose process_name or exec_base matches the client's WM_CLASS.
 //
