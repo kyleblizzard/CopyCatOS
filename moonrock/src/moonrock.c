@@ -1317,6 +1317,15 @@ static void sync_tracked_windows(CCWM *wm)
         XWindowAttributes wa;
         if (!XGetWindowAttributes(wm->dpy, children[i], &wa)) continue;
 
+        // InputOnly windows have no pixmap backing — they exist only to
+        // route events. MoonBase surfaces park one of these at the chrome
+        // footprint so title-bar drags and close-button clicks hit-test
+        // against an X window even though the pixels come from moonrock's
+        // internal surface buffer. If we add it to mr.windows[] and draw
+        // it as a textured quad, the empty texture samples to opaque black
+        // and wipes the surface we just composited.
+        if (wa.class == InputOnly) continue;
+
         // Skip windows that are not currently visible on screen
         if (wa.map_state != IsViewable) continue;
 
