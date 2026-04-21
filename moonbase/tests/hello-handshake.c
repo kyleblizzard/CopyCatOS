@@ -15,7 +15,7 @@
 // implementation; it validates just enough to prove the client
 // side is correctly framed.
 
-#include "CopyCatAppKit.h"
+#include "moonbase.h"
 #include "moonbase/ipc/kinds.h"
 #include "../src/ipc/cbor.h"
 #include "../src/ipc/frame.h"

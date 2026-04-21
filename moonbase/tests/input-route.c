@@ -19,7 +19,7 @@
 //     modifiers, is_repeat}
 //   * Event ordering matches send ordering (FIFO ring behavior)
 
-#include "CopyCatAppKit.h"
+#include "moonbase.h"
 #include "../src/server/server.h"
 #include "../src/ipc/cbor.h"
 #include "moonbase/ipc/kinds.h"

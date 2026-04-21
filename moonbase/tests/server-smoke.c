@@ -11,7 +11,7 @@
 // This test exercises the non-blocking server end-to-end without
 // involving moonrock or X11 — pure libc + the MoonBase IPC stack.
 
-#include "CopyCatAppKit.h"
+#include "moonbase.h"
 #include "../src/server/server.h"
 
 #include <errno.h>

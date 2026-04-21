@@ -56,7 +56,6 @@ add_project_arguments(
 # their MOONBASE_<DOMAIN>_API_VERSION macros resolve today.
 
 public_headers = files(
-  'include/CopyCatAppKit.h',
   'include/moonbase.h',
   'include/moonbase_keychain.h',
   'include/moonbase_a11y.h',

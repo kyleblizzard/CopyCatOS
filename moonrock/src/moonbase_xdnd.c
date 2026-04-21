@@ -27,7 +27,7 @@
 #include "moonbase_xdnd.h"
 
 #include "moonbase_host.h"
-#include "CopyCatAppKit.h"                    // MB_MOD_*
+#include "moonbase.h"                    // MB_MOD_*
 #include "moonbase/ipc/kinds.h"          // MB_IPC_DRAG_*
 
 #include <X11/Xatom.h>

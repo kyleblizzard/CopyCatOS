@@ -25,7 +25,7 @@
 // land in the framework, TextEdit grows into them — the skeleton here
 // doesn't need to be thrown away for any of that.
 
-#include <CopyCatAppKit.h>
+#include <moonbase.h>
 
 #include <cairo/cairo.h>
 

@@ -15,7 +15,7 @@
 #ifndef MOONBASE_NOTIFICATIONS_H
 #define MOONBASE_NOTIFICATIONS_H
 
-#include <CopyCatAppKit.h>
+#include <moonbase.h>
 
 #ifdef __cplusplus
 extern "C" {

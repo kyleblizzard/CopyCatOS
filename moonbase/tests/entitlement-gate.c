@@ -17,7 +17,7 @@
 // allow phase so libsecret fails fast rather than autostarting a
 // real bus — this test cares about the gate, not the bus.
 
-#include "CopyCatAppKit.h"
+#include "moonbase.h"
 #include "moonbase_keychain.h"
 #include "consents.h"
 

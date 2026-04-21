@@ -26,7 +26,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "CopyCatAppKit.h"  // mb_error_t
+#include "moonbase.h"  // mb_error_t
 
 // Opaque per-window GL state. Lives embedded in mb_window as a
 // pointer so window.c doesn't drag EGL headers into its own surface.

@@ -37,7 +37,7 @@
 //   iteration WARMUP and at iteration N; both deltas must stay at or
 //   near zero.
 
-#include "CopyCatAppKit.h"
+#include "moonbase.h"
 #include "../src/server/server.h"
 #include "../src/ipc/cbor.h"
 #include "moonbase/ipc/kinds.h"

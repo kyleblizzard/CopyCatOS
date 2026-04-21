@@ -27,7 +27,7 @@
 // test. Splitting into per-path windows waits on a proper app
 // launcher with window-reuse semantics.
 
-#include <CopyCatAppKit.h>
+#include <moonbase.h>
 
 #include <GLES3/gl3.h>
 #include <png.h>

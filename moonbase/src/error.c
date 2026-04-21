@@ -14,7 +14,7 @@
 // receives NULL from moonbase_window_create() can already read
 // moonbase_last_error() and turn it into a readable string.
 
-#include "CopyCatAppKit.h"
+#include "moonbase.h"
 #include "internal.h"
 
 #include <stdlib.h>

@@ -14,7 +14,7 @@
 // separately from the OS image and the two can diverge on disk; until
 // then, the runtime value echoing the macro is exactly what we want.
 
-#include <CopyCatAppKit.h>
+#include <moonbase.h>
 
 #include <stdio.h>
 

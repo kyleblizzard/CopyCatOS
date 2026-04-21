@@ -26,7 +26,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "CopyCatAppKit.h"   // for MOONBASE_API_VERSION
+#include "moonbase.h"   // for MOONBASE_API_VERSION
 
 // -------------------------------------------------------------------
 // helpers

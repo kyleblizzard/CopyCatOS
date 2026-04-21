@@ -18,7 +18,7 @@
 #ifndef MOONBASE_POWER_H
 #define MOONBASE_POWER_H
 
-#include <CopyCatAppKit.h>
+#include <moonbase.h>
 
 #ifdef __cplusplus
 extern "C" {

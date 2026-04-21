@@ -11,7 +11,7 @@
 
 #include "../ipc/cbor.h"
 #include "../ipc/frame.h"
-#include "CopyCatAppKit.h"
+#include "moonbase.h"
 #include "moonbase/ipc/kinds.h"
 
 #include <errno.h>

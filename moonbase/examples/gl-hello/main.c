@@ -16,7 +16,7 @@
 // file small enough to read top-to-bottom and still exercises the
 // full vertex → fragment → swap chain through MoonBase's GL path.
 
-#include <CopyCatAppKit.h>
+#include <moonbase.h>
 
 #include <GLES3/gl3.h>
 

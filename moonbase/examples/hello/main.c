@@ -13,7 +13,7 @@
 // the MoonBase-owns-loop convenience shape; it is still ENOSYS in the
 // current framework slice, so this app drives the loop itself.
 
-#include <CopyCatAppKit.h>
+#include <moonbase.h>
 
 #include <cairo/cairo.h>
 

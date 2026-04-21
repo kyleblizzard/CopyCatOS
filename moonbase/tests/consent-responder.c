@@ -31,7 +31,7 @@
 // phases via setenv in the parent — the responder's env-whitelist
 // fork forwards MOONBASE_CONSENT_AUTO to each spawn.
 
-#include "CopyCatAppKit.h"
+#include "moonbase.h"
 #include "consents.h"
 #include "../src/ipc/consent.h"
 #include "../src/server/server.h"

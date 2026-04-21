@@ -18,7 +18,7 @@
 #ifndef MOONBASE_CONTROLLER_H
 #define MOONBASE_CONTROLLER_H
 
-#include <CopyCatAppKit.h>
+#include <moonbase.h>
 
 #ifdef __cplusplus
 extern "C" {
