@@ -586,6 +586,29 @@ mb_window_commit = executable(
 test('window-commit', mb_window_commit, timeout: 10)
 
 # ---------------------------------------------------------------------
+# mb-window-commit-burst — regression for MB_EPROTO on 2nd commit
+# ---------------------------------------------------------------------
+#
+# Fires two WINDOW_COMMITs back-to-back from the client. The old server
+# tagged SCM_RIGHTS batches with pre-append rx_received, which — when
+# frame1's body-skb coalesced with frame2's header+scm-skb on the same
+# recvmsg — pointed into frame1's tail instead of frame2's start, and
+# drain_rx either stole frame2's fds or returned MB_EPROTO. Fix tags
+# at post-append rx_received (== end of scm-skb per AF_UNIX kernel
+# invariant) and matches frames by byte-span range.
+
+mb_window_commit_burst = executable(
+  'mb-window-commit-burst',
+  'tests/window-commit-burst.c',
+  include_directories: include_directories('include', 'src'),
+  dependencies: [cairo_dep],
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('window-commit-burst', mb_window_commit_burst, timeout: 10)
+
+# ---------------------------------------------------------------------
 # mb-input-route — Phase C slice 3c.3 focus + key-event pump test
 # ---------------------------------------------------------------------
 #

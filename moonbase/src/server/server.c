@@ -485,29 +485,38 @@ static int client_drain_rx(mb_server_t *s, mb_client_t *c) {
         const uint8_t *body = p + 6;
         size_t body_len     = (size_t)length - 2;
 
-        // Attach any fd batch tagged to this frame's start offset.
-        // The sender's contract: fds ride on the frame header, so the
-        // batch's attach_offset equals c->rx_consumed at dispatch time.
-        // A batch tagged earlier than the current frame is a bug on
-        // our side (or a malicious peer) — close and abort.
+        // Attach any fd batch whose scm-skb ended inside this frame's
+        // byte span. attach_offset is the stream offset right after
+        // the last byte of the scm-bearing skb (see client_read). Per
+        // AF_UNIX kernel semantics, scm is delivered with the last
+        // byte of its skb and the recv loop breaks after consuming
+        // that skb — so post-append rx_received in client_read is
+        // guaranteed to equal end-of-scm-skb regardless of how many
+        // preceding no-scm skbs got coalesced into the same recv.
+        //
+        // A frame spans [rx_consumed, rx_consumed + frame_total). If
+        // the scm-skb ended inside that span, the fds belong to this
+        // frame. If it ended earlier, we already passed it without
+        // attaching — protocol violation.
         int    owned_fds[MB_IPC_FRAME_MAX_FDS] = {0};
         size_t owned_nfds = 0;
 
         if (c->pending_fd_count > 0) {
             fd_batch_t *head = &c->pending_fds[0];
-            if (head->attach_offset < c->rx_consumed) {
-                // Stream position passed the batch — drop and error.
+            if (head->attach_offset <= c->rx_consumed) {
+                // scm-skb ended at or before this frame's start —
+                // stale batch we failed to pair with a prior frame.
                 (void)client_pop_fd_batch(c, owned_fds);
                 for (size_t i = 0; i < MB_IPC_FRAME_MAX_FDS; i++) {
                     if (owned_fds[i] > 0) close(owned_fds[i]);
                 }
                 return MB_EPROTO;
             }
-            if (head->attach_offset == c->rx_consumed) {
+            if (head->attach_offset <= c->rx_consumed + frame_total) {
                 owned_nfds = client_pop_fd_batch(c, owned_fds);
             }
-            // head->attach_offset > rx_consumed: batch belongs to a
-            // later frame; leave it in place.
+            // else: scm-skb ended after this frame — batch belongs
+            // to a later frame; leave it in place.
         }
 
         handle_complete_frame(s, c, kind, body, body_len,
@@ -527,10 +536,13 @@ static int client_drain_rx(mb_server_t *s, mb_client_t *c) {
 
 // Read what's available on a client fd and drain the rx buffer.
 // Uses recvmsg so ancillary SCM_RIGHTS payloads ride in with the byte
-// stream. Every batch of fds is tagged with the stream offset of the
-// first byte of this recv — which, per AF_UNIX kernel semantics, is
-// always the first byte of the frame the sender attached them to.
-// drain_rx then re-joins each batch to its frame at dispatch time.
+// stream. Every batch of fds is tagged with the POST-APPEND rx_received
+// — the stream offset right after the last byte of the scm-bearing
+// skb. The Linux AF_UNIX recv loop is guaranteed to stop at the end
+// of that skb, so post-append rx_received == end-of-scm-skb, and
+// drain_rx re-joins the batch to whichever frame's byte span covers
+// that offset. See the comment inside the recv loop for the full
+// rationale (why pre-append tagging was wrong).
 //
 // We always drain before reporting EOF so a BYE frame delivered in
 // the same read as the close is observed as a clean shutdown instead
@@ -579,10 +591,37 @@ static int client_read(mb_server_t *s, mb_client_t *c) {
             return MB_EPROTO;
         }
 
-        // Every SCM_RIGHTS cmsg on this recv attaches to the first
-        // byte of this recv buffer — the kernel splits reads at
-        // cmsg boundaries. Tag the batch with rx_received (pre-append).
-        uint64_t attach_at = c->rx_received;
+        // Append bytes FIRST so we can tag the fd batch with a
+        // post-append stream offset. Why post-append:
+        //
+        // AF_UNIX kernel (unix_stream_read_generic) delivers the scm
+        // cmsg with the LAST byte of its skb and breaks the recv loop
+        // AFTER consuming that skb — but preceding no-scm skbs from a
+        // prior frame's write() can get coalesced INTO the same recv.
+        // So pre-append rx_received points at the start of the recv,
+        // which may lie inside a stale frame's tail, not the start of
+        // the frame that attached the fds. Post-append rx_received,
+        // by contrast, equals the end of the scm-bearing skb — which
+        // is stable regardless of any earlier skbs absorbed alongside
+        // it. drain_rx then matches a batch to the frame whose byte
+        // span covers that offset.
+        int rc = bq_append(&c->rx, buf, (size_t)n);
+        if (rc != 0) {
+            // bq_append failed — close every fd the kernel already
+            // placed for us in this recv so we don't leak them.
+            for (struct cmsghdr *cm = CMSG_FIRSTHDR(&msg); cm;
+                 cm = CMSG_NXTHDR(&msg, cm)) {
+                if (cm->cmsg_level != SOL_SOCKET
+                 || cm->cmsg_type  != SCM_RIGHTS) continue;
+                size_t fd_n = (cm->cmsg_len - CMSG_LEN(0)) / sizeof(int);
+                int   *src  = (int *)CMSG_DATA(cm);
+                for (size_t i = 0; i < fd_n; i++) close(src[i]);
+            }
+            return rc;
+        }
+        c->rx_received += (uint64_t)n;
+
+        uint64_t attach_at = c->rx_received;  // end of scm-skb
         for (struct cmsghdr *cm = CMSG_FIRSTHDR(&msg); cm;
              cm = CMSG_NXTHDR(&msg, cm)) {
             if (cm->cmsg_level != SOL_SOCKET
@@ -611,10 +650,6 @@ static int client_read(mb_server_t *s, mb_client_t *c) {
 #endif
             }
         }
-
-        int rc = bq_append(&c->rx, buf, (size_t)n);
-        if (rc != 0) return rc;
-        c->rx_received += (uint64_t)n;
     }
 
     int rc = client_drain_rx(s, c);
