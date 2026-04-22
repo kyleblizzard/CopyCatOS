@@ -136,6 +136,14 @@ typedef struct {
     // actually changes.
     Window         input_proxy;
     uint32_t       chrome_w_px, chrome_h_px;
+
+    // Traffic-light hover / press state. buttons_hover == true while the
+    // pointer is anywhere in the three-button region — triggers ALL
+    // three glyphs (matches SL 10.6). pressed_button is 0 for none, or
+    // 1/2/3 for close/minimize/zoom. Both feed mb_chrome_repaint and
+    // cause a chrome re-raster when they change.
+    bool           buttons_hover;
+    int            pressed_button;
 } mb_surface_t;
 
 static mb_surface_t g_surfaces[MB_MAX_SURFACES];
@@ -240,11 +248,13 @@ static void chrome_px_from_points(int points_w, int points_h, float scale,
                                   uint32_t *out_w, uint32_t *out_h) {
     int content_w_px = (int)(points_w * scale + 0.5f);
     int content_h_px = (int)(points_h * scale + 0.5f);
-    int border_px    = (int)(BORDER_WIDTH    * scale + 0.5f);
-    if (border_px < 1) border_px = 1;
     int titlebar_px  = (int)(TITLEBAR_HEIGHT * scale + 0.5f);
-    *out_w = (uint32_t)(content_w_px + 2 * border_px);
-    *out_h = (uint32_t)(content_h_px + titlebar_px + border_px);
+    // Chrome has no side/bottom inset (SL 10.6 ground truth — see
+    // mb_chrome_repaint for the full note). The 1-px hairline is
+    // overlaid on the content's outer pixels, so the proxy footprint
+    // equals content_w × (content_h + titlebar).
+    *out_w = (uint32_t)content_w_px;
+    *out_h = (uint32_t)(content_h_px + titlebar_px);
 }
 
 // Create the InputOnly click proxy for a newly-created surface.
@@ -253,7 +263,12 @@ static Window create_input_proxy(int screen_x, int screen_y,
                                  uint32_t chrome_w, uint32_t chrome_h) {
     if (!g_dpy || g_root == 0) return 0;
     XSetWindowAttributes attr;
-    attr.event_mask        = ButtonPressMask | ButtonReleaseMask;
+    // Motion + Leave are needed for traffic-light hover glyphs; the
+    // proxy is the only window receiving pointer events in the
+    // MoonBase-chrome region. Button Press/Release route to
+    // mb_host_handle_button_press / _release.
+    attr.event_mask        = ButtonPressMask | ButtonReleaseMask
+                           | PointerMotionMask | LeaveWindowMask;
     // override_redirect keeps the WM's MapRequest handler from framing
     // this as a client window. It is a helper, not a client.
     attr.override_redirect = True;
@@ -780,12 +795,12 @@ static void handle_window_commit(mb_client_id_t client,
 
         // Re-derive the proxy footprint from the real content pixels
         // (more accurate than the pre-commit points-×-scale estimate)
-        // and resize the InputOnly proxy if it changed.
-        int border_px   = (int)(BORDER_WIDTH    * surf->scale + 0.5f);
-        if (border_px < 1) border_px = 1;
+        // and resize the InputOnly proxy if it changed. Matches
+        // chrome_px_from_points / mb_chrome_repaint: no side or bottom
+        // inset — just content × (content + titlebar).
         int titlebar_px = (int)(TITLEBAR_HEIGHT * surf->scale + 0.5f);
-        uint32_t new_cw = req.width_px  + (uint32_t)(2 * border_px);
-        uint32_t new_ch = req.height_px + (uint32_t)(titlebar_px + border_px);
+        uint32_t new_cw = req.width_px;
+        uint32_t new_ch = req.height_px + (uint32_t)titlebar_px;
         if (surf->input_proxy && g_dpy
                 && (new_cw != surf->chrome_w_px
                     || new_ch != surf->chrome_h_px)) {
@@ -1098,17 +1113,42 @@ static mb_surface_t *surface_find_by_proxy(Window win) {
     return NULL;
 }
 
-// Hit-test the close button inside a chrome rect at the current scale.
-// Returns true if (x, y) falls on the red dot. x/y are proxy-relative
-// pixel coordinates (i.e. chrome-relative, since the proxy and chrome
-// share an origin).
-static bool chrome_hit_close_button(mb_surface_t *s, int x, int y) {
-    int left_pad   = (int)(BUTTON_LEFT_PAD  * s->scale + 0.5f);
-    int top_pad    = (int)(BUTTON_TOP_PAD   * s->scale + 0.5f);
-    int diameter   = (int)(BUTTON_DIAMETER  * s->scale + 0.5f);
+// Hit-test the three traffic-light buttons in a chrome rect at the
+// current scale. Returns 1 for close, 2 for minimize, 3 for zoom, or 0
+// when (x, y) misses every disc. x/y are proxy-relative pixel
+// coordinates (i.e. chrome-relative, since the proxy and chrome share
+// an origin). Mirrors hit_test_button in events.c so MoonBase and
+// X-client windows have identical click regions.
+static int chrome_hit_button(mb_surface_t *s, int x, int y) {
+    int left_pad = (int)(BUTTON_LEFT_PAD  * s->scale + 0.5f);
+    int top_pad  = (int)(BUTTON_TOP_PAD   * s->scale + 0.5f);
+    int diameter = (int)(BUTTON_DIAMETER  * s->scale + 0.5f);
+    int spacing  = (int)(BUTTON_SPACING   * s->scale + 0.5f);
     if (diameter < 1) diameter = 1;
-    return x >= left_pad && x <= left_pad + diameter
-        && y >= top_pad  && y <= top_pad  + diameter;
+    if (y < top_pad || y > top_pad + diameter) return 0;
+
+    int bx = left_pad;
+    if (x >= bx && x <= bx + diameter) return 1;
+    bx += diameter + spacing;
+    if (x >= bx && x <= bx + diameter) return 2;
+    bx += diameter + spacing;
+    if (x >= bx && x <= bx + diameter) return 3;
+    return 0;
+}
+
+// Wider "button region" hit test — the bounding box around all three
+// discs. Hovering anywhere inside reveals the glyphs on ALL three
+// buttons, matching SL 10.6.
+static bool chrome_hit_button_region(mb_surface_t *s, int x, int y) {
+    int left_pad = (int)(BUTTON_LEFT_PAD  * s->scale + 0.5f);
+    int top_pad  = (int)(BUTTON_TOP_PAD   * s->scale + 0.5f);
+    int diameter = (int)(BUTTON_DIAMETER  * s->scale + 0.5f);
+    int spacing  = (int)(BUTTON_SPACING   * s->scale + 0.5f);
+    if (diameter < 1) diameter = 1;
+    int region_left  = left_pad;
+    int region_right = left_pad + 3 * diameter + 2 * spacing;
+    return y >= top_pad && y <= top_pad + diameter
+        && x >= region_left && x <= region_right;
 }
 
 bool mb_host_handle_button_press(Window win, int x, int y, unsigned int button) {
@@ -1125,20 +1165,105 @@ bool mb_host_handle_button_press(Window win, int x, int y, unsigned int button) 
     // doesn't double-handle them.
     if (button != Button1) return true;
 
-    // Close button → emit WINDOW_CLOSED and leave the surface up. The
-    // client's event loop may elect to quit (closing the socket, which
-    // triggers surface_sweep_client) or to prompt the user first.
-    if (chrome_hit_close_button(surf, x, y)) {
-        fprintf(stderr,
-                "[moonrock] moonbase close-button press on window_id=%u\n",
-                surf->window_id);
-        send_window_closed_event(surf);
+    int btn = chrome_hit_button(surf, x, y);
+    if (btn > 0) {
+        // Press feedback — set pressed_button, show hover glyphs on all
+        // three, re-raster chrome. Grab the pointer so we still get the
+        // ButtonRelease even if the user drags off the window before
+        // letting go (matches decor.c's on_button_press grab).
+        surf->pressed_button = btn;
+        surf->buttons_hover  = true;
+        surf->chrome_stale   = true;
+
+        if (g_dpy && surf->input_proxy) {
+            XGrabPointer(g_dpy, surf->input_proxy, True,
+                         PointerMotionMask | ButtonReleaseMask |
+                         LeaveWindowMask,
+                         GrabModeAsync, GrabModeAsync,
+                         None, None, CurrentTime);
+        }
         return true;
     }
 
     // Rest of chrome / content is consumed-without-routing in this
-    // slice. Drag-to-move, minimize, zoom, and content pointer events
-    // land in later slices.
+    // slice. Drag-to-move and content pointer events land in later
+    // slices.
+    return true;
+}
+
+bool mb_host_handle_button_release(Window win, int x, int y,
+                                   unsigned int button) {
+    mb_surface_t *surf = surface_find_by_proxy(win);
+    if (!surf) return false;
+    if (button != Button1) return true;
+    if (surf->pressed_button == 0) return true;
+
+    int pressed = surf->pressed_button;
+    int over    = chrome_hit_button(surf, x, y);
+
+    surf->pressed_button = 0;
+    surf->chrome_stale   = true;
+
+    if (g_dpy) XUngrabPointer(g_dpy, CurrentTime);
+
+    // Update hover after the grab ends — if the release happened inside
+    // the button region, glyphs should keep showing; if the user dragged
+    // off, clear. chrome_hit_button_region does the correct test.
+    surf->buttons_hover = chrome_hit_button_region(surf, x, y);
+
+    // Fire the action only if the release was on the SAME button that
+    // was originally pressed — matches SL 10.6 click-and-release.
+    if (over == pressed) {
+        switch (pressed) {
+        case 1:  // close
+            fprintf(stderr,
+                    "[moonrock] moonbase close on window_id=%u\n",
+                    surf->window_id);
+            send_window_closed_event(surf);
+            break;
+        case 2:  // minimize — no IPC verb yet; press feedback only
+            fprintf(stderr,
+                    "[moonrock] moonbase minimize on window_id=%u "
+                    "(no action wired)\n", surf->window_id);
+            break;
+        case 3:  // zoom — no IPC verb yet; press feedback only
+            fprintf(stderr,
+                    "[moonrock] moonbase zoom on window_id=%u "
+                    "(no action wired)\n", surf->window_id);
+            break;
+        }
+    }
+    return true;
+}
+
+bool mb_host_handle_motion(Window win, int x, int y) {
+    mb_surface_t *surf = surface_find_by_proxy(win);
+    if (!surf) return false;
+
+    bool now_hover = chrome_hit_button_region(surf, x, y);
+    if (now_hover != surf->buttons_hover) {
+        surf->buttons_hover = now_hover;
+        surf->chrome_stale  = true;
+    }
+    // While a button is pressed, the disc-darkening only shows when the
+    // pointer is still over the originally-pressed button. chrome
+    // repaint reads pressed_button directly and doesn't need a hit-test
+    // result stored here — we just need a re-raster whenever the
+    // pointer crosses the button boundary during the press.
+    if (surf->pressed_button > 0) {
+        surf->chrome_stale = true;
+    }
+    return true;
+}
+
+bool mb_host_handle_leave(Window win) {
+    mb_surface_t *surf = surface_find_by_proxy(win);
+    if (!surf) return false;
+
+    if (surf->buttons_hover) {
+        surf->buttons_hover = false;
+        surf->chrome_stale  = true;
+    }
     return true;
 }
 
@@ -1151,19 +1276,18 @@ bool mb_host_find_proxy_surface(Window win, mb_host_proxy_info_t *out) {
     if (!s) return false;
 
     // Chrome insets must match moonbase_chrome.c's layout. The content
-    // rect sits at (border_px, titlebar_px) inside the chrome and has
-    // the client's committed px_w × px_h dimensions. Before the first
+    // rect sits at (0, titlebar_px) inside the chrome — no side inset
+    // (the 1-px hairline is an overlay, not reserved chrome space) —
+    // and spans the full committed px_w × px_h. Before the first
     // commit px_w / px_h are zero — the caller treats that case as
     // "no content rect yet" and sends LEAVE / skips OVER.
-    int border_px   = (int)(BORDER_WIDTH    * s->scale + 0.5f);
-    if (border_px < 1) border_px = 1;
     int titlebar_px = (int)(TITLEBAR_HEIGHT * s->scale + 0.5f);
 
     out->window_id = s->window_id;
     out->client    = (uint32_t)s->client;
     out->screen_x  = s->screen_x;
     out->screen_y  = s->screen_y;
-    out->content_x = s->screen_x + border_px;
+    out->content_x = s->screen_x;
     out->content_y = s->screen_y + titlebar_px;
     out->content_w = s->px_w;
     out->content_h = s->px_h;
@@ -1434,13 +1558,14 @@ void mb_host_render(GLuint basic_shader, float *projection) {
         if (!surface_upload_texture(s)) continue;
 
         // Repaint the chrome if first frame, dimensions changed, or
-        // focus / title / scale changed (future slices). active=true
+        // focus / title / scale / hover / pressed changed. active=true
         // for now; real focus routing arrives when pointer + keyboard
         // input hit MoonBase surfaces.
         if (s->chrome_stale) {
             if (mb_chrome_repaint(&s->chrome,
                                   s->px_w, s->px_h, s->scale,
-                                  s->title, /*active*/ true)) {
+                                  s->title, /*active*/ true,
+                                  s->buttons_hover, s->pressed_button)) {
                 s->chrome_stale = false;
             }
         }
@@ -1457,27 +1582,23 @@ void mb_host_render(GLuint basic_shader, float *projection) {
         shaders_set_texture(basic_shader, 0);
         shaders_set_alpha(basic_shader, 1.0f);
 
-        // Chrome first so the content quad stamps over it cleanly where
-        // they overlap (border pixels won't, but the chrome has a
-        // transparent content-rect region and cairo emits zero alpha
-        // there — either draw order is fine visually).
+        // Content first, chrome second. Chrome is the same width as
+        // content (no horizontal inset); its 1-px hairline at x=0 /
+        // x=chrome_w-1 / y=chrome_h-1 must stamp over the content's
+        // edge pixels. Drawing chrome second guarantees that — the
+        // rest of the chrome's content region is transparent so
+        // content reads through unchanged.
+        glBindTexture(GL_TEXTURE_2D, s->tex);
+        shaders_draw_quad(
+            (float)(s->screen_x + (int)s->chrome.content_x_inset),
+            (float)(s->screen_y + (int)s->chrome.content_y_inset),
+            (float)s->px_w, (float)s->px_h);
+
         if (chrome_ready) {
             glBindTexture(GL_TEXTURE_2D, s->chrome.tex);
             shaders_draw_quad((float)s->screen_x, (float)s->screen_y,
                               (float)s->chrome.chrome_w,
                               (float)s->chrome.chrome_h);
-
-            glBindTexture(GL_TEXTURE_2D, s->tex);
-            shaders_draw_quad(
-                (float)(s->screen_x + (int)s->chrome.content_x_inset),
-                (float)(s->screen_y + (int)s->chrome.content_y_inset),
-                (float)s->px_w, (float)s->px_h);
-        } else {
-            // Chrome unavailable (allocation failure etc.) — still
-            // draw the content so the app is at least visible.
-            glBindTexture(GL_TEXTURE_2D, s->tex);
-            shaders_draw_quad((float)s->screen_x, (float)s->screen_y,
-                              (float)s->px_w,     (float)s->px_h);
         }
     }
 }

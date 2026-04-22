@@ -69,12 +69,21 @@ typedef struct {
 // chrome constants (titlebar height, border width, traffic-light
 // geometry) scale with it so the chrome matches the client's pixel
 // density. title may be NULL (renders as "(Untitled)"). active is the
-// focused flag — true until we have real focus routing.
+// focused flag.
+//
+// buttons_hover: pointer is in the traffic-light region — reveal ×/−/+
+// glyphs on ALL THREE buttons (matches SL 10.6). pressed_button: 0 for
+// none, 1 for close, 2 for minimize, 3 for zoom — darkens the pressed
+// disc and keeps glyphs visible even when hover is false (matches
+// drag-away-from-pressed-button behaviour). Both are ignored when
+// `active` is false (inactive windows show gray dots, no glyphs).
 bool mb_chrome_repaint(mb_chrome_t *chrome,
                        uint32_t content_w, uint32_t content_h,
                        float    scale,
                        const char *title,
-                       bool     active);
+                       bool     active,
+                       bool     buttons_hover,
+                       int      pressed_button);
 
 // Release Cairo and GL resources held by the chrome. GL deletion is
 // queued via the caller-supplied `defer_gl_delete` callback so the

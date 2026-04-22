@@ -2,21 +2,27 @@
 
 // CopyCatOS Window Manager — Snow Leopard decoration rendering
 //
-// Every color value is extracted from the actual Snow Leopard reference
-// screenshots in aquaimages/finderexample.png. No approximations.
+// Every color value is measured from
+// snowleopardaura/example photos/finderexample.png, averaged across
+// three columns (x=200, 500, 900) so single-pixel anti-alias on the
+// title text doesn't pollute the sample.
 //
-// Title bar gradient (active):
-//   y=0:  (76, 125, 176)  — blue-gray top
-//   y=9:  (73, 118, 167)  — slightly darker blue
-//   y=10: (62, 101, 143)  — dark blue divider
-//   y=11: (226, 226, 226) — jump to light gray
-//   y=19: (203, 203, 203) — bottom gray
-//   y=21: (202, 202, 202) — very bottom
+// Title-bar palette, referenced from the top of the titlebar:
 //
-// Traffic light buttons (from real screenshot at 14x14 crop):
-//   Close center:    (247, 72, 73)
-//   Minimize center: (237, 152, 82)
-//   Zoom center:     (108, 177, 87)
+//   Active:
+//     tb_y=0       rgb(226, 226, 226)  #E2E2E2   1 px top highlight
+//     tb_y=1..20   linear #D0D0D0 -> #C2C2C2     body gradient
+//     tb_y=21      rgb(191, 191, 191)  #BFBFBF   divider line
+//
+//   Inactive (from example.png, Finder window behind Sharing sheet):
+//     tb_y=0       rgb(244, 244, 244)  #F4F4F4   1 px top highlight
+//     tb_y=1..20   linear #EDEDED -> #E4E4E4     body gradient
+//     tb_y=21      rgb(208, 208, 208)  #D0D0D0   divider (derived)
+//
+// Traffic-light PNGs live under $HOME/.local/share/aqua-widgets/
+// sl_{close,minimize,zoom}_button.png — 14x14 alpha-masked discs
+// cropped from finderexample.png at button centres (19,22), (40,22),
+// (61,22). assets.c loads these on startup.
 
 // M_PI requires _GNU_SOURCE (provided by meson via -D_GNU_SOURCE).
 #include "decor.h"
@@ -101,42 +107,47 @@ void decor_paint(CCWM *wm, Client *c)
     cairo_clip(cr);
 
     // ── Title bar gradient ──
-    // Snow Leopard standard window title bar: smooth grey gradient with a
-    // 1px bright highlight at the very top edge where light catches the chrome.
-    if (active) {
-        // 1px bright highlight at the very top edge
-        cairo_set_source_rgb(cr, 243/255.0, 243/255.0, 243/255.0);
-        cairo_rectangle(cr, 0, 0, chrome_w, 1);
+    // Three-part recipe matching SL 10.6: 1-px highlight row at the
+    // top, body gradient, 1-px divider line at the bottom. Colors
+    // measured from finderexample.png — see palette comment at the top
+    // of this file. Kept in sync with moonbase_chrome.c so MoonBase
+    // windows and X-client windows produce identical pixels.
+    {
+        double w = chrome_w;
+        double h = TITLEBAR_HEIGHT;
+
+        double hi_r, g0_r, g1_r, dv_r;
+        if (active) {
+            hi_r = 226/255.0;
+            g0_r = 208/255.0;
+            g1_r = 194/255.0;
+            dv_r = 191/255.0;
+        } else {
+            hi_r = 244/255.0;
+            g0_r = 237/255.0;
+            g1_r = 228/255.0;
+            dv_r = 208/255.0;
+        }
+
+        // 1-px highlight row.
+        cairo_set_source_rgb(cr, hi_r, hi_r, hi_r);
+        cairo_rectangle(cr, 0, 0, w, 1);
         cairo_fill(cr);
 
-        // Main gradient: warm grey from light to medium
-        cairo_pattern_t *grad = cairo_pattern_create_linear(0, 1, 0, TITLEBAR_HEIGHT);
-        cairo_pattern_add_color_stop_rgb(grad, 0.0,  212/255.0, 212/255.0, 212/255.0);
-        cairo_pattern_add_color_stop_rgb(grad, 0.5,  196/255.0, 196/255.0, 196/255.0);
-        cairo_pattern_add_color_stop_rgb(grad, 1.0,  172/255.0, 172/255.0, 172/255.0);
+        // Body gradient (rows 1..TITLEBAR_HEIGHT-2).
+        cairo_pattern_t *grad = cairo_pattern_create_linear(0, 1, 0, h - 1);
+        cairo_pattern_add_color_stop_rgb(grad, 0.0, g0_r, g0_r, g0_r);
+        cairo_pattern_add_color_stop_rgb(grad, 1.0, g1_r, g1_r, g1_r);
         cairo_set_source(cr, grad);
-        cairo_rectangle(cr, 0, 0, chrome_w, TITLEBAR_HEIGHT);
+        cairo_rectangle(cr, 0, 1, w, h - 1);
         cairo_fill(cr);
         cairo_pattern_destroy(grad);
-    } else {
-        // Inactive: lighter, flatter gradient (window recedes)
-        cairo_pattern_t *grad = cairo_pattern_create_linear(0, 0, 0, TITLEBAR_HEIGHT);
-        cairo_pattern_add_color_stop_rgb(grad, 0.0, 238/255.0, 238/255.0, 238/255.0);
-        cairo_pattern_add_color_stop_rgb(grad, 1.0, 220/255.0, 220/255.0, 220/255.0);
-        cairo_set_source(cr, grad);
-        cairo_rectangle(cr, 0, 0, chrome_w, TITLEBAR_HEIGHT);
+
+        // 1-px divider at the bottom of the titlebar.
+        cairo_set_source_rgb(cr, dv_r, dv_r, dv_r);
+        cairo_rectangle(cr, 0, h - 1, w, 1);
         cairo_fill(cr);
-        cairo_pattern_destroy(grad);
     }
-
-    // Bottom border line of title bar
-    cairo_set_source_rgb(cr, active ? 140/255.0 : 185/255.0,
-                              active ? 140/255.0 : 185/255.0,
-                              active ? 140/255.0 : 185/255.0);
-    cairo_set_line_width(cr, 1.0);
-    cairo_move_to(cr, 0, TITLEBAR_HEIGHT - 0.5);
-    cairo_line_to(cr, chrome_w, TITLEBAR_HEIGHT - 0.5);
-    cairo_stroke(cr);
 
     // ── Traffic light buttons ──
     // Active windows get real Snow Leopard PNG buttons. When the mouse
@@ -293,8 +304,14 @@ void decor_paint(CCWM *wm, Client *c)
     g_object_unref(layout);
 
     // ── Side and bottom borders ──
-    // Real Snow Leopard outer border: ~RGB(138,138,138) active, ~RGB(180,180,180) inactive
-    double bc = active ? 138/255.0 : 180/255.0;
+    // Real Snow Leopard outer border, measured from
+    // snowleopardaura/example photos/finderexample.png at y=200 left
+    // edge: no visible gray border — wallpaper → 1-px shadow → content.
+    // Without the compositor shadow pass, we still need a hairline so
+    // the window has edge definition, but lightened to the CLAUDE.md
+    // canonical #A0A0A0 active / #BEBEBE inactive (down from #8A/#B4)
+    // so the window no longer reads as a pixel or two inset.
+    double bc = active ? 160/255.0 : 190/255.0;
     cairo_set_source_rgb(cr, bc, bc, bc);
     cairo_set_line_width(cr, 1.0);
 

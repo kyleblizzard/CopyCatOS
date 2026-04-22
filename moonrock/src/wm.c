@@ -111,8 +111,12 @@ bool wm_init(CCWM *wm, const char *display_name)
         root_cursor = XcursorLibraryLoadCursor(wm->dpy, "left_ptr");
 
         if (!root_cursor) {
-            // Fallback: create a basic left-arrow cursor from X11 font cursor
-            root_cursor = XCreateFontCursor(wm->dpy, 2); // XC_left_ptr = 2 (68 = arrow)
+            // Fallback: create a basic left-arrow cursor from the X11
+            // cursor font. XC_left_ptr == 68 is the conventional macOS
+            // / Windows left-pointing arrow. The old value of 2 was
+            // XC_arrow — a backward-curved arrow that doesn't read
+            // right against Aqua chrome. See cursorfont.h.
+            root_cursor = XCreateFontCursor(wm->dpy, 68); // XC_left_ptr
         }
 
         if (root_cursor) {

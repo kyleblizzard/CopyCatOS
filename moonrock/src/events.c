@@ -494,6 +494,15 @@ static void on_button_press(CCWM *wm, XEvent *e)
 
 static void on_button_release(CCWM *wm, XEvent *e)
 {
+    // MoonBase proxies take priority — if the release lands on one,
+    // let the MoonBase host fire its close/minimize/zoom action and
+    // drop its grab before the X-client path runs.
+    if (mb_host_handle_button_release(e->xbutton.window,
+                                      e->xbutton.x, e->xbutton.y,
+                                      e->xbutton.button)) {
+        return;
+    }
+
     if (wm->pressed_button > 0 && wm->hover_client) {
         // A traffic light button was pressed — execute the action if the
         // mouse is still over the same button (click-and-release pattern).
@@ -556,6 +565,14 @@ static void on_button_release(CCWM *wm, XEvent *e)
 
 static void on_motion_notify(CCWM *wm, XEvent *e)
 {
+    // MoonBase proxies first — if the motion is on one, route it so the
+    // traffic-light hover glyphs follow the pointer, and don't fall
+    // through to the X-client drag/resize logic below.
+    if (mb_host_handle_motion(e->xmotion.window,
+                              e->xmotion.x, e->xmotion.y)) {
+        return;
+    }
+
     if (wm->resizing) {
         // Active resize — update window geometry based on drag delta
         resize_update(wm, e->xmotion.x_root, e->xmotion.y_root);
@@ -837,6 +854,12 @@ static void on_expose(CCWM *wm, XEvent *e)
 
 static void on_leave_notify(CCWM *wm, XEvent *e)
 {
+    // MoonBase proxies first — clearing hover there is disjoint from
+    // the X-client frame's hover state.
+    if (mb_host_handle_leave(e->xcrossing.window)) {
+        return;
+    }
+
     // Mouse left a frame window — clear button hover state so the
     // glyphs disappear. This handles the case where the mouse moves
     // directly from the button region to outside the window entirely

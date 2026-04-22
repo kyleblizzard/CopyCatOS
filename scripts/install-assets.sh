@@ -151,26 +151,16 @@ info "Directory tree created at $ASSET_DST"
 # ---------------------------------------------------------------------------
 header "Window Manager assets"
 
-copy_file "$MAC/Dock/closebox.png" "$ASSET_DST/sl_close_button.png"
+# The canonical traffic-light source is moonrock/assets/sl_*_button.png
+# — 14x14 alpha-masked discs cropped from the real SL 10.6 screenshot
+# at snowleopardaura/example photos/finderexample.png. MacAssets/Dock/
+# closebox.png is a document-close (black background with X), not the
+# titlebar traffic-light.
+MOONROCK_BTN="$ASSET_SRC/moonrock/assets"
 
-# Minimize and zoom buttons may not exist as separate PNGs in the source repo.
-# The WM's assets.c loads from sl_{close,minimize,zoom}_button.png — install
-# them if we can find them, otherwise just warn.
-if [[ -f "$MAC/Dock/minimizebox.png" ]]; then
-    copy_file "$MAC/Dock/minimizebox.png" "$ASSET_DST/sl_minimize_button.png"
-else
-    warn "minimize button PNG not found — sl_minimize_button.png will not be installed"
-    WARN_MSGS+=("Missing: minimize button PNG (Dock/minimizebox.png)")
-    (( WARNINGS++ )) || true
-fi
-
-if [[ -f "$MAC/Dock/zoombox.png" ]]; then
-    copy_file "$MAC/Dock/zoombox.png" "$ASSET_DST/sl_zoom_button.png"
-else
-    warn "zoom button PNG not found — sl_zoom_button.png will not be installed"
-    WARN_MSGS+=("Missing: zoom button PNG (Dock/zoombox.png)")
-    (( WARNINGS++ )) || true
-fi
+copy_file "$MOONROCK_BTN/sl_close_button.png"    "$ASSET_DST/sl_close_button.png"
+copy_file "$MOONROCK_BTN/sl_minimize_button.png" "$ASSET_DST/sl_minimize_button.png"
+copy_file "$MOONROCK_BTN/sl_zoom_button.png"     "$ASSET_DST/sl_zoom_button.png"
 
 # ---------------------------------------------------------------------------
 # 3. Dock assets

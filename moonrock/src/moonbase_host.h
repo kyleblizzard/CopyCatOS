@@ -62,6 +62,25 @@ bool mb_host_has_focus(void);
 // not dispatch the event to any other handler.
 bool mb_host_handle_button_press(Window win, int x, int y, unsigned int button);
 
+// ButtonRelease companion to mb_host_handle_button_press. Fires the
+// traffic-light action (close/minimize/zoom) when the release lands
+// on the same disc that was originally pressed; otherwise the click
+// is cancelled. Drops the pointer grab set by the press. Returns
+// true if `win` is a live MoonBase proxy.
+bool mb_host_handle_button_release(Window win, int x, int y,
+                                   unsigned int button);
+
+// MotionNotify routed to the MoonBase host. Tracks the traffic-light
+// hover region so the ×/−/+ glyphs appear/disappear as the pointer
+// crosses in and out. Returns true if `win` is a live MoonBase proxy
+// (in which case the caller must not dispatch the event elsewhere).
+bool mb_host_handle_motion(Window win, int x, int y);
+
+// LeaveNotify routed to the MoonBase host. Clears the traffic-light
+// hover state so glyphs disappear when the pointer exits the proxy
+// entirely. Returns true if `win` is a live MoonBase proxy.
+bool mb_host_handle_leave(Window win);
+
 // Snapshot of the per-surface state that XDND needs in order to convert
 // root-relative pointer coordinates into window-local points. All sizes
 // are in physical pixels; `scale` is the backing scale. `content_*`
