@@ -5,9 +5,20 @@
 # build-cursor-theme.sh
 # ---------------------
 # Builds a complete X11 cursor theme from extracted Snow Leopard cursor PNGs.
-# Splits animated sprite sheets into individual frames, upscales small cursors
-# to 32x32 (and 48x48) using nearest-neighbor for pixel-perfect enlargement,
-# generates xcursorgen config files, and creates all freedesktop symlinks.
+# Splits animated sprite sheets into individual frames, scales static cursors
+# to the HiDPI target sizes (multi-source: prefers vector-rasterized @2x/@4x
+# PSD sources, falls back to nearest-neighbor upscale of the 1x pixel-art
+# source when @Nx isn't available), generates xcursorgen config files, and
+# creates all freedesktop symlinks.
+#
+# Multi-source HiDPI pipeline:
+#   - snowleopardaura/MacAssets/Cursors/<name>.png     (1x source, always)
+#   - snowleopardaura/MacAssets/Cursors/@2x/<name>.png (optional, PSD-derived)
+#   - snowleopardaura/MacAssets/Cursors/@4x/<name>.png (optional, PSD-derived)
+# At matching target factors the @Nx dimensions equal the nearest-neighbor
+# output, so @Nx substitution is a pure pixel-quality upgrade (no geometry
+# or hotspot drift). Animated cursors stay on the 1x path — the PSD ships
+# single frames only.
 #
 # Usage: bash scripts/build-cursor-theme.sh
 # Run from the CopyCatOS repo root.
@@ -192,38 +203,27 @@ for base, count in [("spinning_wait", 10), ("alias_arrow", 15),
 
 def scale_cursor(img, nominal_size):
     """
-    Scale a cursor image for a given nominal size using nearest-neighbor.
+    Scale a cursor image for a given nominal size.
 
-    The nominal size (32 or 48) determines the integer scale factor.
-    We scale based on the *shorter* dimension so that small cursors
-    actually reach a usable size. For non-square images the longer
-    axis may exceed nominal_size — xcursorgen handles that fine.
-
-    If the image is already at or above nominal_size on its shorter
-    side, we scale down proportionally to fit the longer axis within
-    nominal_size (so 64x64 -> 32x32 at nominal 32).
+    Nearest-neighbor for pixel-art (1×) sources — preserves the crisp
+    hand-drawn look Snow Leopard cursors rely on. For multi-source
+    HiDPI path, see pick_hires_source().
 
     Returns (scaled_image, scale_factor).
-    The scale_factor is needed to compute hotspot positions.
     """
     w, h = img.size
     min_dim = min(w, h)
     max_dim = max(w, h)
 
     if min_dim < nominal_size:
-        # Image is smaller than target on at least one axis.
-        # Scale up by integer factor based on the shorter side.
         scale = max(1, nominal_size // min_dim)
         new_w = w * scale
         new_h = h * scale
         scaled = img.resize((new_w, new_h), Image.NEAREST)
         return scaled, scale
     elif min_dim == nominal_size and max_dim == nominal_size:
-        # Already exactly the right size — no scaling needed
         return img.copy(), 1
     else:
-        # Image is larger than target — scale down proportionally.
-        # Use max_dim so everything fits within nominal_size.
         scale_f = nominal_size / max_dim
         new_w = max(1, int(w * scale_f))
         new_h = max(1, int(h * scale_f))
@@ -231,36 +231,102 @@ def scale_cursor(img, nominal_size):
         return scaled, scale_f
 
 
-def process_file(filepath, filename, nominal_size):
-    """Scale one image file and save to the scaled directory."""
+def pick_hires_source(cursor_base, factor, target_w, target_h):
+    """
+    For a static cursor, try to substitute a vector-rasterized @Nx PSD source
+    in place of the nearest-neighbor upscale of the 1× pixel-art PNG.
+
+    The @2× and @4× PSDs are genuine re-rasterizations — anti-aliased edges
+    and refined sub-pixel detail — not upscales. At matching factors the
+    @Nx image dimensions equal `target_w × target_h` (the natural output of
+    the upscale path), so the swap is pixel-dimension-identical.
+
+    Returns a PIL Image at (target_w, target_h), or None if no @Nx source
+    exists for this cursor. factor must be 1, 2, or 4; for factor=3 we
+    downscale @4× with Lanczos.
+    """
+    # factor 1 means no upscale needed — caller handles 1× directly.
+    if factor < 2:
+        return None
+
+    # Try the matching @Nx tier first, then fall back to @4× downscale.
+    candidates = [factor] if factor in (2, 4) else [4, 2]
+    if factor == 3:
+        candidates = [4, 2]
+
+    for try_factor in candidates:
+        path = os.path.join(src, f"@{try_factor}x", f"{cursor_base}.png")
+        if not os.path.exists(path):
+            continue
+        img = Image.open(path).convert("RGBA")
+        if img.size == (target_w, target_h):
+            return img
+        # Lanczos resample — the @Nx sources are anti-aliased so bilinear/
+        # Lanczos is appropriate. Nearest would reintroduce pixel-art blockiness.
+        return img.resize((target_w, target_h), Image.LANCZOS)
+
+    return None
+
+
+def process_file(filepath, filename, nominal_size, hires=False):
+    """
+    Scale one image file and save to the scaled directory.
+
+    When `hires` is True, try to substitute a @2x/@4x PSD source at the same
+    target dimensions. Falls back to nearest-neighbor upscale if no @Nx
+    source is available for this cursor.
+    """
     img = Image.open(filepath).convert("RGBA")
     scaled, scale = scale_cursor(img, nominal_size)
 
     base = filename.replace(".png", "")
+
+    if hires and isinstance(scale, int) and scale >= 2:
+        # Integer-factor upscale path — try the @Nx vector source instead.
+        hi = pick_hires_source(base, scale, scaled.size[0], scaled.size[1])
+        if hi is not None:
+            scaled = hi
+
     out_path = os.path.join(scaled_dir, f"{base}_{nominal_size}.png")
     scaled.save(out_path)
     return scale
 
 
-# Process static cursors
+# Process static cursors — prefer vector-rasterized @Nx PSD sources when
+# available. Output dimensions are identical to the legacy nearest-neighbor
+# path, so hotspot math (Step 3) remains unchanged.
+hires_hits = 0
+hires_misses = 0
 for filename in static_cursors:
     filepath = os.path.join(src, filename)
     if not os.path.exists(filepath):
         print(f"  WARNING: {filename} not found, skipping")
         continue
+    base = filename.replace(".png", "")
+    has_hires = any(
+        os.path.exists(os.path.join(src, f"@{f}x", filename)) for f in (2, 4)
+    )
+    if has_hires:
+        hires_hits += 1
+    else:
+        hires_misses += 1
     for ts in target_sizes:
-        scale = process_file(filepath, filename, ts)
+        scale = process_file(filepath, filename, ts, hires=True)
     img = Image.open(filepath)
-    print(f"  {filename} ({img.size[0]}x{img.size[1]}) -> scaled to {target_sizes}")
+    tag = "hires" if has_hires else "1x-only"
+    print(f"  {filename} ({img.size[0]}x{img.size[1]}) [{tag}] -> scaled to {target_sizes}")
 
-# Process animated frames
+print(f"  Hires source hits: {hires_hits}, 1x-only fallback: {hires_misses}")
+
+# Process animated frames — PSD ships single frames only, so animated
+# sources stay on the 1× pixel-art nearest-neighbor path.
 for filename in anim_frames:
     filepath = os.path.join(frames_dir, filename)
     if not os.path.exists(filepath):
         print(f"  WARNING: frame {filename} not found, skipping")
         continue
     for ts in target_sizes:
-        process_file(filepath, filename, ts)
+        process_file(filepath, filename, ts, hires=False)
 
 print(f"  Animated frames scaled: {len(anim_frames)} frames")
 print("  Done.")
