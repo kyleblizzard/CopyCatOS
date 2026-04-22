@@ -24,6 +24,7 @@
 // Quarantine (D.4) and the rest of the per-app-data-dir layout (D.6)
 // plug in on top of this.
 
+#include "bundle/appimg.h"
 #include "bundle/bundle.h"
 #include "bundle/info_appc.h"
 #include "bundle/quarantine.h"
@@ -32,6 +33,7 @@
 #include <fcntl.h>
 #include <libgen.h>
 #include <limits.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -122,6 +124,246 @@ static int mkdir_p(const char *path, mode_t mode) {
     }
     if (mkdir(buf, mode) != 0 && errno != EEXIST) return -1;
     return 0;
+}
+
+// -------------------------------------------------------------------
+// single-file .app mount lifecycle
+// -------------------------------------------------------------------
+//
+// Single-file `.app` bundles are one ELF file: static stub, appended
+// squashfs image, trailer. moonbase-launch handles them by reading
+// the trailer, mounting the squashfs read-only with squashfuse at
+// $XDG_RUNTIME_DIR/moonbase/mounts/<bundle-id>-<pid>/, and treating
+// the mount as a normal directory-form bundle for the rest of the
+// pipeline. On exit we fusermount -u and rmdir the mount point.
+//
+// squashfuse's own mount helper is the friendliest API — it
+// daemonizes after the FS is ready, so fork + execvp + waitpid
+// against the child returning 0 is the "mount is live" signal.
+// Reusing the stock binary is also why we don't link libsquashfuse:
+// a direct `execvp` keeps our LGPL surface area at zero.
+//
+// No kernel-facing privilege required anywhere — squashfuse is pure
+// userspace FUSE, so this path runs without suid, without
+// CAP_SYS_ADMIN, without any kernel mount() syscall.
+
+// Forward decls — atexit_cleanup calls unmount_single_file_app, which
+// is defined further down so the mount/unmount pair reads top-down
+// in the order they run at launch.
+static void unmount_single_file_app(const char *mount_path);
+
+// Path of the currently-held FUSE mount, if any. Written once by main
+// before fork/exec, consulted by the SIGTERM/SIGINT/SIGHUP handler
+// during waitpid and by the post-child cleanup block. "" when no
+// mount is held.
+static char g_mount_path[PATH_MAX] = {0};
+
+// PID of the bwrap child once main has forked it. The signal handler
+// forwards termination signals to this PID so the child shuts down
+// gracefully and the parent's waitpid unblocks cleanly, at which
+// point we run the unmount. 0 while no child is live.
+static volatile sig_atomic_t g_child_pid = 0;
+
+// Async-signal-safe signal forwarder. Writes kill() to the child if
+// one is running; otherwise the signal's default disposition would
+// have terminated us before we got here, so the bare return is only
+// reached for replay / spurious delivery. No locale-dependent libc,
+// no stdio, no malloc — pure POSIX primitives.
+static void forward_signal(int sig) {
+    if (g_child_pid != 0) {
+        (void)kill((pid_t)g_child_pid, sig);
+    }
+}
+
+// atexit-hooked cleanup. Fires for any normal `return N` out of main
+// (or any path that calls exit()). Does not fire on _exit, on signal
+// death, or on a process crash — those leave the mount live, which
+// the user clears with `fusermount -u` manually.
+static void atexit_cleanup(void) {
+    unmount_single_file_app(g_mount_path);
+    g_mount_path[0] = '\0';
+}
+
+static void atexit_cleanup_register(void) {
+    // atexit can be called multiple times; we only want the cleanup
+    // once per launcher invocation. A static one-shot flag keeps it
+    // idempotent even if the callsite grows more entry points.
+    static bool registered = false;
+    if (!registered) {
+        (void)atexit(atexit_cleanup);
+        registered = true;
+    }
+}
+
+// Install SIGTERM/SIGINT/SIGHUP handlers that forward to the bwrap
+// child. SA_RESTART keeps waitpid from returning EINTR when the
+// handler fires between syscalls. Called once, right before the
+// child fork, so earlier failures take the default disposition
+// (terminate) — acceptable because nothing irreversible has been
+// written outside the mount dir yet.
+static void install_child_signal_forwarding(void) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = forward_signal;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    (void)sigaction(SIGTERM, &sa, NULL);
+    (void)sigaction(SIGINT,  &sa, NULL);
+    (void)sigaction(SIGHUP,  &sa, NULL);
+}
+
+// Resolve the squashfuse binary. Override via $MOONBASE_SQUASHFUSE_BIN
+// for tests; otherwise fall through to $PATH via execvp. Returns a
+// pointer into the env string or a literal — never allocates.
+static const char *squashfuse_bin(void) {
+    const char *env = getenv("MOONBASE_SQUASHFUSE_BIN");
+    if (env && *env) return env;
+    return "squashfuse";
+}
+
+// Same shape for fusermount — tests drop in a stub via env.
+static const char *fusermount_bin(void) {
+    const char *env = getenv("MOONBASE_FUSERMOUNT_BIN");
+    if (env && *env) return env;
+    return "fusermount";
+}
+
+// Compute mount_path for a given bundle-id and emit it into out.
+// Shape:  $XDG_RUNTIME_DIR/moonbase/mounts/<bundle-id>-<pid>.app/
+// Two launches of the same bundle get distinct mount dirs thanks to
+// the pid suffix; no reference-counted / shared mount. Bundle-id
+// came from the trailer (not Info.appc), so this works before the
+// squashfs is visible. The `.app` suffix is load-bearing:
+// mb_bundle_load's §8 validator rejects any bundle path whose
+// basename does not end in `.app` or `.appdev`, and the mount dir
+// IS the bundle dir the launcher then loads.
+static int build_mount_path(const char *bundle_id, char *out, size_t cap) {
+    const char *xdg = getenv("XDG_RUNTIME_DIR");
+    if (!xdg || !*xdg) {
+        // Fall back to /tmp so smoke tests without a user session
+        // still work. Plain user-process permissions cover us.
+        xdg = "/tmp";
+    }
+    int n = snprintf(out, cap, "%s/moonbase/mounts/%s-%ld.app",
+                     xdg, bundle_id, (long)getpid());
+    if (n < 0 || (size_t)n >= cap) return -1;
+    return 0;
+}
+
+// Mount a single-file .app with squashfuse. On success, *out_mount
+// holds the mount dir path (owned by the caller's buffer — never
+// freed, always sized PATH_MAX). On failure, returns non-zero and
+// any partial mount-dir is rmdir'd.
+//
+// Strategy:
+//   1. Parse the trailer to get bundle-id + squashfs_offset.
+//   2. mkdir -p the mount path under XDG_RUNTIME_DIR.
+//   3. fork + execvp "squashfuse -o offset=<N>,ro <file> <mount>".
+//      squashfuse backgrounds itself once the FS is serving, so
+//      waitpid returning 0 means the mount is live.
+//   4. rmdir mount dir on any early failure so we never leave
+//      empty mount stubs around the runtime dir.
+static int mount_single_file_app(const char *path,
+                                 char *out_mount, size_t mount_cap,
+                                 char *err, size_t err_cap) {
+    mb_appimg_trailer_t t;
+    char aerr[256];
+    mb_appimg_err_t ar = mb_appimg_read_trailer_path(path, &t, aerr, sizeof(aerr));
+    if (ar != MB_APPIMG_OK) {
+        snprintf(err, err_cap, "appimg trailer: %s (%s)",
+                 aerr, mb_appimg_err_string(ar));
+        return -1;
+    }
+
+    if (build_mount_path(t.bundle_id, out_mount, mount_cap) != 0) {
+        snprintf(err, err_cap, "mount path too long");
+        mb_appimg_trailer_free(&t);
+        return -1;
+    }
+    if (mkdir_p(out_mount, 0700) != 0) {
+        snprintf(err, err_cap, "mkdir %s: %s", out_mount, strerror(errno));
+        mb_appimg_trailer_free(&t);
+        return -1;
+    }
+
+    char offset_arg[64];
+    snprintf(offset_arg, sizeof(offset_arg),
+             "offset=%llu,ro", (unsigned long long)t.squashfs_offset);
+
+    const char *sqfs_bin = squashfuse_bin();
+    pid_t pid = fork();
+    if (pid < 0) {
+        snprintf(err, err_cap, "fork(squashfuse): %s", strerror(errno));
+        (void)rmdir(out_mount);
+        mb_appimg_trailer_free(&t);
+        return -1;
+    }
+    if (pid == 0) {
+        char *const child_argv[] = {
+            (char *)sqfs_bin,
+            "-o", offset_arg,
+            (char *)path,
+            out_mount,
+            NULL,
+        };
+        execvp(sqfs_bin, child_argv);
+        // Child-only branch; parent already forked, stdio is still
+        // wired to the controlling tty so a one-line message is OK.
+        fprintf(stderr, "moonbase-launch: execvp(%s): %s\n",
+                sqfs_bin, strerror(errno));
+        _exit(127);
+    }
+
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) {
+        snprintf(err, err_cap, "waitpid(squashfuse): %s", strerror(errno));
+        (void)rmdir(out_mount);
+        mb_appimg_trailer_free(&t);
+        return -1;
+    }
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        snprintf(err, err_cap, "squashfuse failed (status %d)", status);
+        (void)rmdir(out_mount);
+        mb_appimg_trailer_free(&t);
+        return -1;
+    }
+
+    mb_appimg_trailer_free(&t);
+    return 0;
+}
+
+// Tear the mount down. Never fails the process: on error we log and
+// move on — the worst-case is a stale mount the user clears with
+// `fusermount -u` themselves. Safe to call with an empty path.
+static void unmount_single_file_app(const char *mount_path) {
+    if (!mount_path || !*mount_path) return;
+
+    const char *fu_bin = fusermount_bin();
+    pid_t pid = fork();
+    if (pid < 0) {
+        fprintf(stderr, "moonbase-launch: fork(fusermount): %s\n",
+                strerror(errno));
+        return;
+    }
+    if (pid == 0) {
+        char *const child_argv[] = {
+            (char *)fu_bin, "-u", (char *)mount_path, NULL,
+        };
+        execvp(fu_bin, child_argv);
+        fprintf(stderr, "moonbase-launch: execvp(%s): %s\n",
+                fu_bin, strerror(errno));
+        _exit(127);
+    }
+    int status = 0;
+    if (waitpid(pid, &status, 0) < 0) {
+        fprintf(stderr, "moonbase-launch: waitpid(fusermount): %s\n",
+                strerror(errno));
+        return;
+    }
+    // rmdir the empty mount point. Fails silently if fusermount left
+    // the mount live for any reason — better than masking the real
+    // error with a misleading follow-up.
+    (void)rmdir(mount_path);
 }
 
 // -------------------------------------------------------------------
@@ -369,13 +611,54 @@ int main(int argc, char **argv) {
     }
     (void)inner_user_argc;  // retained for future --help-style invariants
 
+    // 0. Single-file `.app` detection. If the argument is a regular
+    //    file carrying the appimg trailer, mount its squashfs tail
+    //    and redirect the rest of the pipeline at the mount point.
+    //    Directory-form `.app` / `.appdev` inputs skip this block
+    //    entirely; for them bundle_dir == bundle_arg and no mount
+    //    is held.
+    char mount_buf[PATH_MAX] = {0};
+    const char *bundle_dir = bundle_arg;
+    bool detected = false;
+    char probe_err[128] = {0};
+    mb_appimg_err_t probe = mb_appimg_is_single_file(bundle_arg, &detected);
+    if (probe != MB_APPIMG_OK) {
+        fprintf(stderr, "moonbase-launch: probe %s: %s\n",
+                bundle_arg, mb_appimg_err_string(probe));
+        return 2;
+    }
+    if (detected) {
+        if (mount_single_file_app(bundle_arg, mount_buf, sizeof(mount_buf),
+                                  probe_err, sizeof(probe_err)) != 0) {
+            fprintf(stderr, "moonbase-launch: %s: %s\n",
+                    bundle_arg, probe_err);
+            return 2;
+        }
+        // Record globally so the signal handler and the final
+        // cleanup block can find the mount without threading a
+        // context struct through every return path.
+        memcpy(g_mount_path, mount_buf, sizeof(g_mount_path));
+        bundle_dir = g_mount_path;
+
+        // Register cleanup for every normal-exit path below. atexit
+        // handlers run after `return` from main or `exit()`, which
+        // covers every early-fail `return 2/3` without having to
+        // pepper the rest of the function with unmount calls. On
+        // signal death we rely on fork+waitpid + the signal
+        // forwarder further down to let main exit normally; a
+        // SIGKILL or launcher crash leaves the squashfuse daemon
+        // alive and the user clears it with fusermount -u, matching
+        // Slice 17-B's design note.
+        atexit_cleanup_register();
+    }
+
     // 1. Load bundle.
     mb_bundle_t bundle;
     char err[512] = {0};
-    mb_bundle_err_t rc = mb_bundle_load(bundle_arg, &bundle, err, sizeof(err));
+    mb_bundle_err_t rc = mb_bundle_load(bundle_dir, &bundle, err, sizeof(err));
     if (rc != MB_BUNDLE_OK) {
         fprintf(stderr, "moonbase-launch: %s: %s (%s)\n",
-                bundle_arg, err, mb_bundle_err_string(rc));
+                bundle_dir, err, mb_bundle_err_string(rc));
         return 2;
     }
 
@@ -580,15 +863,60 @@ int main(int argc, char **argv) {
     if (argv_push(&bw, NULL) < 0) goto oom;
 
     // Free the bundle before exec — the arg vector carries copies of
-    // everything it needed. argv_free is moot because execvp replaces
-    // the address space.
+    // everything it needed.
     mb_bundle_free(&bundle);
 
-    execvp("bwrap", bw.data);
+    // If we didn't mount anything, keep the legacy execvp path so
+    // the launcher PID is replaced by bwrap exactly like before.
+    // Callers that don't know about the single-file case (SDDM
+    // session scripts, a menubar quicklauncher) don't get a new
+    // supervising process just because they asked for a .appdev.
+    if (g_mount_path[0] == '\0') {
+        execvp("bwrap", bw.data);
+        fprintf(stderr, "moonbase-launch: execvp(bwrap): %s\n", strerror(errno));
+        argv_free(&bw);
+        return 127;
+    }
 
-    // execvp returns only on failure.
-    fprintf(stderr, "moonbase-launch: execvp(bwrap): %s\n", strerror(errno));
+    // Single-file `.app` path: the launcher has to outlive bwrap so
+    // it can fusermount -u / rmdir. Fork the child, forward
+    // termination signals (SIGINT/SIGTERM/SIGHUP) to it, waitpid,
+    // then let atexit run the unmount before main returns.
+    install_child_signal_forwarding();
+
+    pid_t bwpid = fork();
+    if (bwpid < 0) {
+        fprintf(stderr, "moonbase-launch: fork(bwrap): %s\n", strerror(errno));
+        argv_free(&bw);
+        return 127;
+    }
+    if (bwpid == 0) {
+        execvp("bwrap", bw.data);
+        fprintf(stderr, "moonbase-launch: execvp(bwrap): %s\n", strerror(errno));
+        _exit(127);
+    }
+    g_child_pid = bwpid;
+
+    int wstatus = 0;
+    for (;;) {
+        pid_t wr = waitpid(bwpid, &wstatus, 0);
+        if (wr >= 0) break;
+        if (errno == EINTR) continue;
+        fprintf(stderr, "moonbase-launch: waitpid(bwrap): %s\n", strerror(errno));
+        argv_free(&bw);
+        return 127;
+    }
+    g_child_pid = 0;
     argv_free(&bw);
+
+    // Map bwrap's exit the way a shell would see it if we had kept
+    // execvp: normal exit -> WEXITSTATUS, signal death -> 128 + sig.
+    if (WIFEXITED(wstatus)) {
+        return WEXITSTATUS(wstatus);
+    }
+    if (WIFSIGNALED(wstatus)) {
+        return 128 + WTERMSIG(wstatus);
+    }
     return 127;
 
 oom:

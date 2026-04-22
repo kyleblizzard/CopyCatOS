@@ -105,6 +105,7 @@ moonbase_lib_sources = files(
   'src/stubs.c',
   'src/version.c',
   'src/window.c',
+  'src/bundle/appimg.c',
   'src/bundle/bundle.c',
   'src/bundle/info_appc.c',
   'src/bundle/quarantine.c',
@@ -905,6 +906,27 @@ mb_info_appc = executable(
 test('info-appc', mb_info_appc, timeout: 10)
 
 # ---------------------------------------------------------------------
+# mb-appimg — single-file .app trailer format unit test
+# ---------------------------------------------------------------------
+#
+# Builds synthetic trailers in tmpfiles and drives mb_appimg_read_trailer
+# through every branch: happy-path round-trip, short file, wrong
+# magic_end / magic_start, unsupported version, oversize trailer,
+# squashfs-span mismatch, empty / oversize / NUL-embedded bundle-id,
+# plus mb_appimg_is_single_file edge cases (ENOENT, directory path).
+# Pins the shared trailer format before the packer starts writing it.
+
+mb_appimg = executable(
+  'mb-appimg',
+  'tests/appimg.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('appimg', mb_appimg, timeout: 10)
+
+# ---------------------------------------------------------------------
 # mb-bundle-load — Phase D slice 2 on-disk loader test
 # ---------------------------------------------------------------------
 #
@@ -950,6 +972,34 @@ test('launch-smoke', mb_launch_smoke,
   args: [moonbase_launch, meson.project_source_root() / 'sandbox'],
   depends: [moonbase_launch],
   timeout: 20,
+)
+
+# ---------------------------------------------------------------------
+# mb-launch-appimg — Slice 17-B single-file .app end-to-end test
+# ---------------------------------------------------------------------
+#
+# Builds a .appdev tree, packs Contents/ into a squashfs image, prepends
+# a dummy 64-byte ELF stub and appends the trailer — producing a real
+# single-file .app — then launches it through moonbase-launch. Asserts
+# the embedded script ran inside the bwrap sandbox on a squashfuse mount,
+# that MOONBASE_BUNDLE_ID was plumbed through, that the app's exit code
+# propagates, and — critically — that after the launcher exits the
+# $XDG_RUNTIME_DIR/moonbase/mounts/ directory is empty, pinning the
+# atexit unmount + rmdir lifecycle. Skips (exit 77) if bwrap, mksquashfs,
+# squashfuse, or fusermount is missing on the host.
+
+mb_launch_appimg = executable(
+  'mb-launch-appimg',
+  'tests/launch-appimg.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('launch-appimg', mb_launch_appimg,
+  args: [moonbase_launch, meson.project_source_root() / 'sandbox'],
+  depends: [moonbase_launch],
+  timeout: 30,
 )
 
 # ---------------------------------------------------------------------
