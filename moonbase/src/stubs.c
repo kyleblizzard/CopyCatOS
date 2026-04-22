@@ -105,15 +105,7 @@ int moonbase_window_set_position(mb_window_t *w, int x, int y) {
     return MB_ENOSYS;
 }
 
-void moonbase_window_request_redraw(mb_window_t *w,
-                                    int x, int y, int width, int height) {
-    (void)w;
-    (void)x;
-    (void)y;
-    (void)width;
-    (void)height;
-    nosys();
-}
+// moonbase_window_request_redraw is real — see window.c.
 
 const char *moonbase_window_output_name(mb_window_t *w) {
     (void)w;

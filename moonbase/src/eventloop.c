@@ -183,6 +183,35 @@ static int ring_pop(mb_event_t *out) {
     return 1;
 }
 
+// Client-side redraw enqueue. Pushes MB_EV_WINDOW_REDRAW straight onto
+// the ring so the app's next moonbase_wait_event / _poll_event turn
+// sees it. No server round-trip — this slice is the "Path A-plus"
+// bridge until MoonRock grows a real REDRAW push (damage-driven,
+// expose-driven). Apps that call moonbase_window_request_redraw from
+// inside an MB_EV_BACKING_SCALE_CHANGED handler also flow through here.
+void mb_internal_eventloop_post_redraw(mb_window_t *w,
+                                       int x, int y,
+                                       int width, int height) {
+    if (!w) return;
+    if (width <= 0 || height <= 0) {
+        int ww = 0, hh = 0;
+        moonbase_window_size(w, &ww, &hh);
+        x = 0;
+        y = 0;
+        width  = ww;
+        height = hh;
+    }
+    mb_event_t ev = {0};
+    ev.kind         = MB_EV_WINDOW_REDRAW;
+    ev.window       = w;
+    ev.timestamp_us = mono_us();
+    ev.redraw.x      = x;
+    ev.redraw.y      = y;
+    ev.redraw.width  = width;
+    ev.redraw.height = height;
+    ring_push(&ev);
+}
+
 void mb_internal_eventloop_shutdown(void) {
     for (size_t i = 0; i < MB_EV_QUEUE_CAP; i++) {
         if (g_ring_text[i]) {

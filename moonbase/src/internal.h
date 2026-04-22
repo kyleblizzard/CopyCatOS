@@ -39,4 +39,15 @@ void mb_internal_window_apply_backing_scale(mb_window_t *w,
 // starts with an empty slate.
 void mb_internal_eventloop_shutdown(void);
 
+// Enqueue a local MB_EV_WINDOW_REDRAW for `w` on this process's own
+// event ring. Used by moonbase_window_request_redraw so an app that
+// asks for a redraw sees the event on the next pump turn without any
+// server round-trip. If `width` or `height` is <= 0 the helper fills
+// the rect with the window's full content size (matches the documented
+// "whole content if w/h are 0" contract in moonbase.h). A no-op when
+// `w` is NULL.
+void mb_internal_eventloop_post_redraw(mb_window_t *w,
+                                       int x, int y,
+                                       int width, int height);
+
 #endif // MOONBASE_INTERNAL_H

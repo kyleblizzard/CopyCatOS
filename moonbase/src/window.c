@@ -373,6 +373,35 @@ void moonbase_window_close(mb_window_t *w) {
 }
 
 // ---------------------------------------------------------------------
+// moonbase_window_request_redraw
+// ---------------------------------------------------------------------
+//
+// Slice-A+: fully client-side. The server doesn't yet push
+// MB_IPC_WINDOW_REDRAW on compositor-driven damage (expose, output
+// refresh) — that's a future slice. Today an app that calls
+// request_redraw has already decided it needs to paint, so we
+// synthesize a local MB_EV_WINDOW_REDRAW into this process's own
+// event ring. The documented API contract stays intact:
+//
+//   "the app will see an MB_EV_WINDOW_REDRAW event covering the given
+//   region (or the whole content if w/h are 0)"
+//
+// …and the full content-rect fill is handled by the event-loop helper
+// (see mb_internal_eventloop_post_redraw). Also — and this matters —
+// the MB_EV_BACKING_SCALE_CHANGED handler in real apps (gl-hello,
+// textedit, etc.) calls request_redraw to force a repaint at the new
+// scale; that path is now alive too.
+
+void moonbase_window_request_redraw(mb_window_t *w,
+                                    int x, int y, int width, int height) {
+    if (!w) {
+        mb_internal_set_last_error(MB_EINVAL);
+        return;
+    }
+    mb_internal_eventloop_post_redraw(w, x, y, width, height);
+}
+
+// ---------------------------------------------------------------------
 // moonbase_window_cairo / moonbase_window_commit
 // ---------------------------------------------------------------------
 //
