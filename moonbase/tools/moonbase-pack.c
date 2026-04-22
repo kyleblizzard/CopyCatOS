@@ -50,6 +50,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/xattr.h>
 #include <unistd.h>
 
 // MOONBASE_STUB_PATH is baked in by meson via -DMOONBASE_STUB_PATH=...
@@ -402,6 +403,62 @@ int main(int argc, char **argv) {
         unlink(app_tmp);
         mb_bundle_free(&bundle);
         return 5;
+    }
+
+    // Step 7: icon-cache xattr (bundle-spec §1.4). Transport-only — we
+    // copy the bundle's AppIcon.png bytes onto the shipping .app file as
+    // user.moonbase.icon-cache so fileviewer/dock/searchsystem can draw
+    // an icon without mounting the squashfs. The developer is
+    // responsible for shipping a correctly-sized 128x128 PNG; we size-
+    // gate at 16 KiB and warn-and-skip otherwise. Missing icon → silent
+    // skip (fallback is a generic app icon in fileviewer).
+    char icon_src[PATH_MAX];
+    if (snprintf(icon_src, sizeof(icon_src),
+                 "%s/Contents/Resources/AppIcon.png", src)
+            < (int)sizeof(icon_src)) {
+        struct stat icon_st;
+        if (stat(icon_src, &icon_st) == 0 && S_ISREG(icon_st.st_mode)) {
+            if (icon_st.st_size > 16 * 1024) {
+                fprintf(stderr,
+                    "moonbase-pack: %s is %lld bytes (>16 KiB cap); "
+                    "icon-cache xattr skipped\n",
+                    icon_src, (long long)icon_st.st_size);
+            } else {
+                int ifd = open(icon_src, O_RDONLY | O_CLOEXEC);
+                if (ifd >= 0) {
+                    uint8_t ibuf[16 * 1024];
+                    ssize_t in = 0;
+                    while (in < (ssize_t)sizeof(ibuf)) {
+                        ssize_t r = read(ifd, ibuf + in,
+                                         sizeof(ibuf) - (size_t)in);
+                        if (r < 0) { if (errno == EINTR) continue; break; }
+                        if (r == 0) break;
+                        in += r;
+                    }
+                    close(ifd);
+                    if (in > 0) {
+                        if (setxattr(dst, "user.moonbase.icon-cache",
+                                     ibuf, (size_t)in, 0) != 0) {
+                            // ENOTSUP/EOPNOTSUPP: filesystem doesn't do
+                            // user xattrs (tmpfs without user_xattr,
+                            // some FUSE mounts). Silent — not a pack
+                            // failure; fileviewer falls back to a
+                            // generic icon.
+                            if (errno != ENOTSUP
+#if defined(EOPNOTSUPP) && EOPNOTSUPP != ENOTSUP
+                                && errno != EOPNOTSUPP
+#endif
+                            ) {
+                                fprintf(stderr,
+                                    "moonbase-pack: setxattr icon-cache "
+                                    "on %s: %s\n",
+                                    dst, strerror(errno));
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     struct stat final_st;

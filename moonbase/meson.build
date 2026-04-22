@@ -1262,6 +1262,15 @@ foreach spec : example_specs
   # Step 1: assemble the .appdev directory. Shape matches bundle-spec.md
   # §1: Contents/Info.appc + Contents/CopyCatOS/<exe> + legacy MacOS
   # symlink + an empty Resources/ placeholder.
+  #
+  # Optional AppIcon.png under examples/<name>/Resources/ is copied when
+  # present. Passed as a plain path string (not an `input`) so a missing
+  # file is a no-op instead of a meson configure error — dev placeholders
+  # don't have to exist. The trade-off is that changing the PNG doesn't
+  # trigger a rebuild; re-run `meson compile --clean` or touch Info.appc
+  # when swapping a placeholder icon.
+  example_icon = meson.current_source_dir() / 'examples' / name / 'Resources' / 'AppIcon.png'
+
   appdev_target = custom_target(name + '-appdev',
     output: name + '.appdev',
     input: [spec['info'], example_exe],
@@ -1273,8 +1282,9 @@ foreach spec : example_specs
       + 'cp "$1" "$0/Contents/Info.appc"; '
       + 'cp "$2" "$0/Contents/CopyCatOS/$3"; '
       + 'chmod 0755 "$0/Contents/CopyCatOS/$3"; '
-      + 'ln -s CopyCatOS "$0/Contents/MacOS"',
-      '@OUTPUT0@', '@INPUT0@', '@INPUT1@', name,
+      + 'ln -s CopyCatOS "$0/Contents/MacOS"; '
+      + 'if [ -f "$4" ]; then cp "$4" "$0/Contents/Resources/AppIcon.png"; fi',
+      '@OUTPUT0@', '@INPUT0@', '@INPUT1@', name, example_icon,
     ],
     build_by_default: true,
   )

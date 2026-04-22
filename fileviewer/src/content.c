@@ -27,10 +27,15 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <strings.h>
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/xattr.h>
 #include <unistd.h>
 #include <math.h>
 #include <time.h>
@@ -91,16 +96,41 @@ static const ExtIconMap ext_icon_map[] = {
 
 // ── Helper: MoonBase bundle detection ───────────────────────────────
 //
-// A MoonBase bundle is a directory whose name ends in ".app" (shipping;
-// single-file ELF-stub form lands in its own slice — until then .app is
-// still a directory) or ".appdev" (developer directory), and that has a
-// Contents/Info.appc file inside. Name kept as is_appc_bundle because
-// the metadata file it opens is Info.appc (schema-version hint), not a
-// reference to the retired .appc bundle suffix. We only check structure
-// here — the launcher re-validates the full bundle-spec §8 rules
-// (realpath escapes, absolute-symlink rejects, executable location)
-// before actually running anything. No point duplicating those checks
-// in fileviewer's double-click hot path.
+// A MoonBase bundle is either (a) a regular file ending in ".app" with
+// the appimg trailer magic at EOF (shipping single-file bundle: static
+// ELF stub + squashfs + trailer), or (b) a directory ending in ".app"
+// / ".appdev" with Contents/Info.appc inside (legacy .app directory
+// form + developer .appdev directory). Name kept as is_appc_bundle
+// because the metadata file is Info.appc (schema-version hint), not a
+// reference to the retired .appc bundle suffix. We only check
+// structure here — the launcher re-validates the full bundle-spec §8
+// rules (realpath escapes, absolute-symlink rejects, executable
+// location) before actually running anything. No point duplicating
+// those checks in fileviewer's double-click hot path.
+
+// Appimg trailer magic. Duplicated from moonbase/src/bundle/appimg.h so
+// fileviewer doesn't have to link libmoonbase just to peek at the last
+// 8 bytes of a file. Keep in sync with MB_APPIMG_MAGIC over there.
+static const char MB_APPIMG_MAGIC_LOCAL[8] = {
+    'M','B','A','P','P','\0','\0','\1'
+};
+
+static bool is_single_file_app(const char *path)
+{
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return false;
+    off_t sz = lseek(fd, 0, SEEK_END);
+    bool ok = false;
+    if (sz >= (off_t)sizeof(MB_APPIMG_MAGIC_LOCAL)) {
+        char tail[sizeof(MB_APPIMG_MAGIC_LOCAL)];
+        ssize_t n = pread(fd, tail, sizeof(tail),
+                          sz - (off_t)sizeof(tail));
+        ok = (n == (ssize_t)sizeof(tail) &&
+              memcmp(tail, MB_APPIMG_MAGIC_LOCAL, sizeof(tail)) == 0);
+    }
+    close(fd);
+    return ok;
+}
 
 static bool is_appc_bundle(const char *path)
 {
@@ -110,12 +140,90 @@ static bool is_appc_bundle(const char *path)
     bool is_appdev = (len >= 7 && strcmp(path + len - 7, ".appdev") == 0);
     if (!is_app && !is_appdev) return false;
 
+    struct stat st;
+    if (stat(path, &st) != 0) return false;
+
+    // Single-file .app: regular file with the appimg trailer magic.
+    if (is_app && S_ISREG(st.st_mode)) {
+        return is_single_file_app(path);
+    }
+
+    // Directory form (.appdev always; .app directory until the hard
+    // cutover): Contents/Info.appc must be present.
+    if (!S_ISDIR(st.st_mode)) return false;
+
     char info[1024];
     int n = snprintf(info, sizeof(info), "%s/Contents/Info.appc", path);
     if (n < 0 || (size_t)n >= sizeof(info)) return false;
 
+    struct stat ist;
+    return stat(info, &ist) == 0 && S_ISREG(ist.st_mode);
+}
+
+// ── Helper: read a bundle's icon without mounting the squashfs ──────
+//
+// Single-file .app: pull the PNG bytes from the user.moonbase.icon-cache
+// xattr (written by moonbase-pack per bundle-spec §1.4, ~16 KiB cap).
+// Directory .appdev / .app: read Contents/Resources/AppIcon.png
+// directly. Returns a Cairo surface on success, NULL on any failure
+// — caller falls back to a generic icon.
+
+typedef struct {
+    const uint8_t *data;
+    size_t        len;
+    size_t        off;
+} png_mem_src_t;
+
+static cairo_status_t png_mem_read(void *closure, unsigned char *out,
+                                   unsigned int length)
+{
+    png_mem_src_t *s = (png_mem_src_t *)closure;
+    if (s->off + length > s->len) return CAIRO_STATUS_READ_ERROR;
+    memcpy(out, s->data + s->off, length);
+    s->off += length;
+    return CAIRO_STATUS_SUCCESS;
+}
+
+static cairo_surface_t *load_bundle_icon(const char *path)
+{
     struct stat st;
-    return stat(info, &st) == 0 && S_ISREG(st.st_mode);
+    if (stat(path, &st) != 0) return NULL;
+
+    if (S_ISREG(st.st_mode)) {
+        // Buffer sized 2× the 16 KiB spec cap so a slightly-over PNG
+        // still renders (the packer warns + skips anything > 16 KiB,
+        // so this is just defence-in-depth).
+        static uint8_t buf[32 * 1024];
+        ssize_t n = getxattr(path, "user.moonbase.icon-cache",
+                             buf, sizeof(buf));
+        if (n <= 0) return NULL;
+
+        png_mem_src_t src = { buf, (size_t)n, 0 };
+        cairo_surface_t *surf = cairo_image_surface_create_from_png_stream(
+            png_mem_read, &src);
+        if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(surf);
+            return NULL;
+        }
+        return surf;
+    }
+
+    if (S_ISDIR(st.st_mode)) {
+        char icon_path[1024];
+        int k = snprintf(icon_path, sizeof(icon_path),
+                         "%s/Contents/Resources/AppIcon.png", path);
+        if (k < 0 || (size_t)k >= sizeof(icon_path)) return NULL;
+        struct stat ist;
+        if (stat(icon_path, &ist) != 0 || !S_ISREG(ist.st_mode)) return NULL;
+        cairo_surface_t *surf = cairo_image_surface_create_from_png(icon_path);
+        if (cairo_surface_status(surf) != CAIRO_STATUS_SUCCESS) {
+            cairo_surface_destroy(surf);
+            return NULL;
+        }
+        return surf;
+    }
+
+    return NULL;
 }
 
 // ── Helper: Load a theme icon ───────────────────────────────────────
@@ -261,6 +369,16 @@ static cairo_surface_t *create_fallback_folder_icon(void)
 static cairo_surface_t *resolve_icon(const char *filepath, bool is_dir)
 {
     cairo_surface_t *icon = NULL;
+
+    // MoonBase bundle? Draw its own icon without mounting the squashfs —
+    // single-file .app via user.moonbase.icon-cache xattr, .appdev via
+    // Contents/Resources/AppIcon.png. Falls through to the generic icon
+    // path on any failure (missing icon, unsupported xattr FS, corrupt
+    // PNG).
+    if (is_appc_bundle(filepath)) {
+        icon = load_bundle_icon(filepath);
+        if (icon) return icon;
+    }
 
     if (is_dir) {
         icon = load_theme_icon("folder", "places");
@@ -961,26 +1079,30 @@ void content_handle_double_click(FinderState *fs, int x, int y)
         }
     }
 
-    // If we found a file, open it. Three branches:
-    //   1. MoonBase bundle (.app / .appdev directory with Contents/Info.appc): hand to
-    //      moonbase-launch so bwrap + entitlements + consent run.
+    // If we found a file, open it. Three branches — bundle check comes
+    // first so a single-file packed .app (regular file, not a directory)
+    // still dispatches to moonbase-launch instead of falling through to
+    // xdg-open.
+    //   1. MoonBase bundle (.app single-file, .app directory, or
+    //      .appdev): hand to moonbase-launch so bwrap + entitlements +
+    //      consent run.
     //   2. Plain directory: navigate into it.
     //   3. Regular file: xdg-open.
     if (hit_idx >= 0) {
-        if (files[hit_idx].is_directory) {
-            if (is_appc_bundle(files[hit_idx].path)) {
-                fprintf(stderr, "[content] Launching bundle: %s\n", files[hit_idx].path);
-                pid_t pid = fork();
-                if (pid == 0) {
-                    setsid();
-                    execlp("moonbase-launch", "moonbase-launch",
-                           files[hit_idx].path, NULL);
-                    _exit(127);
-                }
-            } else {
-                fprintf(stderr, "[content] Navigate into: %s\n", files[hit_idx].path);
-                finder_navigate(fs, files[hit_idx].path);
+        if (is_appc_bundle(files[hit_idx].path)) {
+            fprintf(stderr, "[content] Launching bundle: %s\n",
+                    files[hit_idx].path);
+            pid_t pid = fork();
+            if (pid == 0) {
+                setsid();
+                execlp("moonbase-launch", "moonbase-launch",
+                       files[hit_idx].path, NULL);
+                _exit(127);
             }
+        } else if (files[hit_idx].is_directory) {
+            fprintf(stderr, "[content] Navigate into: %s\n",
+                    files[hit_idx].path);
+            finder_navigate(fs, files[hit_idx].path);
         } else {
             fprintf(stderr, "[content] Opening: %s\n", files[hit_idx].path);
             pid_t pid = fork();
