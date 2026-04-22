@@ -177,6 +177,9 @@ static_cursors = [
     "resize_up_down.png",
     "watch_0.png",
     "counting_up.png",
+    "zoom_in.png",
+    "zoom_out.png",
+    "fleur.png",
 ]
 
 # ---- Animated cursor frames (already split in Step 1) ----
@@ -332,6 +335,9 @@ static_defs = [
     ("sb_v_double_arrow",   "resize_up_down",   12, 16, 6,  8),
     ("watch",               "watch_0",          64, 64, 32, 32),
     ("counting_up_cursor",  "counting_up",      16, 16, 8,  8),
+    ("zoom-in",             "zoom_in",          16, 16, 6,  6),
+    ("zoom-out",            "zoom_out",         16, 16, 6,  6),
+    ("fleur",               "fleur",            16, 16, 8,  8),
 ]
 
 # ---- Animated cursor definitions ----
@@ -476,15 +482,28 @@ make_link "top_side" "n-resize"
 make_link "bottom_side" "s-resize"
 
 # --- openhand (grab cursor before clicking) ---
+# Only "grab" — the hand-open glyph means "ready to grab something you're about
+# to click-drag." It is not a move cursor; move/size_all/all-scroll go to fleur.
 make_link "openhand" "grab"
-make_link "openhand" "fleur"
-make_link "openhand" "size_all"
-make_link "openhand" "all-scroll"
 
 # --- closedhand (grabbing / actively dragging) ---
+# Only "grabbing" — the closed-fist glyph means "currently holding." It is not
+# a move cursor; dnd-move / move go to fleur.
 make_link "closedhand" "grabbing"
-make_link "closedhand" "dnd-move"
-make_link "closedhand" "move"
+
+# --- fleur (4-way move / scroll-all) ---
+# Classic Mac "move" shape. Used whenever the action is "translate this thing
+# in any direction" rather than "grab" (open hand) or "holding" (fist).
+make_link "fleur" "size_all"
+make_link "fleur" "all-scroll"
+make_link "fleur" "move"
+make_link "fleur" "dnd-move"
+
+# --- zoom-in / zoom-out ---
+# Magnifier cursors. Apps using the CSS spec cursor names need both hyphenated
+# and underscore spellings, so wire both.
+make_link "zoom-in" "zoom_in"
+make_link "zoom-out" "zoom_out"
 
 # --- copy (drag-copy cursor) ---
 make_link "copy" "dnd-copy"
