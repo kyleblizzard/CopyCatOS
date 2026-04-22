@@ -908,7 +908,7 @@ test('info-appc', mb_info_appc, timeout: 10)
 # mb-bundle-load — Phase D slice 2 on-disk loader test
 # ---------------------------------------------------------------------
 #
-# Drives mb_bundle_load against real tmpdir .appc trees. Covers the
+# Drives mb_bundle_load against real tmpdir .app trees. Covers the
 # happy path plus every failure in bundle-spec.md §8 except quarantine
 # (its own slice): bad suffix, not-a-directory, missing Info.appc,
 # executable missing, executable not-executable, executable outside
@@ -930,7 +930,7 @@ test('bundle-load', mb_bundle_load, timeout: 15)
 # mb-launch-smoke — Phase D slice 3 end-to-end launcher test
 # ---------------------------------------------------------------------
 #
-# Builds a real fixture .appc in a tmpdir, forks moonbase-launch with
+# Builds a real fixture .app in a tmpdir, forks moonbase-launch with
 # an overridden $HOME + $MOONBASE_SANDBOX_DIR, then verifies the
 # bundle's shell script ran inside the bwrap sandbox (by checking a
 # marker file in the per-app data dir), that MOONBASE_BUNDLE_ID was

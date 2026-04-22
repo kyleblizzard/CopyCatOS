@@ -2,7 +2,7 @@
 
 // mb-bundle-load — Phase D slice 2 test.
 //
-// Builds real .appc directory trees under a tmpdir, writes a full
+// Builds real .app directory trees under a tmpdir, writes a full
 // Info.appc, places a chmod-0755 stub executable, then exercises
 // mb_bundle_load against each failure mode and the happy path.
 // Every tmp tree is torn down after the test regardless of outcome.
@@ -77,7 +77,7 @@ static int write_file(const char *path, const char *content, mode_t mode) {
     return 0;
 }
 
-// Create tmp/.../MyApp.appc/Contents/{Info.appc,MacOS/exe} with caller-
+// Create tmp/.../MyApp.app/Contents/{Info.appc,MacOS/exe} with caller-
 // supplied Info.appc body and a trivial executable. dst_root must be
 // caller-provided scratch; returns 0 and fills *out_bundle with the
 // bundle path on success.
@@ -127,7 +127,7 @@ static const char *HAPPY_INFO =
 
 static void test_happy(const char *scratch) {
     char path[PATH_MAX];
-    EXPECT(make_bundle(scratch, "Happy.appc", HAPPY_INFO,
+    EXPECT(make_bundle(scratch, "Happy.app", HAPPY_INFO,
                        "Contents/MacOS/hello", 0755, path, sizeof(path)) == 0,
            "make happy bundle");
 
@@ -135,7 +135,7 @@ static void test_happy(const char *scratch) {
     char err[256] = {0};
     mb_bundle_err_t rc = mb_bundle_load(path, &b, err, sizeof(err));
     EXPECT(rc == MB_BUNDLE_OK, "happy rc=%s (%s)", mb_bundle_err_string(rc), err);
-    EXPECT(b.bundle_path && strstr(b.bundle_path, "/Happy.appc") != NULL, "bundle_path");
+    EXPECT(b.bundle_path && strstr(b.bundle_path, "/Happy.app") != NULL, "bundle_path");
     EXPECT(b.exe_abs_path && strstr(b.exe_abs_path, "/Contents/MacOS/hello") != NULL,
            "exe_abs_path: %s", b.exe_abs_path ? b.exe_abs_path : "(null)");
     EXPECT(strcmp(b.info.id, "show.blizzard.hello") == 0, "info.id");
@@ -154,11 +154,32 @@ static void test_bad_suffix(const char *scratch) {
     EXPECT(rc == MB_BUNDLE_ERR_BAD_SUFFIX, "bad-suffix rc=%s", mb_bundle_err_string(rc));
     mb_bundle_free(&b);
     rm_rf(path);
+
+    // Retired legacy suffix: .appc and .appcd must both be rejected
+    // now that the loader only accepts .app and .appdev. The name is
+    // Info.appc for metadata — the bundle directory suffix is not.
+    path_snprintf(path, sizeof(path), "%s/Legacy.appc", scratch);
+    rm_rf(path);
+    mkdir(path, 0755);
+    rc = mb_bundle_load(path, &b, err, sizeof(err));
+    EXPECT(rc == MB_BUNDLE_ERR_BAD_SUFFIX,
+           "legacy .appc rejected rc=%s", mb_bundle_err_string(rc));
+    mb_bundle_free(&b);
+    rm_rf(path);
+
+    path_snprintf(path, sizeof(path), "%s/Legacy.appcd", scratch);
+    rm_rf(path);
+    mkdir(path, 0755);
+    rc = mb_bundle_load(path, &b, err, sizeof(err));
+    EXPECT(rc == MB_BUNDLE_ERR_BAD_SUFFIX,
+           "legacy .appcd rejected rc=%s", mb_bundle_err_string(rc));
+    mb_bundle_free(&b);
+    rm_rf(path);
 }
 
 static void test_not_dir(const char *scratch) {
     char path[PATH_MAX];
-    path_snprintf(path, sizeof(path), "%s/notdir.appc", scratch);
+    path_snprintf(path, sizeof(path), "%s/notdir.app", scratch);
     rm_rf(path);
     EXPECT(write_file(path, "hi", 0644) == 0, "write dummy file");
     mb_bundle_t b;
@@ -171,7 +192,7 @@ static void test_not_dir(const char *scratch) {
 
 static void test_no_info(const char *scratch) {
     char path[PATH_MAX];
-    path_snprintf(path, sizeof(path), "%s/NoInfo.appc", scratch);
+    path_snprintf(path, sizeof(path), "%s/NoInfo.app", scratch);
     rm_rf(path);
     mkdir(path, 0755);
     char sub[PATH_MAX];
@@ -187,7 +208,7 @@ static void test_no_info(const char *scratch) {
 
 static void test_exec_missing(const char *scratch) {
     char path[PATH_MAX];
-    EXPECT(make_bundle(scratch, "NoExe.appc", HAPPY_INFO,
+    EXPECT(make_bundle(scratch, "NoExe.app", HAPPY_INFO,
                        NULL, 0, path, sizeof(path)) == 0, "make NoExe bundle");
     mb_bundle_t b;
     char err[256] = {0};
@@ -200,7 +221,7 @@ static void test_exec_missing(const char *scratch) {
 
 static void test_exec_not_executable(const char *scratch) {
     char path[PATH_MAX];
-    EXPECT(make_bundle(scratch, "NotExec.appc", HAPPY_INFO,
+    EXPECT(make_bundle(scratch, "NotExec.app", HAPPY_INFO,
                        "Contents/MacOS/hello", 0644, path, sizeof(path)) == 0, "make NotExec");
     mb_bundle_t b;
     char err[256] = {0};
@@ -227,7 +248,7 @@ static void test_exec_location(const char *scratch) {
         "\n"
         "[permissions]\n";
     char path[PATH_MAX];
-    path_snprintf(path, sizeof(path), "%s/BadLoc.appc", scratch);
+    path_snprintf(path, sizeof(path), "%s/BadLoc.app", scratch);
     rm_rf(path);
     mkdir(path, 0755);
     char sub[PATH_MAX];
@@ -252,7 +273,7 @@ static void test_exec_escape_via_symlink(const char *scratch) {
     // which resolves outside the bundle. After realpath, the executable
     // path shouldn't lie inside abs bundle.
     char path[PATH_MAX];
-    EXPECT(make_bundle(scratch, "Escape.appc", HAPPY_INFO,
+    EXPECT(make_bundle(scratch, "Escape.app", HAPPY_INFO,
                        NULL, 0, path, sizeof(path)) == 0, "make Escape bundle");
     char link[PATH_MAX];
     path_snprintf(link, sizeof(link), "%s/Contents/MacOS/hello", path);
@@ -271,7 +292,7 @@ static void test_exec_escape_via_symlink(const char *scratch) {
 
 static void test_absolute_symlink(const char *scratch) {
     char path[PATH_MAX];
-    EXPECT(make_bundle(scratch, "AbsLink.appc", HAPPY_INFO,
+    EXPECT(make_bundle(scratch, "AbsLink.app", HAPPY_INFO,
                        "Contents/MacOS/hello", 0755, path, sizeof(path)) == 0,
            "make AbsLink bundle");
     char link[PATH_MAX];
@@ -288,7 +309,7 @@ static void test_absolute_symlink(const char *scratch) {
 
 static void test_outside_contents(const char *scratch) {
     char path[PATH_MAX];
-    EXPECT(make_bundle(scratch, "Stray.appc", HAPPY_INFO,
+    EXPECT(make_bundle(scratch, "Stray.app", HAPPY_INFO,
                        "Contents/MacOS/hello", 0755, path, sizeof(path)) == 0,
            "make Stray bundle");
     char stray[PATH_MAX];
@@ -317,7 +338,7 @@ static void test_api_version_too_new(const char *scratch) {
         "\n"
         "[permissions]\n";
     char path[PATH_MAX];
-    EXPECT(make_bundle(scratch, "Future.appc", info,
+    EXPECT(make_bundle(scratch, "Future.app", info,
                        "Contents/MacOS/hello", 0755, path, sizeof(path)) == 0,
            "make Future bundle");
     mb_bundle_t b;

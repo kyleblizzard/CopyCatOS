@@ -127,7 +127,7 @@ static void env_build(env_t *e) {
     e->ran_marker= malloc(PATH_MAX);
     path_snprintf(e->fake_home, PATH_MAX, "%s/root",   e->tmp);
     path_snprintf(e->xdg,       PATH_MAX, "%s/xdg",    e->tmp);
-    path_snprintf(e->bundle,    PATH_MAX, "%s/LaunchQ.appc", e->tmp);
+    path_snprintf(e->bundle,    PATH_MAX, "%s/LaunchQ.app", e->tmp);
 
     mkdir(e->fake_home, 0700);
     mkdir(e->xdg, 0700);

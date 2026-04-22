@@ -91,28 +91,24 @@ static const ExtIconMap ext_icon_map[] = {
 
 // ── Helper: MoonBase bundle detection ───────────────────────────────
 //
-// A MoonBase bundle is a directory whose name ends in ".app" (future
-// single-file shipping format, still a directory today) or ".appdev"
-// (developer directory) and that has a Contents/Info.appc file inside.
-// We still accept the legacy ".appc" / ".appcd" names during the
-// rename-pass transition. We only check structure here — the launcher
-// re-validates the full bundle-spec §8 rules (realpath escapes,
-// absolute-symlink rejects, executable location) before actually
-// running anything. No point duplicating those checks in fileviewer's
-// double-click hot path.
+// A MoonBase bundle is a directory whose name ends in ".app" (shipping;
+// single-file ELF-stub form lands in its own slice — until then .app is
+// still a directory) or ".appdev" (developer directory), and that has a
+// Contents/Info.appc file inside. Name kept as is_appc_bundle because
+// the metadata file it opens is Info.appc (schema-version hint), not a
+// reference to the retired .appc bundle suffix. We only check structure
+// here — the launcher re-validates the full bundle-spec §8 rules
+// (realpath escapes, absolute-symlink rejects, executable location)
+// before actually running anything. No point duplicating those checks
+// in fileviewer's double-click hot path.
 
 static bool is_appc_bundle(const char *path)
 {
     if (!path) return false;
     size_t len = strlen(path);
-    // Accept all four bundle suffixes during the .appc/.appcd → .app/.appdev
-    // rename. Once the reference apps ship and the ABI freezes, .appc and
-    // .appcd drop out and .app becomes single-file-only.
     bool is_app    = (len >= 4 && strcmp(path + len - 4, ".app")    == 0);
     bool is_appdev = (len >= 7 && strcmp(path + len - 7, ".appdev") == 0);
-    bool is_appc   = (len >= 5 && strcmp(path + len - 5, ".appc")   == 0);
-    bool is_appcd  = (len >= 6 && strcmp(path + len - 6, ".appcd")  == 0);
-    if (!is_app && !is_appdev && !is_appc && !is_appcd) return false;
+    if (!is_app && !is_appdev) return false;
 
     char info[1024];
     int n = snprintf(info, sizeof(info), "%s/Contents/Info.appc", path);

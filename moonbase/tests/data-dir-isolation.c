@@ -152,7 +152,7 @@ static int run_launch(const char *launch_bin, const char *sandbox_dir,
 static int make_bundle(const char *tmp, const char *bundle_id,
                        const char *bundle_name, const char *script,
                        char *bundle_out, size_t cap) {
-    path_snprintf(bundle_out, cap, "%s/%s.appc", tmp, bundle_id);
+    path_snprintf(bundle_out, cap, "%s/%s.app", tmp, bundle_id);
     if (mkdir(bundle_out, 0755) != 0) return -1;
     char sub[PATH_MAX];
     path_snprintf(sub, sizeof(sub), "%s/Contents", bundle_out);

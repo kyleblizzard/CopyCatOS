@@ -3,13 +3,10 @@
 // bundle — on-disk .app / .appdev loader. Implements the pipeline from
 // bundle-spec.md §8 except quarantine, which lives in its own slice.
 //
-// Transitional quad-suffix: during the rename from .appc/.appcd to the
-// classic Snow Leopard .app (single-file) and .appdev (developer directory)
-// scheme, we accept all four as directory bundles. Single-file .app
-// (ELF stub + squashfs tail) lands in its own slice; until then .app is
-// also treated as a directory. After the ABI freeze, .app becomes
-// single-file only and .appdev is the one dev directory form. Legacy
-// .appc/.appcd acceptance gets dropped at that point.
+// .app is the shipping bundle suffix (single-file ELF stub + squashfs
+// tail, though until that packaging slice lands we still accept .app as
+// a plain directory). .appdev is the developer directory form used for
+// live editing in the tree. Nothing else is accepted.
 
 #include "bundle.h"
 
@@ -134,11 +131,9 @@ mb_bundle_err_t mb_bundle_load(const char *path, mb_bundle_t *out,
         set_err(err, err_cap, "bundle path is empty");
         return MB_BUNDLE_ERR_NOT_DIR;
     }
-    if (!ends_with(path, ".app")  && !ends_with(path, ".appdev") &&
-        !ends_with(path, ".appc") && !ends_with(path, ".appcd")) {
+    if (!ends_with(path, ".app") && !ends_with(path, ".appdev")) {
         set_err(err, err_cap,
-                "bundle path does not end in .app, .appdev, .appc, or .appcd: %s",
-                path);
+                "bundle path does not end in .app or .appdev: %s", path);
         return MB_BUNDLE_ERR_BAD_SUFFIX;
     }
 

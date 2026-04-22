@@ -772,21 +772,20 @@ DesktopIcon *icons_handle_click(int x, int y)
     return NULL;  // Click was on empty space
 }
 
-// A MoonBase bundle is a directory whose name ends in ".app" (single-file
-// shipping format — currently still a directory; single-file ELF-stub
-// form lands in its own slice) or ".appdev" (developer directory). The
-// legacy ".appc" and ".appcd" names still load during the rename-pass
-// transition. Desktop icons that point at bundles are handed to
-// moonbase-launch so the bwrap sandbox + consent flow run.
+// A MoonBase bundle is a directory whose name ends in ".app" (shipping;
+// single-file ELF-stub form lands in its own slice — until then .app is
+// still a directory) or ".appdev" (developer directory). Desktop icons
+// that point at bundles are handed to moonbase-launch so the bwrap
+// sandbox + consent flow run. Name kept as path_is_appc_bundle because
+// the metadata file it checks for is Info.appc, not a reference to the
+// retired .appc bundle suffix.
 static int path_is_appc_bundle(const char *path)
 {
     if (!path) return 0;
     size_t len = strlen(path);
     int is_app    = (len >= 4 && strcmp(path + len - 4, ".app")    == 0);
     int is_appdev = (len >= 7 && strcmp(path + len - 7, ".appdev") == 0);
-    int is_appc   = (len >= 5 && strcmp(path + len - 5, ".appc")   == 0);
-    int is_appcd  = (len >= 6 && strcmp(path + len - 6, ".appcd")  == 0);
-    if (!is_app && !is_appdev && !is_appc && !is_appcd) return 0;
+    if (!is_app && !is_appdev) return 0;
 
     char info[1024];
     int n = snprintf(info, sizeof(info), "%s/Contents/Info.appc", path);

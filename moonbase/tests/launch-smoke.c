@@ -2,7 +2,7 @@
 
 // mb-launch-smoke — Phase D slice 3 end-to-end launcher test.
 //
-// Builds a real .appc bundle in a tmpdir whose executable is a small
+// Builds a real .app bundle in a tmpdir whose executable is a small
 // shell script, invokes moonbase-launch pointed at it via an overridden
 // $HOME and $MOONBASE_SANDBOX_DIR, and verifies:
 //
@@ -139,7 +139,7 @@ int main(int argc, char **argv) {
 
     // Tmpdir layout:
     //   <tmp>/root/           = fake $HOME
-    //   <tmp>/LaunchSmoke.appc = bundle
+    //   <tmp>/LaunchSmoke.app  = bundle
     char tmp_template[] = "/tmp/mb-launch-smoke-XXXXXX";
     char *tmp = mkdtemp(tmp_template);
     if (!tmp) { perror("mkdtemp"); return 1; }
@@ -149,7 +149,7 @@ int main(int argc, char **argv) {
     if (mkdir(fake_home, 0755) != 0) { perror("mkdir home"); rm_rf(tmp); return 1; }
 
     char bundle[PATH_MAX];
-    path_snprintf(bundle, sizeof(bundle), "%s/LaunchSmoke.appc", tmp);
+    path_snprintf(bundle, sizeof(bundle), "%s/LaunchSmoke.app", tmp);
     EXPECT(mkdir(bundle, 0755) == 0, "mkdir bundle");
 
     char sub[PATH_MAX];

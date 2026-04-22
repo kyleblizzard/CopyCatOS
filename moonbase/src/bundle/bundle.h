@@ -23,7 +23,7 @@
 typedef enum {
     MB_BUNDLE_OK = 0,
     MB_BUNDLE_ERR_NOT_DIR,              // path not a directory
-    MB_BUNDLE_ERR_BAD_SUFFIX,           // path doesn't end in .app/.appdev (or legacy .appc/.appcd)
+    MB_BUNDLE_ERR_BAD_SUFFIX,           // path doesn't end in .app or .appdev
     MB_BUNDLE_ERR_NO_INFO,              // Contents/Info.appc missing
     MB_BUNDLE_ERR_INFO_APPC,            // Info.appc failed validation
     MB_BUNDLE_ERR_API_VERSION,          // minimum-moonbase > library version

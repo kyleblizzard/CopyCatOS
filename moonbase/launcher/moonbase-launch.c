@@ -2,8 +2,7 @@
 
 // moonbase-launch — bundle-aware, sandbox-aware launcher.
 //
-// Given a bundle path (.app / .appdev; legacy .appc / .appcd during the
-// rename):
+// Given a bundle path (.app shipping or .appdev developer directory):
 //   1. Load + validate the bundle with mb_bundle_load (bundle-spec.md §8).
 //   2. Compute the per-app data dir (~/.local/share/moonbase/<bundle-id>/)
 //      and create it (along with the Apple-style subdirs) if missing.
