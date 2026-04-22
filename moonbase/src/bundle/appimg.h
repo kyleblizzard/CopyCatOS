@@ -132,4 +132,18 @@ void mb_appimg_trailer_free(mb_appimg_trailer_t *t);
 // Short human-readable name for an error code.
 const char *mb_appimg_err_string(mb_appimg_err_t e);
 
+// Serialise a trailer to `fd` at its current file offset. Caller is
+// responsible for having already written the stub bytes at [0, off)
+// and the squashfs image at [off, off + size) before calling — the
+// trailer itself is the last write. On success returns MB_APPIMG_OK;
+// on failure, err_buf (may be NULL) gets a short diagnostic.
+//
+// Layout written matches mb_appimg_read_trailer's parser exactly, so
+// a writer + reader round-trip on the same inputs is lossless.
+mb_appimg_err_t mb_appimg_write_trailer(int fd,
+                                        uint64_t squashfs_offset,
+                                        uint64_t squashfs_size,
+                                        const char *bundle_id,
+                                        char *err_buf, size_t err_cap);
+
 #endif

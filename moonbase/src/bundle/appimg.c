@@ -355,6 +355,101 @@ void mb_appimg_trailer_free(mb_appimg_trailer_t *t) {
 }
 
 // -------------------------------------------------------------------
+// mb_appimg_write_trailer — serialise a trailer at fd's current offset
+// -------------------------------------------------------------------
+//
+// Mirror image of the reader: pack every field little-endian via
+// htole32/htole64 through native locals, then write the bytes in
+// on-disk order. Caller has already written the stub + squashfs; this
+// emits the tail. Kept intentionally blunt — each field is one
+// write() — so the serialisation order is obvious at a glance.
+
+mb_appimg_err_t mb_appimg_write_trailer(int fd,
+                                        uint64_t squashfs_offset,
+                                        uint64_t squashfs_size,
+                                        const char *bundle_id,
+                                        char *err_buf, size_t err_cap) {
+    if (fd < 0 || !bundle_id) {
+        set_err(err_buf, err_cap, "invalid arguments");
+        return MB_APPIMG_ERR_IO;
+    }
+
+    size_t bid_len = strlen(bundle_id);
+    if (bid_len == 0 || bid_len > MB_APPIMG_BUNDLE_ID_MAX) {
+        set_err(err_buf, err_cap,
+                "bundle_id length %zu out of range (1..%u)",
+                bid_len, (unsigned)MB_APPIMG_BUNDLE_ID_MAX);
+        return MB_APPIMG_ERR_BAD_BUNDLE_ID;
+    }
+    if (memchr(bundle_id, '\0', bid_len) != NULL) {
+        set_err(err_buf, err_cap, "bundle_id contains embedded NUL");
+        return MB_APPIMG_ERR_BAD_BUNDLE_ID;
+    }
+
+    // Trailer total size: magic_start(8) + version(4) + sqfs_off(8)
+    // + sqfs_size(8) + bid_len(4) + bid[bid_len] + trailer_size(4)
+    // + magic_end(8).
+    uint32_t trailer_size = MB_APPIMG_MAGIC_LEN + 4 + 8 + 8 + 4
+                          + (uint32_t)bid_len + 4 + MB_APPIMG_MAGIC_LEN;
+    if (trailer_size > MB_APPIMG_TRAILER_MAX) {
+        set_err(err_buf, err_cap,
+                "trailer_size %u exceeds cap %u",
+                trailer_size, (unsigned)MB_APPIMG_TRAILER_MAX);
+        return MB_APPIMG_ERR_BAD_LAYOUT;
+    }
+
+    // Assemble the whole trailer in memory so we can emit it in one
+    // write() — the reader treats the trailer as atomic, so a partial
+    // tail from a crashed writer is a pain to diagnose later. One
+    // write keeps the on-disk view all-or-nothing at the syscall level.
+    uint8_t buf[MB_APPIMG_TRAILER_MAX];
+    size_t off = 0;
+
+    memcpy(buf + off, MB_APPIMG_MAGIC, MB_APPIMG_MAGIC_LEN);
+    off += MB_APPIMG_MAGIC_LEN;
+
+    uint32_t version_le = htole32(MB_APPIMG_TRAILER_VERSION);
+    memcpy(buf + off, &version_le, 4);
+    off += 4;
+
+    uint64_t sqfs_off_le = htole64(squashfs_offset);
+    memcpy(buf + off, &sqfs_off_le, 8);
+    off += 8;
+
+    uint64_t sqfs_size_le = htole64(squashfs_size);
+    memcpy(buf + off, &sqfs_size_le, 8);
+    off += 8;
+
+    uint32_t bid_len_le = htole32((uint32_t)bid_len);
+    memcpy(buf + off, &bid_len_le, 4);
+    off += 4;
+
+    memcpy(buf + off, bundle_id, bid_len);
+    off += bid_len;
+
+    uint32_t trailer_size_le = htole32(trailer_size);
+    memcpy(buf + off, &trailer_size_le, 4);
+    off += 4;
+
+    memcpy(buf + off, MB_APPIMG_MAGIC, MB_APPIMG_MAGIC_LEN);
+    off += MB_APPIMG_MAGIC_LEN;
+
+    // Emit it. Loop on EINTR / short writes like pread_full.
+    size_t written = 0;
+    while (written < off) {
+        ssize_t n = write(fd, buf + written, off - written);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            set_err(err_buf, err_cap, "write trailer: %s", strerror(errno));
+            return MB_APPIMG_ERR_IO;
+        }
+        written += (size_t)n;
+    }
+
+    return MB_APPIMG_OK;
+}
+
+// -------------------------------------------------------------------
 // mb_appimg_err_string
 // -------------------------------------------------------------------
 

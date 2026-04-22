@@ -418,6 +418,99 @@ moonbase_version = executable(
 )
 
 # ---------------------------------------------------------------------
+# moonbase-app-stub — static ELF embedded at the head of every .app
+# ---------------------------------------------------------------------
+#
+# The stub is a freestanding nostdlib -static binary (see stub/stub.c)
+# whose only job is to exec `moonbase-launch` against /proc/self/exe
+# when a user runs a shipping single-file .app. It has no runtime
+# dependencies — no libc, no DT_NEEDED, no interpreter — so a .app
+# built today keeps working on any CopyCatOS host that installs the
+# moonbase-launch helper, even across glibc version skew.
+#
+# Build args:
+#   -nostdlib / -static       : no libc, no startup files, fully static
+#   -fno-stack-protector      : no __stack_chk_fail symbol to resolve
+#   -fno-pie / -no-pie        : fixed load address keeps the ELF tiny
+#                               and the entry point deterministic
+#   -fno-builtin              : stop GCC emitting implicit libc calls
+#                               (memcpy/memset) we'd then have to provide
+#   -ffreestanding            : no libc assumptions in codegen
+#   -Os -fno-asynchronous-unwind-tables -fno-unwind-tables :
+#                               strip CFI + exception tables we don't
+#                               use — saves ~1 KiB off the ELF
+#   -Wl,--build-id=none       : no .note.gnu.build-id section
+#   -Wl,-z,noseparate-code    : pack .text + .rodata in the same segment
+#   -Wl,-nostdlib / -static   : match the compile side on the link step
+#
+# Installed to ${datadir}/moonbase/moonbase-app-stub; moonbase-pack
+# reads it via the MOONBASE_STUB_PATH compile-time default (overridable
+# at runtime through --stub or $MOONBASE_APP_STUB).
+#
+# Override-set on the subproject so the project-wide `-D_GNU_SOURCE`
+# doesn't bleed into a nostdlib build and so we can opt out of any
+# project cflags that assume libc presence.
+
+moonbase_app_stub = executable(
+  'moonbase-app-stub',
+  'stub/stub.c',
+  c_args: [
+    '-nostdlib',
+    '-ffreestanding',
+    '-fno-stack-protector',
+    '-fno-pie',
+    '-fno-builtin',
+    '-fno-asynchronous-unwind-tables',
+    '-fno-unwind-tables',
+    '-Os',
+    '-U_FORTIFY_SOURCE',
+  ],
+  link_args: [
+    '-nostdlib',
+    '-static',
+    '-no-pie',
+    '-Wl,--build-id=none',
+  ],
+  override_options: ['b_lundef=true', 'b_pie=false'],
+  install: true,
+  install_dir: get_option('datadir') / 'moonbase',
+  install_mode: 'rwxr-xr-x',
+)
+
+# ---------------------------------------------------------------------
+# moonbase-pack — .appdev → .app packager
+# ---------------------------------------------------------------------
+#
+# Links libmoonbase (mb_bundle_load validates §8 before packing; the
+# writer side of appimg.c emits the trailer) and shells out to
+# mksquashfs at runtime. Install to bindir — it's the user-facing
+# tool developers call from `meson install` recipes or by hand.
+
+mksquashfs_prog = find_program('mksquashfs', required: false)
+if not mksquashfs_prog.found()
+  # Surface the missing dependency at configure time on a dev host so
+  # the error story is "install squashfs-tools" rather than a cryptic
+  # mksquashfs failure deep inside moonbase-pack at runtime. Only a
+  # warning — cross-building on macOS is expected to hit this path.
+  warning('mksquashfs not found; moonbase-pack will fail at runtime. '
+        + 'Install squashfs-tools (dnf install squashfs-tools).')
+endif
+
+moonbase_pack = executable(
+  'moonbase-pack',
+  'tools/moonbase-pack.c',
+  include_directories: include_directories('include', 'src'),
+  c_args: [
+    '-DMOONBASE_STUB_PATH="@0@"'.format(
+      get_option('prefix') / get_option('datadir') / 'moonbase' / 'moonbase-app-stub',
+    ),
+  ],
+  link_with: libmoonbase,
+  install: true,
+  install_rpath: get_option('prefix') / mb_framework_versions / 'Current',
+)
+
+# ---------------------------------------------------------------------
 # Sandbox profiles
 # ---------------------------------------------------------------------
 #
@@ -1003,6 +1096,31 @@ test('launch-appimg', mb_launch_appimg,
 )
 
 # ---------------------------------------------------------------------
+# mb-pack-smoke — Slice 17-A moonbase-pack integration test
+# ---------------------------------------------------------------------
+#
+# Builds a minimal `.appdev` fixture, runs the real moonbase-pack
+# binary with a dummy 4-byte placeholder stub, and verifies the output
+# `.app`: stub bytes survived, squashfs image at the advertised offset
+# starts with the `hsqs` magic, trailer parses back to the same
+# bundle-id, final file is chmod 0755. Skips (exit 77) if mksquashfs
+# isn't on the host.
+
+mb_pack_smoke = executable(
+  'mb-pack-smoke',
+  'tests/pack-smoke.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('pack-smoke', mb_pack_smoke,
+  args: [moonbase_pack],
+  depends: [moonbase_pack],
+  timeout: 30,
+)
+
+# ---------------------------------------------------------------------
 # mb-quarantine — Phase D slice 4 xattr gate unit test
 # ---------------------------------------------------------------------
 
@@ -1069,237 +1187,129 @@ test('data-dir-isolation', mb_data_dir_isolation,
 )
 
 # ---------------------------------------------------------------------
-# examples/hello — reference MoonBase app + assembled .appdev bundle
+# examples/* — reference MoonBase apps, each built as .appdev + .app
 # ---------------------------------------------------------------------
 #
-# Produces build/hello.appdev/Contents/{Info.appc, CopyCatOS/hello} plus
-# a Contents/MacOS → CopyCatOS compat symlink and a sibling hello.app
-# symlink → hello.appdev. Layout matches bundle-spec.md §1 and passes
-# mb_bundle_load's validator. Not installed system-wide — the bundle
-# is a build artifact the user runs from the build tree via
-# `moonbase-launch build/hello.appdev` (or `build/hello.app`).
-# (.appdev is the developer directory format; the shipping single-file
-# .app becomes a real ELF-stub artifact once the packager lands.)
+# Per example we produce two build artifacts:
 #
-# No Resources/ contents are shipped yet; §8 validation doesn't require
-# them and a real AppIcon.icns slice lands once the icon loader uses it.
-
-hello_exe = executable(
-  'hello',
-  'examples/hello/main.c',
-  include_directories: include_directories('include'),
-  dependencies: [cairo_dep],
-  link_with: libmoonbase,
-  install: false,
-)
-
-hello_appdev = custom_target('hello-appdev',
-  output: ['hello.appdev', 'hello.app'],
-  input: [files('examples/hello/Info.appc'), hello_exe],
-  command: [
-    find_program('sh'), '-c',
-    'set -eu; '
-    + 'rm -rf "$0"; rm -f "$3"; '
-    + 'mkdir -p "$0/Contents/CopyCatOS" "$0/Contents/Resources"; '
-    + 'cp "$1" "$0/Contents/Info.appc"; '
-    + 'cp "$2" "$0/Contents/CopyCatOS/hello"; '
-    + 'chmod 0755 "$0/Contents/CopyCatOS/hello"; '
-    + 'ln -s CopyCatOS "$0/Contents/MacOS"; '
-    + 'ln -s "$(basename "$0")" "$3"',
-    '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
-  ],
-  build_by_default: true,
-)
-
-# ---------------------------------------------------------------------
-# examples/gl-hello — minimal MOONBASE_RENDER_GL reference app
-# ---------------------------------------------------------------------
+#   <name>.appdev   — classic directory form (bundle-spec.md §1).
+#                     Contents/{Info.appc, CopyCatOS/<exe>, Resources/}
+#                     plus a Contents/MacOS → CopyCatOS legacy symlink.
+#                     Runs directly via `moonbase-launch <name>.appdev`
+#                     — the daily dev loop.
 #
-# Proves the GL ABI end-to-end. Creates a 480×320-point GL window,
-# clears to Aqua blue, draws one triangle via a trivial ES3 shader,
-# and commits every redraw. Paired with a declared render-mode of
-# "gl" in Info.appc so moonbase-launch binds /dev/dri into the
-# sandbox. Not installed — run from the build tree:
-#   moonbase-launch build/gl-hello.appdev
-
-gl_hello_exe = executable(
-  'gl-hello',
-  'examples/gl-hello/main.c',
-  include_directories: include_directories('include'),
-  dependencies: [glesv2_dep],
-  link_with: libmoonbase,
-  install: false,
-)
-
-gl_hello_appdevev = custom_target('gl-hello-appdev',
-  output: ['gl-hello.appdev', 'gl-hello.app'],
-  input: [files('examples/gl-hello/Info.appc'), gl_hello_exe],
-  command: [
-    find_program('sh'), '-c',
-    'set -eu; '
-    + 'rm -rf "$0"; rm -f "$3"; '
-    + 'mkdir -p "$0/Contents/CopyCatOS" "$0/Contents/Resources"; '
-    + 'cp "$1" "$0/Contents/Info.appc"; '
-    + 'cp "$2" "$0/Contents/CopyCatOS/gl-hello"; '
-    + 'chmod 0755 "$0/Contents/CopyCatOS/gl-hello"; '
-    + 'ln -s CopyCatOS "$0/Contents/MacOS"; '
-    + 'ln -s "$(basename "$0")" "$3"',
-    '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
-  ],
-  build_by_default: true,
-)
-
-# ---------------------------------------------------------------------
-# examples/textedit — TextEdit.appdev v0.1
-# ---------------------------------------------------------------------
+#   <name>.app      — single-file shipping bundle (ELF stub + squashfs
+#                     + trailer). Produced by moonbase-pack on hosts
+#                     where mksquashfs is available (Legion: yes; macOS
+#                     dev: no — falls back to a symlink so iteration
+#                     stays fast on machines that can't pack).
 #
-# Smallest useful Cairo app on MoonBase: one window, one in-memory byte
-# buffer, TEXT_INPUT + KEY_DOWN drive editing. Same bundle-assembly
-# shape as hello.appdev. No menus, no file I/O, no selection yet —
-# TextEdit grows into those as their framework slices land.
+# Nothing is installed system-wide — these are build-tree artifacts
+# used for manual smoke tests and the integration tests under
+# tests/ that drive moonbase-launch against the real bundles.
 
-textedit_exe = executable(
-  'textedit',
-  'examples/textedit/main.c',
-  include_directories: include_directories('include'),
-  dependencies: [cairo_dep],
-  link_with: libmoonbase,
-  install: false,
-)
+example_specs = [
+  {
+    'name': 'hello',
+    'info': files('examples/hello/Info.appc'),
+    'src':  files('examples/hello/main.c'),
+    'deps': [cairo_dep],
+  },
+  {
+    'name': 'gl-hello',
+    'info': files('examples/gl-hello/Info.appc'),
+    'src':  files('examples/gl-hello/main.c'),
+    'deps': [glesv2_dep],
+  },
+  {
+    'name': 'textedit',
+    'info': files('examples/textedit/Info.appc'),
+    'src':  files('examples/textedit/main.c'),
+    'deps': [cairo_dep],
+  },
+  {
+    'name': 'keychain-access',
+    'info': files('examples/keychain-access/Info.appc'),
+    'src':  files('examples/keychain-access/main.c'),
+    'deps': [cairo_dep],
+  },
+  {
+    'name': 'preview',
+    'info': files('examples/preview/Info.appc'),
+    'src':  files('examples/preview/main.c'),
+    'deps': [glesv2_dep, libpng_dep, libjpeg_dep],
+  },
+  {
+    'name': 'activity-monitor',
+    'info': files('examples/activity-monitor/Info.appc'),
+    'src':  files('examples/activity-monitor/main.c'),
+    'deps': [cairo_dep],
+  },
+]
 
-textedit_appdev = custom_target('textedit-appdev',
-  output: ['textedit.appdev', 'textedit.app'],
-  input: [files('examples/textedit/Info.appc'), textedit_exe],
-  command: [
-    find_program('sh'), '-c',
-    'set -eu; '
-    + 'rm -rf "$0"; rm -f "$3"; '
-    + 'mkdir -p "$0/Contents/CopyCatOS" "$0/Contents/Resources"; '
-    + 'cp "$1" "$0/Contents/Info.appc"; '
-    + 'cp "$2" "$0/Contents/CopyCatOS/textedit"; '
-    + 'chmod 0755 "$0/Contents/CopyCatOS/textedit"; '
-    + 'ln -s CopyCatOS "$0/Contents/MacOS"; '
-    + 'ln -s "$(basename "$0")" "$3"',
-    '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
-  ],
-  build_by_default: true,
-)
+foreach spec : example_specs
+  name = spec['name']
 
-# ---------------------------------------------------------------------
-# examples/keychain-access — Keychain Access.appdev v0.1
-# ---------------------------------------------------------------------
-#
-# Reference app 3 of 4 required before the MoonBase public-SDK
-# freeze. Drives every public symbol in moonbase_keychain.h through a
-# real bundle: list / store / fetch / delete / generate_password /
-# secret_free. v0.1 uses auto-generated labels + 20-char passwords so
-# the app doesn't need a text-entry form yet (that lands when the
-# framework grows modal dialogs).
-#
-# system:"keychain" in Info.appc is enforced at the libmoonbase API
-# boundary — every keychain call returns MB_EPERM without it. The
-# runtime D-Bus socket is still reachable through the launcher's
-# XDG_RUNTIME_DIR bind; a sandboxed xdg-dbus-proxy filter is the
-# follow-up.
+  example_exe = executable(
+    name,
+    spec['src'],
+    include_directories: include_directories('include'),
+    dependencies: spec['deps'],
+    link_with: libmoonbase,
+    install: false,
+  )
 
-keychain_access_exe = executable(
-  'keychain-access',
-  'examples/keychain-access/main.c',
-  include_directories: include_directories('include'),
-  dependencies: [cairo_dep],
-  link_with: libmoonbase,
-  install: false,
-)
+  # Step 1: assemble the .appdev directory. Shape matches bundle-spec.md
+  # §1: Contents/Info.appc + Contents/CopyCatOS/<exe> + legacy MacOS
+  # symlink + an empty Resources/ placeholder.
+  appdev_target = custom_target(name + '-appdev',
+    output: name + '.appdev',
+    input: [spec['info'], example_exe],
+    command: [
+      find_program('sh'), '-c',
+      'set -eu; '
+      + 'rm -rf "$0"; '
+      + 'mkdir -p "$0/Contents/CopyCatOS" "$0/Contents/Resources"; '
+      + 'cp "$1" "$0/Contents/Info.appc"; '
+      + 'cp "$2" "$0/Contents/CopyCatOS/$3"; '
+      + 'chmod 0755 "$0/Contents/CopyCatOS/$3"; '
+      + 'ln -s CopyCatOS "$0/Contents/MacOS"',
+      '@OUTPUT0@', '@INPUT0@', '@INPUT1@', name,
+    ],
+    build_by_default: true,
+  )
 
-keychain_access_appdev = custom_target('keychain-access-appdev',
-  output: ['keychain-access.appdev', 'keychain-access.app'],
-  input: [files('examples/keychain-access/Info.appc'), keychain_access_exe],
-  command: [
-    find_program('sh'), '-c',
-    'set -eu; '
-    + 'rm -rf "$0"; rm -f "$3"; '
-    + 'mkdir -p "$0/Contents/CopyCatOS" "$0/Contents/Resources"; '
-    + 'cp "$1" "$0/Contents/Info.appc"; '
-    + 'cp "$2" "$0/Contents/CopyCatOS/keychain-access"; '
-    + 'chmod 0755 "$0/Contents/CopyCatOS/keychain-access"; '
-    + 'ln -s CopyCatOS "$0/Contents/MacOS"; '
-    + 'ln -s "$(basename "$0")" "$3"',
-    '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
-  ],
-  build_by_default: true,
-)
-
-# ---------------------------------------------------------------------
-# examples/preview — Preview.appdev v0.1
-# ---------------------------------------------------------------------
-#
-# Reference app 4 of 4 before the MoonBase public-SDK freeze.
-# Pressure-tests the GL render path, MB_EV_DRAG_* delivery, and the
-# moonbase_prefs_* store in one bundle: open an image (argv or
-# drag-drop), upload it as a GL texture, draw with letterboxing,
-# remember window size and last-opened path between runs. PNG + JPEG
-# only for v0.1 — every other format waits on its own slice.
-
-preview_exe = executable(
-  'preview',
-  'examples/preview/main.c',
-  include_directories: include_directories('include'),
-  dependencies: [glesv2_dep, libpng_dep, libjpeg_dep],
-  link_with: libmoonbase,
-  install: false,
-)
-
-preview_appdev = custom_target('preview-appdev',
-  output: ['preview.appdev', 'preview.app'],
-  input: [files('examples/preview/Info.appc'), preview_exe],
-  command: [
-    find_program('sh'), '-c',
-    'set -eu; '
-    + 'rm -rf "$0"; rm -f "$3"; '
-    + 'mkdir -p "$0/Contents/CopyCatOS" "$0/Contents/Resources"; '
-    + 'cp "$1" "$0/Contents/Info.appc"; '
-    + 'cp "$2" "$0/Contents/CopyCatOS/preview"; '
-    + 'chmod 0755 "$0/Contents/CopyCatOS/preview"; '
-    + 'ln -s CopyCatOS "$0/Contents/MacOS"; '
-    + 'ln -s "$(basename "$0")" "$3"',
-    '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
-  ],
-  build_by_default: true,
-)
-
-# ---------------------------------------------------------------------
-# examples/activity-monitor — Activity Monitor.appdev v0.1
-# ---------------------------------------------------------------------
-#
-# Fourth and final reference app before the MoonBase public-SDK
-# freeze. Exercises long-lived periodic sampling (wait_event with a
-# 1s timeout), Cairo-drawn list rows (no widget library required), and
-# a declared system:process-list entitlement in Info.appc. Pure libc —
-# reads /proc directly — so no extra dependencies beyond moonbase + cairo.
-
-activity_monitor_exe = executable(
-  'activity-monitor',
-  'examples/activity-monitor/main.c',
-  include_directories: include_directories('include'),
-  dependencies: [cairo_dep],
-  link_with: libmoonbase,
-  install: false,
-)
-
-activity_monitor_appdev = custom_target('activity-monitor-appdev',
-  output: ['activity-monitor.appdev', 'activity-monitor.app'],
-  input: [files('examples/activity-monitor/Info.appc'), activity_monitor_exe],
-  command: [
-    find_program('sh'), '-c',
-    'set -eu; '
-    + 'rm -rf "$0"; rm -f "$3"; '
-    + 'mkdir -p "$0/Contents/CopyCatOS" "$0/Contents/Resources"; '
-    + 'cp "$1" "$0/Contents/Info.appc"; '
-    + 'cp "$2" "$0/Contents/CopyCatOS/activity-monitor"; '
-    + 'chmod 0755 "$0/Contents/CopyCatOS/activity-monitor"; '
-    + 'ln -s CopyCatOS "$0/Contents/MacOS"; '
-    + 'ln -s "$(basename "$0")" "$3"',
-    '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@OUTPUT1@',
-  ],
-  build_by_default: true,
-)
+  # Step 2: pack the .appdev into a single-file .app. Two paths —
+  # real pack via moonbase-pack when mksquashfs is available, or a
+  # simple symlink otherwise. Either way the top-level `<name>.app`
+  # artifact exists so downstream tests and dev scripts don't have to
+  # branch on host capability.
+  if mksquashfs_prog.found()
+    custom_target(name + '-app',
+      output: name + '.app',
+      input: [appdev_target, moonbase_pack, moonbase_app_stub],
+      command: [
+        find_program('sh'), '-c',
+        # moonbase-pack writes atomically via mkstemps+rename. `rm -f`
+        # the dst first so a previous build's stale symlink is gone
+        # before the packer stats the target path. The `./` prefix on
+        # $1 stops the shell from doing PATH lookup on a plain name —
+        # meson hands us bare basenames here (cwd is the build dir).
+        'set -eu; rm -f "$3"; exec "./$1" --stub "$2" "$0" "$3"',
+        '@INPUT0@', '@INPUT1@', '@INPUT2@', '@OUTPUT0@',
+      ],
+      build_by_default: true,
+    )
+  else
+    custom_target(name + '-app',
+      output: name + '.app',
+      input: appdev_target,
+      command: [
+        find_program('sh'), '-c',
+        'set -eu; rm -f "$1"; ln -s "$(basename "$0")" "$1"',
+        '@INPUT0@', '@OUTPUT0@',
+      ],
+      build_by_default: true,
+    )
+  endif
+endforeach
