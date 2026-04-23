@@ -68,8 +68,8 @@ static MoonRockScaleTable g_output_scales;
 static float lookup_hidpi_scale(DockState *state)
 {
     if (!g_output_scales.valid) return 1.0f;
-    int sx = state->screen_w / 2;
-    int sy = state->screen_h - 1;
+    int sx = state->screen_x + state->screen_w / 2;
+    int sy = state->screen_y + state->screen_h - 1;
     return moonrock_scale_for_point(&g_output_scales, sx, sy);
 }
 
@@ -127,6 +127,43 @@ static Visual *find_argb_visual(Display *dpy, int screen)
 // When auto-hide is enabled the dock is not always present at the bottom,
 // so we set all struts to zero — windows are allowed to use the full screen.
 // ---------------------------------------------------------------------------
+// Pull the primary-output geometry out of the cached MoonRock scale
+// table and stuff it into state->screen_{x,y,w,h}. Falls back to the
+// virtual-root dimensions when the table is empty — the dock still
+// lands somewhere sensible on a single-display setup or before
+// MoonRock has published the table.
+//
+// Returns true if any of the four fields changed, so callers can skip
+// the resize path when nothing moved.
+static bool lookup_primary_geometry(DockState *state)
+{
+    int nx = 0, ny = 0;
+    int nw = DisplayWidth(state->dpy, state->screen);
+    int nh = DisplayHeight(state->dpy, state->screen);
+
+    const MoonRockOutputScale *p = moonrock_scale_primary(&g_output_scales);
+    if (p) {
+        nx = p->x;
+        ny = p->y;
+        nw = p->width;
+        nh = p->height;
+    } else if (g_output_scales.valid && g_output_scales.count > 0) {
+        const MoonRockOutputScale *o = &g_output_scales.outputs[0];
+        nx = o->x;
+        ny = o->y;
+        nw = o->width;
+        nh = o->height;
+    }
+
+    bool changed = (nx != state->screen_x) || (ny != state->screen_y) ||
+                   (nw != state->screen_w) || (nh != state->screen_h);
+    state->screen_x = nx;
+    state->screen_y = ny;
+    state->screen_w = nw;
+    state->screen_h = nh;
+    return changed;
+}
+
 static void set_struts(DockState *state)
 {
     // _NET_WM_STRUT_PARTIAL has 12 values:
@@ -136,11 +173,12 @@ static void set_struts(DockState *state)
     long struts[12] = {0};
 
     if (!state->auto_hide) {
-        // Normal mode: reserve SHELF_HEIGHT pixels at the bottom so windows
-        // don't slide under the dock.
+        // Normal mode: reserve SHELF_HEIGHT pixels at the bottom of the
+        // virtual root, narrowed to the primary output's X range so
+        // windows on external monitors still get full bottom space.
         struts[3] = SHELF_HEIGHT;
-        struts[10] = 0;
-        struts[11] = state->screen_w;
+        struts[10] = state->screen_x;
+        struts[11] = state->screen_x + state->screen_w - 1;
     }
     // Auto-hide mode: leave all struts zero — the dock slides away so apps
     // get the full screen and the dock pops up on demand.
@@ -188,8 +226,13 @@ bool dock_init(DockState *state)
 
     state->screen = DefaultScreen(state->dpy);
     state->root = RootWindow(state->dpy, state->screen);
-    state->screen_w = DisplayWidth(state->dpy, state->screen);
-    state->screen_h = DisplayHeight(state->dpy, state->screen);
+    // Primary-output geometry is populated below, after the MoonRock
+    // scale table refreshes. Seeding zero here keeps a later
+    // lookup_primary_geometry() from falsely claiming "no change."
+    state->screen_x = 0;
+    state->screen_y = 0;
+    state->screen_w = 0;
+    state->screen_h = 0;
 
     // --- Find a 32-bit ARGB visual for transparency ---
     state->visual = find_argb_visual(state->dpy, state->screen);
@@ -213,6 +256,9 @@ bool dock_init(DockState *state)
     // with anything else that might already be watching the root window.
     moonrock_scale_init(state->dpy);
     moonrock_scale_refresh(state->dpy, &g_output_scales);
+    // Resolve primary-output geometry before window sizing so the dock
+    // is born on the primary output, not half-slid off onto an external.
+    (void)lookup_primary_geometry(state);
     state->hidpi_scale = lookup_hidpi_scale(state);
     fprintf(stderr, "[dock] hidpi: host output scale = %.2f "
                     "(%d output%s known)\n",
@@ -273,20 +319,20 @@ bool dock_init(DockState *state)
 
     // --- Calculate initial dock window size ---
     state->win_w = dock_calculate_total_width(state) + 2 * SHELF_PADDING;
-    // Clamp dock width to screen width so it never overflows
+    // Clamp dock width to primary-output width so it never overflows
     if (state->win_w > state->screen_w) state->win_w = state->screen_w;
     state->win_h = DOCK_HEIGHT;
-    state->win_x = (state->screen_w - state->win_w) / 2;
+    state->win_x = state->screen_x + (state->screen_w - state->win_w) / 2;
 
     if (state->auto_hide) {
         // Start hidden: position the dock so only HIDE_HOT_ZONE pixels peek out
-        // at the bottom of the screen. The mouse entering this sliver triggers
+        // at the bottom of the primary. The mouse entering this sliver triggers
         // the slide-up animation.
-        state->win_y = state->screen_h - HIDE_HOT_ZONE;
+        state->win_y = state->screen_y + state->screen_h - HIDE_HOT_ZONE;
         state->hide_visible = false;
     } else {
-        // Normal mode: dock sits at the bottom, fully visible.
-        state->win_y = state->screen_h - state->win_h;
+        // Normal mode: dock sits at the bottom of the primary, fully visible.
+        state->win_y = state->screen_y + state->screen_h - state->win_h;
         state->hide_visible = true;  // Consider it "visible" even in non-hide mode
     }
 
@@ -652,14 +698,14 @@ static void apply_dock_resize(DockState *state)
 
     state->win_w = new_w;
     state->win_h = new_h;
-    state->win_x = (state->screen_w - new_w) / 2;
+    state->win_x = state->screen_x + (state->screen_w - new_w) / 2;
 
     // Y depends on auto-hide: hidden parks at the hot-zone strip; shown
-    // sits flush with the bottom of the screen.
+    // sits flush with the bottom of the primary output.
     if (state->auto_hide && !state->hide_visible) {
-        state->win_y = state->screen_h - HIDE_HOT_ZONE;
+        state->win_y = state->screen_y + state->screen_h - HIDE_HOT_ZONE;
     } else {
-        state->win_y = state->screen_h - new_h;
+        state->win_y = state->screen_y + state->screen_h - new_h;
     }
 
     XMoveResizeWindow(state->dpy, state->win,
@@ -736,7 +782,8 @@ void dock_run(DockState *state)
                     if (new_w > state->screen_w) new_w = state->screen_w;
                     if (new_w != state->win_w) {
                         state->win_w = new_w;
-                        state->win_x = (state->screen_w - new_w) / 2;
+                        state->win_x = state->screen_x +
+                                       (state->screen_w - new_w) / 2;
                         XMoveResizeWindow(state->dpy, state->win,
                                           state->win_x, state->win_y,
                                           state->win_w, state->win_h);
@@ -759,7 +806,9 @@ void dock_run(DockState *state)
                     state->hide_delay_timer = 0;
                     // Kick off the slide-up animation from wherever we currently are
                     state->hide_anim_from_y = (double)state->win_y;
-                    state->hide_anim_to_y   = (double)(state->screen_h - state->win_h);
+                    state->hide_anim_to_y   = (double)(state->screen_y +
+                                                        state->screen_h -
+                                                        state->win_h);
                     state->hide_anim_start  = get_time();
                     state->hide_animating   = true;
                     state->hide_visible     = true;
@@ -793,7 +842,8 @@ void dock_run(DockState *state)
                     int base_w = dock_calculate_total_width(state) + 2 * SHELF_PADDING;
                     if (base_w != state->win_w) {
                         state->win_w = base_w;
-                        state->win_x = (state->screen_w - base_w) / 2;
+                        state->win_x = state->screen_x +
+                                       (state->screen_w - base_w) / 2;
                         XMoveResizeWindow(state->dpy, state->win,
                                           state->win_x, state->win_y,
                                           state->win_w, state->win_h);
@@ -885,13 +935,18 @@ void dock_run(DockState *state)
                 if (ev.xproperty.window == state->root &&
                     ev.xproperty.atom == moonrock_scale_atom(state->dpy)) {
                     moonrock_scale_refresh(state->dpy, &g_output_scales);
+                    bool geom_changed = lookup_primary_geometry(state);
                     float old_scale = state->hidpi_scale;
                     state->hidpi_scale = lookup_hidpi_scale(state);
-                    if (state->hidpi_scale != old_scale) {
+                    if (state->hidpi_scale != old_scale || geom_changed) {
                         fprintf(stderr,
-                                "[dock] hidpi: %.2f → %.2f (resizing)\n",
+                                "[dock] hidpi: %.2f → %.2f, "
+                                "primary: %d,%d %dx%d%s\n",
                                 (double)old_scale,
-                                (double)state->hidpi_scale);
+                                (double)state->hidpi_scale,
+                                state->screen_x, state->screen_y,
+                                state->screen_w, state->screen_h,
+                                geom_changed ? " (moved)" : "");
                         apply_dock_resize(state);
                         needs_repaint = true;
                     }
@@ -955,7 +1010,9 @@ void dock_run(DockState *state)
                 state->hide_delay_timer = 0;
                 // Kick off the slide-down animation back to the hot-zone position
                 state->hide_anim_from_y = (double)state->win_y;
-                state->hide_anim_to_y   = (double)(state->screen_h - HIDE_HOT_ZONE);
+                state->hide_anim_to_y   = (double)(state->screen_y +
+                                                    state->screen_h -
+                                                    HIDE_HOT_ZONE);
                 state->hide_anim_start  = now;
                 state->hide_animating   = true;
                 state->hide_visible     = false;

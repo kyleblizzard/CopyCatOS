@@ -127,11 +127,16 @@ bool moonrock_scale_refresh(Display *dpy, MoonRockScaleTable *out)
         char  namebuf[MOONROCK_SCALE_NAME_MAX];
         int   x = 0, y = 0, w = 0, h = 0;
         float scale = 1.0f;
+        int   primary = 0;
 
         // The %63s matches MOONROCK_SCALE_NAME_MAX - 1. sscanf with a
-        // width specifier guarantees we never overflow namebuf.
-        if (sscanf(line, "%63s %d %d %d %d %f",
-                   namebuf, &x, &y, &w, &h, &scale) == 6) {
+        // width specifier guarantees we never overflow namebuf. The
+        // trailing primary flag is optional: sscanf returns 6 or 7
+        // depending on whether the publisher emitted it. Pre-primary
+        // publishers default every entry to non-primary.
+        int got = sscanf(line, "%63s %d %d %d %d %f %d",
+                         namebuf, &x, &y, &w, &h, &scale, &primary);
+        if (got == 6 || got == 7) {
 
             MoonRockOutputScale *o = &out->outputs[out->count];
             strncpy(o->name, namebuf, sizeof(o->name) - 1);
@@ -142,7 +147,8 @@ bool moonrock_scale_refresh(Display *dpy, MoonRockScaleTable *out)
             o->height = h;
             // Clamp obviously-broken scales to 1.0. The publisher already
             // enforces 0.5–4.0 on its side, but defense in depth.
-            o->scale  = (scale >= 0.25f && scale <= 8.0f) ? scale : 1.0f;
+            o->scale   = (scale >= 0.25f && scale <= 8.0f) ? scale : 1.0f;
+            o->primary = (got == 7) && (primary != 0);
             out->count++;
         }
 
@@ -182,6 +188,17 @@ float moonrock_scale_for_name(const MoonRockScaleTable *t, const char *name)
         }
     }
     return 1.0f;
+}
+
+
+const MoonRockOutputScale *
+moonrock_scale_primary(const MoonRockScaleTable *t)
+{
+    if (!t || !t->valid) return NULL;
+    for (int i = 0; i < t->count; i++) {
+        if (t->outputs[i].primary) return &t->outputs[i];
+    }
+    return NULL;
 }
 
 

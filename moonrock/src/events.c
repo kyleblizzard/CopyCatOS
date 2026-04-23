@@ -109,6 +109,10 @@ void events_run(CCWM *wm)
             if (mr_handle_event(wm, &ev)) {
                 // MoonRock handled this event (e.g., DamageNotify) — skip
                 // normal dispatch so we don't process it twice.
+            } else if (display_handle_event(wm->dpy, &ev)) {
+                // XRandR hotplug / screen-change event — display module
+                // consumed it, auto-enabled any new output, and
+                // re-published the scale table.
             } else if (ev.type < LASTEvent && handlers[ev.type]) {
                 handlers[ev.type](wm, &ev);
             }

@@ -100,6 +100,19 @@ static double last_fps_time = 0.0;   // Timestamp of last FPS counter reset
 // The current frame metrics, updated every frame by display_end_frame().
 static FrameMetrics metrics = {0};
 
+// RandR extension event/error bases. XRandR events don't have fixed type
+// numbers — the server assigns them at extension-init time, so the event
+// dispatcher computes (randr_event_base + RRScreenChangeNotify / RRNotify).
+// Populated once in display_init on the first call; re-entries (hotplug
+// calls display_init again) leave this alone so the handler stays live.
+static int  randr_event_base = -1;
+static int  randr_error_base = -1;
+static bool randr_queried    = false;
+
+// Forward decl for the startup pre-pass inside display_init — body lives
+// further down next to the other multi-monitor helpers.
+static bool auto_enable_output(Display *dpy, RROutput output_id);
+
 
 // ============================================================================
 //  Internal helpers
@@ -446,7 +459,12 @@ static size_t read_edid_blob(Display *dpy, RROutput output,
 // under the atom _MOONROCK_OUTPUT_SCALES. Every connected output emits
 // one newline-terminated line:
 //
-//     <name> <x> <y> <width> <height> <scale>
+//     <name> <x> <y> <width> <height> <scale> <primary>
+//
+// <primary> is 1 for the XRandR primary output, 0 otherwise. Shell
+// components (menubar, dock, desktop) anchor their layout to the primary
+// entry rather than the virtual root, which spans multiple displays
+// after hotplug.
 //
 // Xlib converts a root-property write into a PropertyNotify event on every
 // client that has PropertyChangeMask selected on the root window, so
@@ -468,11 +486,12 @@ static void publish_scales_to_root(void)
 
     for (int i = 0; i < output_count && pos < sizeof(buf); i++) {
         int n = snprintf(buf + pos, sizeof(buf) - pos,
-                         "%s %d %d %d %d %.3f\n",
+                         "%s %d %d %d %d %.3f %d\n",
                          outputs[i].name,
                          outputs[i].x, outputs[i].y,
                          outputs[i].width, outputs[i].height,
-                         (double)outputs[i].scale);
+                         (double)outputs[i].scale,
+                         outputs[i].primary ? 1 : 0);
         if (n < 0) break;
         if ((size_t)n >= sizeof(buf) - pos) {
             // Line didn't fit — stop here rather than emit a truncated
@@ -481,6 +500,19 @@ static void publish_scales_to_root(void)
         }
         pos += (size_t)n;
     }
+
+    // Dedupe: RandR bursts (e.g. xrandr --primary, suspend/resume, lid
+    // events) re-enter display_init() and would re-publish an identical
+    // payload every time, spamming every PropertyChangeMask subscriber
+    // on the root window. Skip the XChangeProperty when the serialized
+    // bytes haven't changed since the last publish.
+    static char   last_buf[4096];
+    static size_t last_pos = (size_t)-1;
+    if (last_pos == pos && memcmp(last_buf, buf, pos) == 0) {
+        return;
+    }
+    memcpy(last_buf, buf, pos);
+    last_pos = pos;
 
     Atom prop = XInternAtom(display_dpy, MOONROCK_SCALE_ATOM_NAME, False);
     Atom utf8 = XInternAtom(display_dpy, "UTF8_STRING", False);
@@ -548,6 +580,31 @@ bool display_init(Display *dpy, int screen)
     // table stays authoritative so a set from SysPrefs is never clobbered
     // by a concurrent hotplug re-enumeration.
     load_scale_overrides_once();
+
+    // Startup pre-pass: catch any output that's already connected but
+    // has no CRTC assigned. This happens when MoonRock launches with an
+    // external monitor already docked — no RandR event fires during
+    // start-up, and the main enumeration loop skips connected-inactive
+    // outputs, so without this pass the monitor stays dark.
+    //
+    // Each auto_enable_output() call commits an XRRSetCrtcConfig; the
+    // enumeration below then picks the output up as active on its first
+    // pass. Safe to run on every re-entry (hotplug path) because it's a
+    // no-op when every connected output already has a CRTC.
+    {
+        XRRScreenResources *pre = XRRGetScreenResourcesCurrent(dpy, display_root);
+        if (pre) {
+            for (int i = 0; i < pre->noutput; i++) {
+                XRROutputInfo *oi = XRRGetOutputInfo(dpy, pre, pre->outputs[i]);
+                if (!oi) continue;
+                if (oi->connection == RR_Connected && oi->crtc == None) {
+                    auto_enable_output(dpy, pre->outputs[i]);
+                }
+                XRRFreeOutputInfo(oi);
+            }
+            XRRFreeScreenResources(pre);
+        }
+    }
 
     // Ask XRandR for the current screen resources. This is the top-level
     // structure that lists all outputs, CRTCs, and available modes.
@@ -778,6 +835,22 @@ bool display_init(Display *dpy, int screen)
                    RROutputChangeNotifyMask |
                    RRCrtcChangeNotifyMask);
 
+    // Stash the RandR event-base on the first entry so events.c can
+    // recognise incoming RRScreenChangeNotify / RRNotify events. The
+    // hotplug path re-enters display_init but we only query once —
+    // X never renumbers event bases mid-session.
+    if (!randr_queried) {
+        if (XRRQueryExtension(dpy, &randr_event_base, &randr_error_base)) {
+            fprintf(stderr, "[display] XRandR event base %d, error base %d\n",
+                    randr_event_base, randr_error_base);
+        } else {
+            fprintf(stderr,
+                    "[display] WARNING: XRRQueryExtension failed — "
+                    "hotplug events will not be dispatched\n");
+        }
+        randr_queried = true;
+    }
+
     // Publish the per-output scale table to the root window so standalone
     // shell components can pick it up without calling into us. Covers
     // hotplug too because display_handle_hotplug() re-enters display_init.
@@ -977,6 +1050,249 @@ int display_get_target_frame_time(void)
 // ============================================================================
 //  Multi-monitor support
 // ============================================================================
+
+// Pick the preferred native mode for a freshly-connected output.
+// Returns None if no usable mode is advertised.
+static RRMode pick_preferred_mode(XRROutputInfo *oi)
+{
+    if (!oi || oi->nmode == 0) return None;
+    // When the monitor declared any preferred modes, oi->modes[0] is the
+    // native resolution (XRandR sorts preferred entries to the front and
+    // sets npreferred to their count).
+    if (oi->npreferred > 0) return oi->modes[0];
+    // Fallback: monitor didn't flag any mode as preferred — first in the
+    // list is usually the largest. Good enough for the hotplug path;
+    // SysPrefs → Displays can pick a different mode later.
+    return oi->modes[0];
+}
+
+// Find an unused CRTC that this output is physically wired to. AMD and
+// some Intel GPUs partition CRTCs across connector groups, so we must
+// pick from oi->crtcs[] (the set this output can drive) rather than
+// any free CRTC anywhere.
+static RRCrtc pick_free_crtc(Display *dpy, XRRScreenResources *res,
+                             XRROutputInfo *oi)
+{
+    if (!oi || oi->ncrtc == 0) return None;
+    for (int i = 0; i < oi->ncrtc; i++) {
+        RRCrtc candidate = oi->crtcs[i];
+        XRRCrtcInfo *ci = XRRGetCrtcInfo(dpy, res, candidate);
+        if (!ci) continue;
+        bool free = (ci->noutput == 0);
+        XRRFreeCrtcInfo(ci);
+        if (free) return candidate;
+    }
+    return None;
+}
+
+// Resolve an RRMode ID to its pixel dimensions. Zero on failure.
+static void lookup_mode_size(XRRScreenResources *res, RRMode mode,
+                             int *out_w, int *out_h)
+{
+    *out_w = 0;
+    *out_h = 0;
+    for (int i = 0; i < res->nmode; i++) {
+        if (res->modes[i].id == mode) {
+            *out_w = (int)res->modes[i].width;
+            *out_h = (int)res->modes[i].height;
+            return;
+        }
+    }
+}
+
+// Auto-enable a newly-connected output: assign a free CRTC, place it to
+// the right of whatever's currently rightmost, grow the virtual screen,
+// and commit. Mirrors what `xrandr --output FOO --auto --right-of <prim>`
+// does on the command line, but in-process so hotplug just works.
+//
+// Returns true when the output was freshly brought up (caller should
+// re-enumerate). Returns false on any failure path — we log a diagnostic
+// and let the existing layout stand so the user's primary display keeps
+// working.
+static bool auto_enable_output(Display *dpy, RROutput output_id)
+{
+    // Use GetScreenResourcesCurrent — cheap, pulls cached state.
+    // GetScreenResources (non-current) re-probes every EDID and can
+    // stall hundreds of ms on some drivers.
+    XRRScreenResources *res = XRRGetScreenResourcesCurrent(dpy, display_root);
+    if (!res) {
+        fprintf(stderr, "[display] auto-enable: screen resources unavailable\n");
+        return false;
+    }
+
+    XRROutputInfo *oi = XRRGetOutputInfo(dpy, res, output_id);
+    if (!oi) {
+        XRRFreeScreenResources(res);
+        return false;
+    }
+
+    // Only auto-enable when the output is actually connected and
+    // doesn't already have a CRTC. Disconnected / already-active
+    // outputs are someone else's problem.
+    if (oi->connection != RR_Connected || oi->crtc != None) {
+        XRRFreeOutputInfo(oi);
+        XRRFreeScreenResources(res);
+        return false;
+    }
+
+    RRMode mode = pick_preferred_mode(oi);
+    if (mode == None) {
+        fprintf(stderr, "[display] auto-enable %s: no mode advertised\n",
+                oi->name ? oi->name : "?");
+        XRRFreeOutputInfo(oi);
+        XRRFreeScreenResources(res);
+        return false;
+    }
+
+    RRCrtc crtc = pick_free_crtc(dpy, res, oi);
+    if (crtc == None) {
+        fprintf(stderr, "[display] auto-enable %s: no free CRTC compatible "
+                "with this output\n", oi->name ? oi->name : "?");
+        XRRFreeOutputInfo(oi);
+        XRRFreeScreenResources(res);
+        return false;
+    }
+
+    int mode_w = 0, mode_h = 0;
+    lookup_mode_size(res, mode, &mode_w, &mode_h);
+    if (mode_w == 0 || mode_h == 0) {
+        fprintf(stderr, "[display] auto-enable %s: selected mode has zero size\n",
+                oi->name ? oi->name : "?");
+        XRRFreeOutputInfo(oi);
+        XRRFreeScreenResources(res);
+        return false;
+    }
+
+    // Place to the right of the rightmost active CRTC — the X server's
+    // own view, not our outputs[] cache (which may be empty during the
+    // startup pre-pass before enumeration has run). Matches what Kyle
+    // ran manually: `--right-of eDP-1`. Per-EDID position persistence
+    // is a future task; for v1 the invariant is just "it lights up."
+    //
+    // Same pass also computes the virtual-screen extent we'll need:
+    // right edge + bottom edge of every active CRTC, max'd with the new
+    // output. Sourcing this from res->crtcs (fresh from the server)
+    // rather than DisplayWidth/Height means we're not tripped up by
+    // Xlib's client-side cache, which lags whenever
+    // RRScreenChangeNotify arrives in a different order than the
+    // RRNotify that woke this handler.
+    int new_x = 0, new_y = 0;
+    int want_w = 0, want_h = 0;
+    for (int i = 0; i < res->ncrtc; i++) {
+        XRRCrtcInfo *ci = XRRGetCrtcInfo(dpy, res, res->crtcs[i]);
+        if (!ci) continue;
+        if (ci->noutput > 0 && ci->mode != None) {
+            int right  = (int)ci->x + (int)ci->width;
+            int bottom = (int)ci->y + (int)ci->height;
+            if (right  > new_x) new_x  = right;
+            if (right  > want_w) want_w = right;
+            if (bottom > want_h) want_h = bottom;
+        }
+        XRRFreeCrtcInfo(ci);
+    }
+    // Include the mode footprint we're about to commit.
+    int candidate_w = new_x + mode_w;
+    int candidate_h = new_y + mode_h;
+    if (candidate_w > want_w) want_w = candidate_w;
+    if (candidate_h > want_h) want_h = candidate_h;
+
+    // Grow the virtual screen to cover everything. XRRSetCrtcConfig
+    // silently paints a black rectangle when the CRTC extends past the
+    // current screen size, so SetScreenSize has to land first. We
+    // unconditionally issue the call — it's cheap and matches the
+    // authoritative layout we just computed from res. Shrinking is
+    // avoided because want_w/want_h already include every active
+    // CRTC's extent. DisplayWidthMM / DisplayHeightMM are still OK
+    // here — they're just used to scale the physical-dimension
+    // metadata proportionally so DPI math elsewhere stays sane.
+    int screen_w    = DisplayWidth(dpy, display_screen);
+    int screen_h    = DisplayHeight(dpy, display_screen);
+    int screen_mm_w = DisplayWidthMM(dpy, display_screen);
+    int screen_mm_h = DisplayHeightMM(dpy, display_screen);
+    int new_mm_w = screen_w > 0
+                     ? (int)((double)screen_mm_w * want_w / screen_w)
+                     : want_w;
+    int new_mm_h = screen_h > 0
+                     ? (int)((double)screen_mm_h * want_h / screen_h)
+                     : want_h;
+    XRRSetScreenSize(dpy, display_root,
+                     want_w, want_h, new_mm_w, new_mm_h);
+
+    // Commit the new CRTC configuration. configTimestamp must be taken
+    // from the Current resources we just fetched — CurrentTime returns
+    // RRSetConfigInvalidTime silently on some drivers.
+    RROutput outs[1] = { output_id };
+    Status st = XRRSetCrtcConfig(dpy, res, crtc,
+                                 res->configTimestamp,
+                                 new_x, new_y,
+                                 mode, RR_Rotate_0,
+                                 outs, 1);
+    if (st != RRSetConfigSuccess) {
+        fprintf(stderr,
+                "[display] auto-enable %s: XRRSetCrtcConfig failed (status=%d)\n",
+                oi->name ? oi->name : "?", (int)st);
+        XRRFreeOutputInfo(oi);
+        XRRFreeScreenResources(res);
+        return false;
+    }
+
+    fprintf(stderr,
+            "[display] auto-enabled %s at %dx%d+%d+%d on CRTC %lu\n",
+            oi->name ? oi->name : "?", mode_w, mode_h, new_x, new_y,
+            (unsigned long)crtc);
+
+    XRRFreeOutputInfo(oi);
+    XRRFreeScreenResources(res);
+    return true;
+}
+
+int display_get_randr_event_base(void)
+{
+    return randr_event_base;
+}
+
+bool display_handle_event(Display *dpy, XEvent *e)
+{
+    if (!e || randr_event_base < 0) return false;
+
+    // RandR delivers two event types, both based off randr_event_base.
+    // RRScreenChangeNotify = screen layout changed (any SetScreenSize,
+    // any CRTC reconfig). RRNotify = finer-grained notifications with
+    // a subtype field describing which entity changed.
+    int type_rel = e->type - randr_event_base;
+    if (type_rel != RRScreenChangeNotify && type_rel != RRNotify) {
+        return false;
+    }
+
+    // Xlib caches screen configuration client-side. Without
+    // XRRUpdateConfiguration the next XRRGetScreenResourcesCurrent /
+    // DisplayWidth query returns stale numbers, and our layout walk
+    // happily computes the old screen geometry. Must run first on
+    // every RR event, regardless of what we do afterward.
+    XRRUpdateConfiguration(e);
+
+    if (type_rel == RRNotify) {
+        XRRNotifyEvent *ne = (XRRNotifyEvent *)e;
+        if (ne->subtype == RRNotify_OutputChange) {
+            XRROutputChangeNotifyEvent *oce =
+                (XRROutputChangeNotifyEvent *)e;
+            // Freshly connected + still unassigned = plug-in event.
+            // When the user's compositor config already routed this
+            // output (e.g. user ran xrandr --output ... --auto
+            // manually), oce->crtc is non-None and we skip the
+            // auto-enable step — just re-enumerate below.
+            if (oce->connection == RR_Connected && oce->crtc == None) {
+                auto_enable_output(dpy, oce->output);
+            }
+        }
+    }
+
+    // Always re-enumerate after an RR event so MoonRock's outputs[]
+    // table, scale publication, and frame-timing metrics stay in
+    // sync with the X server's view of the world.
+    display_handle_hotplug(dpy);
+    return true;
+}
 
 void display_handle_hotplug(Display *dpy)
 {

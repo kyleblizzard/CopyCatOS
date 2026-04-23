@@ -69,12 +69,27 @@ static void recompute_menubar_scale(void)
 // Pull the hosting-output scale from the cached MoonRock table, write it
 // into menubar_hidpi_scale, and recompute menubar_scale. Returns the
 // previous hidpi value so callers can detect change.
+//
+// The bar anchors to the primary output, so its scale is the primary's
+// scale. A point-based lookup at (0,0) ambiguously matches every output
+// that shares the origin — e.g. mirror layouts where eDP-1 and DP-2 both
+// sit at (0,0) — and would otherwise return whichever output walked
+// first, not necessarily the primary.
 static float apply_hidpi_scale_from_table(void)
 {
     float old = menubar_hidpi_scale;
-    menubar_hidpi_scale = g_output_scales.valid
-        ? moonrock_scale_for_point(&g_output_scales, 0, 0)
-        : 1.0f;
+    float next = 1.0f;
+    if (g_output_scales.valid) {
+        const MoonRockOutputScale *p = moonrock_scale_primary(&g_output_scales);
+        if (p && p->scale > 0.0f) {
+            next = p->scale;
+        } else {
+            // No primary flag yet (pre-primary publisher) — fall back to
+            // the origin scan so single-display boxes still work.
+            next = moonrock_scale_for_point(&g_output_scales, 0, 0);
+        }
+    }
+    menubar_hidpi_scale = next;
     recompute_menubar_scale();
     return old;
 }
@@ -90,11 +105,15 @@ static void log_scale_table(const char *reason)
                 reason);
         return;
     }
-    // Menubar lives at the top-left of the virtual screen, so the scale for
-    // point (0,0) is the scale of the output hosting us.
-    float here = moonrock_scale_for_point(&g_output_scales, 0, 0);
-    fprintf(stderr, "[menubar] scale: %s — %d output(s); host=%.2f\n",
-            reason, g_output_scales.count, (double)here);
+    // Host scale = primary output's scale (the bar anchors to primary).
+    // Falls back to the (0,0) scan when no output carries a primary flag
+    // yet — matches what apply_hidpi_scale_from_table() actually applies.
+    const MoonRockOutputScale *pr = moonrock_scale_primary(&g_output_scales);
+    float here = pr ? pr->scale
+                    : moonrock_scale_for_point(&g_output_scales, 0, 0);
+    fprintf(stderr, "[menubar] scale: %s — %d output(s); host=%.2f%s\n",
+            reason, g_output_scales.count, (double)here,
+            pr ? " (primary)" : "");
     for (int i = 0; i < g_output_scales.count; i++) {
         const MoonRockOutputScale *o = &g_output_scales.outputs[i];
         fprintf(stderr, "[menubar] scale:   %s %dx%d @ (%d,%d) scale=%.2f\n",
@@ -151,6 +170,45 @@ static int  hit_test_menu(MenuBar *mb, int mx);
 static void grab_pointer(MenuBar *mb);
 static void ungrab_pointer(MenuBar *mb);
 
+// Pull the primary-output geometry out of the cached MoonRock scale
+// table and stuff it into mb->screen_{x,y,w,h}. Falls back to the
+// virtual-root dimensions when the table is empty or has no primary
+// entry — a single-display setup or a MoonRock that pre-dates the
+// primary field still lands somewhere sensible.
+//
+// Returns true if any of the four fields changed, so callers can skip
+// the resize path when nothing moved.
+static bool lookup_primary_geometry(MenuBar *mb)
+{
+    int nx = 0, ny = 0;
+    int nw = DisplayWidth(mb->dpy, mb->screen);
+    int nh = DisplayHeight(mb->dpy, mb->screen);
+
+    const MoonRockOutputScale *p = moonrock_scale_primary(&g_output_scales);
+    if (p) {
+        nx = p->x;
+        ny = p->y;
+        nw = p->width;
+        nh = p->height;
+    } else if (g_output_scales.valid && g_output_scales.count > 0) {
+        // No primary flag set (shouldn't normally happen, but guard it).
+        // Prefer the first entry over the whole virtual-root span.
+        const MoonRockOutputScale *o = &g_output_scales.outputs[0];
+        nx = o->x;
+        ny = o->y;
+        nw = o->width;
+        nh = o->height;
+    }
+
+    bool changed = (nx != mb->screen_x) || (ny != mb->screen_y) ||
+                   (nw != mb->screen_w) || (nh != mb->screen_h);
+    mb->screen_x = nx;
+    mb->screen_y = ny;
+    mb->screen_w = nw;
+    mb->screen_h = nh;
+    return changed;
+}
+
 // Apply the current menubar_scale to the live window: resize, rewrite
 // struts, recompute scale-dependent layout regions, reload any cached
 // scale-sized assets (Apple logo), and repaint. Called after either a
@@ -159,12 +217,21 @@ static void apply_menubar_resize(MenuBar *mb)
 {
     int h_px = MENUBAR_HEIGHT;  // S(22) — physical pixels on host output
 
-    XResizeWindow(mb->dpy, mb->win, mb->screen_w, h_px);
+    // Move+resize together so the window tracks primary-output changes
+    // (hotplug reassigning primary, EDID-override rerunning) without a
+    // one-frame flash at the old position.
+    XMoveResizeWindow(mb->dpy, mb->win,
+                      mb->screen_x, mb->screen_y,
+                      mb->screen_w, h_px);
 
+    // Struts are in virtual-root coordinates. `top=h_px` reserves the
+    // top strip at the root's top edge; `top_start_x/top_end_x` narrow
+    // that reservation to the primary output's X range so windows on a
+    // secondary can still use the full top of their own output.
     long strut_partial[12] = {0};
     strut_partial[2] = h_px;
-    strut_partial[8] = 0;
-    strut_partial[9] = mb->screen_w;
+    strut_partial[8] = mb->screen_x;
+    strut_partial[9] = mb->screen_x + mb->screen_w - 1;
     XChangeProperty(mb->dpy, mb->win,
                     mb->atom_net_wm_strut_partial, XA_CARDINAL, 32,
                     PropModeReplace, (unsigned char *)strut_partial, 12);
@@ -224,8 +291,15 @@ bool menubar_init(MenuBar *mb)
     // window changes.
     mb->screen   = DefaultScreen(mb->dpy);
     mb->root     = RootWindow(mb->dpy, mb->screen);
-    mb->screen_w = DisplayWidth(mb->dpy, mb->screen);
-    mb->screen_h = DisplayHeight(mb->dpy, mb->screen);
+    // Geometry is populated from the MoonRock scale bridge further down
+    // in this function, after moonrock_scale_refresh() runs. A
+    // DisplayWidth/Height seed here is only useful as a stale fallback
+    // if MoonRock isn't publishing yet, and lookup_primary_geometry()
+    // covers that path on its own.
+    mb->screen_x = 0;
+    mb->screen_y = 0;
+    mb->screen_w = 0;
+    mb->screen_h = 0;
 
     // ── Intern atoms ────────────────────────────────────────────
     mb->atom_net_active_window       = XInternAtom(mb->dpy, "_NET_ACTIVE_WINDOW", False);
@@ -284,6 +358,12 @@ bool menubar_init(MenuBar *mb)
     apply_hidpi_scale_from_table();
     log_scale_table("init");
 
+    // Resolve primary-output geometry from the refreshed table. Done
+    // BEFORE XCreateWindow so the window is born on the right output at
+    // the right width — avoids a visible jump from (0,0,virtual_w,22)
+    // to (primary_x, primary_y, primary_w, 22) on the first event pump.
+    (void)lookup_primary_geometry(mb);
+
     // ── Create the menu bar window ──────────────────────────────
     XSetWindowAttributes attrs;
     attrs.override_redirect = False;
@@ -295,7 +375,7 @@ bool menubar_init(MenuBar *mb)
 
     mb->win = XCreateWindow(
         mb->dpy, mb->root,
-        0, 0,
+        mb->screen_x, mb->screen_y,
         (unsigned int)mb->screen_w,
         MENUBAR_HEIGHT,
         0,
@@ -316,10 +396,12 @@ bool menubar_init(MenuBar *mb)
                     (unsigned char *)&dock_type, 1);
 
     // ── Reserve screen space with struts ────────────────────────
+    // top_start_x / top_end_x narrow the "top strut" to the primary
+    // output only; other monitors stay unreserved at their top.
     long strut_partial[12] = {
         0, 0, MENUBAR_HEIGHT, 0,
         0, 0, 0, 0,
-        0, mb->screen_w, 0, 0
+        mb->screen_x, mb->screen_x + mb->screen_w - 1, 0, 0
     };
     XChangeProperty(mb->dpy, mb->win,
                     mb->atom_net_wm_strut_partial, XA_CARDINAL,
@@ -683,18 +765,24 @@ void menubar_run(MenuBar *mb)
                     menubar_paint(mb);
                 } else if (ev.xproperty.atom == moonrock_scale_atom(mb->dpy)) {
                     // MoonRock updated the per-output scale table — either
-                    // a hotplug changed the output set, or the user moved
-                    // a Displays-pane slider. Refresh our cached snapshot,
-                    // fold the hosting-output scale into menubar_scale, and
-                    // if the scale actually changed, resize the window.
+                    // a hotplug changed the output set / primary, or the
+                    // user moved a Displays-pane slider. Refresh our cached
+                    // snapshot, fold the hosting-output scale into
+                    // menubar_scale, re-read primary geometry, and resize
+                    // if either axis changed.
                     moonrock_scale_refresh(mb->dpy, &g_output_scales);
                     float old_hidpi = apply_hidpi_scale_from_table();
+                    bool geom_changed = lookup_primary_geometry(mb);
                     log_scale_table("property-notify");
-                    if (old_hidpi != menubar_hidpi_scale) {
+                    if (old_hidpi != menubar_hidpi_scale || geom_changed) {
                         fprintf(stderr,
-                                "[menubar] hidpi: %.2f → %.2f (resizing)\n",
+                                "[menubar] hidpi: %.2f → %.2f, "
+                                "primary: %d,%d %dx%d%s\n",
                                 (double)old_hidpi,
-                                (double)menubar_hidpi_scale);
+                                (double)menubar_hidpi_scale,
+                                mb->screen_x, mb->screen_y,
+                                mb->screen_w, mb->screen_h,
+                                geom_changed ? " (moved)" : "");
                         apply_menubar_resize(mb);
                     }
                 }

@@ -67,8 +67,13 @@ typedef struct {
     int      screen;         // Default screen number (usually 0)
     Window   root;           // Root window of the screen
     Window   win;            // Our menu bar window (dock type, top of screen)
-    int      screen_w;       // Screen width in pixels
-    int      screen_h;       // Screen height in pixels
+    // Primary-output geometry in virtual-screen pixels. With multiple
+    // monitors the virtual root spans every display; the menubar must
+    // sit on the primary output only.
+    int      screen_x;       // Primary output origin X
+    int      screen_y;       // Primary output origin Y
+    int      screen_w;       // Primary output width in pixels
+    int      screen_h;       // Primary output height in pixels
 
     // Layout regions — pixel positions computed during init.
     // These define where each section of the menu bar starts and how wide it is.

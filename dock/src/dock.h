@@ -165,8 +165,13 @@ typedef struct {
     Window win;                   // The dock's own window
     Window root;                  // The root window (desktop background)
     int screen;                   // Screen number (usually 0)
-    int screen_w;                 // Screen width in pixels
-    int screen_h;                 // Screen height in pixels
+    // Primary-output geometry in virtual-screen pixels. The dock sits
+    // on the primary output only — external monitors get their own dock
+    // when we wire per-output docks, not a drift of this one.
+    int screen_x;                 // Primary output origin X
+    int screen_y;                 // Primary output origin Y
+    int screen_w;                 // Primary output width in pixels
+    int screen_h;                 // Primary output height in pixels
     Visual *visual;               // 32-bit ARGB visual for transparency
     Colormap colormap;            // Colormap matching our ARGB visual
 

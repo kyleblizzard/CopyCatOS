@@ -283,6 +283,30 @@ int display_get_target_frame_time(void);
 //   dpy — The X display connection.
 void display_handle_hotplug(Display *dpy);
 
+// Dispatch an X event through the display module. Returns true if the
+// event was an XRandR notification and was consumed; false for everything
+// else (caller continues normal dispatch).
+//
+// Handles:
+//   - RRScreenChangeNotify — any screen-size change.
+//   - RRNotify / RRNotify_OutputChange — monitor plug / unplug. When a
+//     freshly-connected output arrives with no CRTC, this path auto-picks
+//     a preferred mode, a compatible free CRTC, a position to the right
+//     of the rightmost active output, grows the virtual screen via
+//     XRRSetScreenSize, and commits via XRRSetCrtcConfig. Then re-enters
+//     display_handle_hotplug() so outputs[] + scale publication stay in
+//     sync.
+//
+// Must be called in the main event-loop dispatch path before any
+// fallback handler that might inspect ev.type for unknown events.
+bool display_handle_event(Display *dpy, XEvent *e);
+
+// The XRandR event base X assigned to our display connection. Valid once
+// display_init() has been called at least once; returns -1 until then.
+// events.c uses this to detect RandR events when routing to
+// display_handle_event().
+int display_get_randr_event_base(void);
+
 // ============================================================================
 //  Per-output scale (HiDPI)
 // ============================================================================

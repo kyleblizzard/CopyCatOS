@@ -15,11 +15,15 @@
 //     Atom:   _MOONROCK_OUTPUT_SCALES           (type: UTF8_STRING, format 8)
 //     Format: one line per connected output, newline-terminated:
 //
-//         <output_name> <x> <y> <width> <height> <scale>
+//         <output_name> <x> <y> <width> <height> <scale> <primary>
+//
+//     <primary> is an optional trailing integer: 1 if this is the XRandR
+//     primary output, 0 otherwise. Parsers that pre-date this field treat
+//     lines with 6 tokens as before (primary = false for every entry).
 //
 //     Example:
-//         eDP-1 0 0 1920 1200 1.500
-//         HDMI-1 1920 0 1920 1080 1.000
+//         eDP-1 0 0 1920 1200 1.500 1
+//         HDMI-1 1920 0 1920 1080 1.000 0
 //
 // The property is rewritten whenever the connected-output set changes
 // (hotplug) or whenever the user changes a scale through SysPrefs (which in
@@ -74,6 +78,7 @@ typedef struct {
     int   x, y;                 // top-left in virtual-screen pixels
     int   width, height;        // pixel size
     float scale;                // effective scale (≥ 0.5, ≤ 4.0 in practice)
+    bool  primary;              // true if this is the XRandR primary output
 } MoonRockOutputScale;
 
 // Full parsed table. `count` may be zero if the property is missing (e.g.
@@ -116,6 +121,15 @@ float moonrock_scale_for_point(const MoonRockScaleTable *table, int x, int y);
 // Look up the scale for an output by its name (e.g. "eDP-1"). Returns 1.0
 // if the table is invalid or no output matches.
 float moonrock_scale_for_name(const MoonRockScaleTable *table, const char *name);
+
+// Return a pointer to the primary-output entry in `table`, or NULL if
+// the table is invalid, empty, or no entry is marked primary. The
+// pointer is only valid until the next call to moonrock_scale_refresh
+// on the same table. Used by shell components (menubar, dock, desktop)
+// to anchor their layout to the primary output rather than the virtual
+// root, which can span multiple displays after hotplug.
+const MoonRockOutputScale *
+moonrock_scale_primary(const MoonRockScaleTable *table);
 
 
 // ── Requester — systemcontrol Displays pane → MoonRock ──────────────────
