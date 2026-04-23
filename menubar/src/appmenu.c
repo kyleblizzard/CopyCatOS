@@ -478,8 +478,12 @@ static const char *shortcut_to_aqua(const char *raw, char *buf, size_t buflen)
     for (char *tok = strtok_r(scratch, "+", &save);
          tok;
          tok = strtok_r(NULL, "+", &save)) {
-        if (strcasecmp(tok, "Control") == 0 || strcasecmp(tok, "Ctrl") == 0) {
-            has_cmd = true;        // Control → ⌘ (Mac-Linux convention)
+        if (strcasecmp(tok, "Control") == 0 || strcasecmp(tok, "Ctrl") == 0 ||
+            strcasecmp(tok, "Primary") == 0) {
+            // Control → ⌘ (Mac-Linux convention). "Primary" is GTK's
+            // platform-neutral alias — dbusmenu-gtk3 forwards it
+            // verbatim on some distros.
+            has_cmd = true;
         } else if (strcasecmp(tok, "Shift") == 0) {
             has_shift = true;
         } else if (strcasecmp(tok, "Alt") == 0 || strcasecmp(tok, "Option") == 0) {
