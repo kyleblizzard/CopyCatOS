@@ -61,13 +61,18 @@
 // table for the dock's representative point.
 static MoonRockScaleTable g_output_scales;
 
-// The dock lives bottom-center on the root window, so the scale for the
-// output hosting the dock is whatever scale applies at (screen_w/2,
-// screen_h-1). Called both at init and on every PropertyNotify so the same
-// lookup rule is used in both paths.
+// The dock anchors to the primary output, so its scale is the primary's
+// scale. A point-based lookup at the dock's bottom-center ambiguously
+// matches every output that contains that point — e.g. mirror layouts
+// where eDP-1 and DP-2 both cover (0,0)–(2560,1600) — and would otherwise
+// return whichever output walked first, not necessarily the primary.
+// Falls back to the point probe only when no output carries the primary
+// flag (e.g. a pre-primary publisher).
 static float lookup_hidpi_scale(DockState *state)
 {
     if (!g_output_scales.valid) return 1.0f;
+    const MoonRockOutputScale *p = moonrock_scale_primary(&g_output_scales);
+    if (p && p->scale > 0.0f) return p->scale;
     int sx = state->screen_x + state->screen_w / 2;
     int sy = state->screen_y + state->screen_h - 1;
     return moonrock_scale_for_point(&g_output_scales, sx, sy);
