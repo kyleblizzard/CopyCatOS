@@ -236,6 +236,11 @@ copy_file "$MAC/HIToolbox/HiResAppleMenu.png"          "$ASSET_DST/menubar/apple
 copy_file "$MAC/HIToolbox/HiResAppleMenuGraphite.png"   "$ASSET_DST/menubar/apple_logo_graphite.png"
 copy_file "$MAC/HIToolbox/HiResAppleMenuSelected.png"   "$ASSET_DST/menubar/apple_logo_selected.png"
 
+# Menu-bar "extras" (right-side tray icons: airport, volume, battery,
+# bluetooth, spotlight, …). These are hand-extracted from real SL
+# screenshots/bundles and live in-repo rather than MacAssets/.
+copy_dir "$ASSET_SRC/menubar/assets/extras" "$ASSET_DST/menubar/extras"
+
 # ---------------------------------------------------------------------------
 # 5. Control assets (SnowReverseOutput sub-directories)
 # ---------------------------------------------------------------------------

@@ -20,6 +20,11 @@ add_project_arguments('-D_GNU_SOURCE', language: 'c')
 # X11 for window creation and event handling
 x11_dep = dependency('x11')
 
+# XTest — synthesises the Ctrl+Space chord when the user clicks the
+# spotlight glyph, so searchsystem's global hotkey grab fires the
+# same way it would from a physical press.
+xtst_dep = dependency('xtst')
+
 # Cairo for 2D rendering (background gradient, icons, menus)
 cairo_dep = dependency('cairo')
 
@@ -72,7 +77,7 @@ sources = [
 executable('menubar',
   sources,
   include_directories: include_directories(moonrock_shell_api_dir),
-  dependencies: [x11_dep, cairo_dep, cairo_xlib_dep, pangocairo_dep, libpng_dep, gio_dep, math_dep],
+  dependencies: [x11_dep, xtst_dep, cairo_dep, cairo_xlib_dep, pangocairo_dep, libpng_dep, gio_dep, math_dep],
   install: true,
   install_dir: get_option('bindir'),
 )

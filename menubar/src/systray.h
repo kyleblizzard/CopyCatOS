@@ -18,6 +18,7 @@
 #ifndef AURA_SYSTRAY_H
 #define AURA_SYSTRAY_H
 
+#include <stdbool.h>
 #include <cairo/cairo.h>
 #include "menubar.h"
 
@@ -33,6 +34,10 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge);
 // Re-read battery and volume levels. Called periodically from the
 // event loop so the display stays current without constant polling.
 void systray_update(MenuBar *mb);
+
+// Hit-test: true if (mx, my) falls inside the Spotlight glyph's last
+// painted bbox. Returns false until systray_paint has run at least once.
+bool systray_hit_spotlight(int mx, int my);
 
 // Clean up any resources.
 void systray_cleanup(void);

@@ -55,6 +55,15 @@ static cairo_surface_t *bluetooth_icons[3];  // 0=off, 1=idle, 2=connected
 static cairo_surface_t *battery_icons[3];    // 0=charging, 1=charged, 2=empty
 static cairo_surface_t *spotlight_icon;
 
+// Last painted Spotlight glyph bounding box, in menubar-window coords.
+// Updated every systray_paint; consumed by systray_hit_spotlight for
+// ButtonPress dispatch. Padded slightly so the hit-target matches the
+// visible cursor-pointer feel rather than the 14-point icon's tight box.
+static int spotlight_hit_x0 = -1;
+static int spotlight_hit_y0 = -1;
+static int spotlight_hit_x1 = -1;
+static int spotlight_hit_y1 = -1;
+
 // ============================================================================
 //  Cached system readings
 // ============================================================================
@@ -238,6 +247,7 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
     int cursor = right_edge - S(8);
 
     // ── Spotlight icon (rightmost) ──────────────────────────────────
+    int spot_x = 0, spot_w = 0;
     if (spotlight_icon) {
         int w = cairo_image_surface_get_width(spotlight_icon);
         int h = cairo_image_surface_get_height(spotlight_icon);
@@ -256,6 +266,9 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
         cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BEST);
         cairo_paint(cr);
         cairo_restore(cr);
+
+        spot_x = cursor;
+        spot_w = scaled_w;
     } else {
         // Fallback: simple magnifying glass with Cairo
         cursor -= S(14);
@@ -267,7 +280,20 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
         cairo_move_to(cr, ix + SF(8.3), iy + SF(8.3));
         cairo_line_to(cr, ix + SF(13.0), iy + SF(13.0));
         cairo_stroke(cr);
+
+        spot_x = cursor;
+        spot_w = S(14);
     }
+
+    // Record a generous hit-rect: the full menubar height vertically
+    // (so flicks near the top/bottom edge still land), and a small
+    // horizontal pad so the 14-point glyph feels like a comfortable
+    // button target under fingertip / cursor alike.
+    int pad = S(4);
+    spotlight_hit_x0 = spot_x - pad;
+    spotlight_hit_x1 = spot_x + spot_w + pad;
+    spotlight_hit_y0 = 0;
+    spotlight_hit_y1 = MENUBAR_HEIGHT;
 
     cursor -= S(12); // Gap
 
@@ -406,6 +432,13 @@ void systray_update(MenuBar *mb)
         read_battery();
         last_battery_poll = now;
     }
+}
+
+bool systray_hit_spotlight(int mx, int my)
+{
+    if (spotlight_hit_x0 < 0) return false;  // never painted
+    return mx >= spotlight_hit_x0 && mx < spotlight_hit_x1 &&
+           my >= spotlight_hit_y0 && my < spotlight_hit_y1;
 }
 
 void systray_cleanup(void)

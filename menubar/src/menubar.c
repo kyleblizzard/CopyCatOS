@@ -23,6 +23,7 @@
 #include <cairo/cairo-xlib.h>
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
+#include <X11/extensions/XTest.h>
 
 #include "menubar.h"
 #include "render.h"
@@ -516,6 +517,33 @@ static int hit_test_menu(MenuBar *mb, int mx)
     return -1;
 }
 
+// ── Helper: fire Ctrl+Space to toggle the searchsystem overlay ─────
+// The searchsystem process grabs Ctrl+Space on the root window as a
+// global hotkey. Synthesising the same chord via XTest reaches the
+// grab handler the same way a physical keypress would, which keeps
+// the menubar's spotlight click behavior in lockstep with the Ctrl+Space
+// hotkey — no second IPC path to drift out of sync.
+static void fire_spotlight(MenuBar *mb)
+{
+    int event_base, error_base, major, minor;
+    if (!XTestQueryExtension(mb->dpy,
+                             &event_base, &error_base, &major, &minor)) {
+        fprintf(stderr, "[menubar] XTest not available — "
+                        "spotlight click cannot activate searchsystem\n");
+        return;
+    }
+
+    KeyCode ctrl  = XKeysymToKeycode(mb->dpy, XK_Control_L);
+    KeyCode space = XKeysymToKeycode(mb->dpy, XK_space);
+    if (ctrl == 0 || space == 0) return;
+
+    XTestFakeKeyEvent(mb->dpy, ctrl,  True,  CurrentTime);
+    XTestFakeKeyEvent(mb->dpy, space, True,  CurrentTime);
+    XTestFakeKeyEvent(mb->dpy, space, False, CurrentTime);
+    XTestFakeKeyEvent(mb->dpy, ctrl,  False, CurrentTime);
+    XFlush(mb->dpy);
+}
+
 // ── Helper: open a specific menu by index ───────────────────────────
 // index 0 = Apple, 1+ = app menus.
 
@@ -736,6 +764,15 @@ void menubar_run(MenuBar *mb)
                             menubar_paint(mb);
                         }
                     }
+                    break;
+                }
+
+                // No menu is open — check Spotlight glyph first
+                // (rightmost systray item), then fall back to menu-title
+                // hit-test. The glyph's hit rect is the full menubar
+                // height so a click anywhere in its column activates.
+                if (systray_hit_spotlight(mx, my)) {
+                    fire_spotlight(mb);
                     break;
                 }
 
