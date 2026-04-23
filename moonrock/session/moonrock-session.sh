@@ -53,6 +53,31 @@ xrandr --output eDP-1 --mode 1920x1200 --rate 120 2>/dev/null || \
 # Display rotation for Lenovo Legion Go (uncomment if needed)
 # xrandr --output eDP-1 --rotate right
 
+# ─── Mirror to external display when docked ───
+#
+# This is the TRANSITIONAL arrangement store for docked-with-external
+# sessions. display-config.conf persists the primary-output EDID only —
+# it does NOT persist mirror-vs-extend or per-output geometry. Until the
+# Displays pane in systemcontrol (slice 55) owns that state per-EDID,
+# we default docked-with-external to mirror so the user sees the shell
+# immediately on the external screen on every login.
+#
+# Behavior:
+#   - Walk DP-* / HDMI-* outputs; pick the first connected external.
+#   - Apply --same-as eDP-1 --primary on that output.
+#   - If modes don't match exactly, xrandr will pick the external's
+#     preferred mode and align at 0,0. eDP-1 keeps its own mode; the
+#     user can tune via xrandr or the Displays pane once it lands.
+#   - Silent no-op when undocked (no externals connected).
+EXT=""
+for o in $(xrandr 2>/dev/null | awk '/^(DP|HDMI)-[0-9]+ connected/ {print $1}'); do
+    EXT="$o"
+    break
+done
+if [ -n "$EXT" ]; then
+    xrandr --output "$EXT" --auto --same-as eDP-1 --primary 2>/dev/null || true
+fi
+
 # ─── Theme configuration ───
 # Force light theme for Qt and GTK apps (Snow Leopard was always light)
 

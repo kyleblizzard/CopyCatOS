@@ -602,6 +602,68 @@ static size_t read_edid_blob(Display *dpy, RROutput output,
 }
 
 
+// ── EDID-by-name cache (survives across display_init calls) ──
+//
+// Secondary optimization; not the storm fix. The root cause of the
+// mirror-mode hotplug storm turned out to be XRRSelectInput being
+// re-called on every display_init — the X server re-synthesizes
+// RRScreenChangeNotify on each re-selection, and under mirror-mode
+// CRTC pressure that compounds into an unbounded re-init loop. That
+// is now gated (one-shot) at the XRRSelectInput call site.
+//
+// This cache independently avoids redundant XRRGetScreenResources
+// probe calls on hotplug re-enumeration. The probing variant is the
+// reliable way to populate per-output EDID on the Legion's driver
+// stack — Current returns zero-length blobs there — but the probe
+// synthesizes its own RR events on some drivers. We therefore cache
+// (name → 64-bit FNV-1a hash) across display_init calls and use
+// XRRGetScreenResourcesCurrent when all currently-connected output
+// names are already in the cache. Only a genuinely new output name
+// forces a probe. This both speeds up hotplug re-enumeration and
+// adds defense-in-depth against any secondary probe-synthesized
+// events the driver might emit.
+#define EDID_NAME_CACHE_MAX MAX_OUTPUTS
+static struct {
+    char    name[32];
+    uint8_t edid_hash[8];
+    bool    valid;
+} edid_name_cache[EDID_NAME_CACHE_MAX];
+
+static const uint8_t *edid_cache_lookup(const char *name)
+{
+    for (int i = 0; i < EDID_NAME_CACHE_MAX; i++) {
+        if (edid_name_cache[i].valid &&
+            strcmp(edid_name_cache[i].name, name) == 0) {
+            return edid_name_cache[i].edid_hash;
+        }
+    }
+    return NULL;
+}
+
+static void edid_cache_store(const char *name, const uint8_t *hash)
+{
+    // Overwrite if the name is already present.
+    for (int i = 0; i < EDID_NAME_CACHE_MAX; i++) {
+        if (edid_name_cache[i].valid &&
+            strcmp(edid_name_cache[i].name, name) == 0) {
+            memcpy(edid_name_cache[i].edid_hash, hash, 8);
+            return;
+        }
+    }
+    // Otherwise take the first free slot.
+    for (int i = 0; i < EDID_NAME_CACHE_MAX; i++) {
+        if (!edid_name_cache[i].valid) {
+            strncpy(edid_name_cache[i].name, name,
+                    sizeof(edid_name_cache[i].name) - 1);
+            edid_name_cache[i].name[sizeof(edid_name_cache[i].name) - 1] = '\0';
+            memcpy(edid_name_cache[i].edid_hash, hash, 8);
+            edid_name_cache[i].valid = true;
+            return;
+        }
+    }
+}
+
+
 // ============================================================================
 //  Publish scales to the root window
 // ============================================================================
@@ -712,18 +774,18 @@ bool display_init(Display *dpy, int screen)
         return false;
     }
 
-    // Re-entry guard. XRRGetScreenResources forces an EDID re-probe which,
-    // on some AMD/Intel drivers, synthesizes another RRScreenChangeNotify
-    // while we're still mid-init. display_handle_hotplug calls us back,
-    // and without this guard the call stack walks itself off a cliff:
-    // display_init → probe → event → hotplug → display_init → probe → …
-    // and PropertyNotify handlers for _MOONROCK_SET_OUTPUT_SCALE /
-    // _MOONROCK_SET_PRIMARY_OUTPUT are starved out of the main loop.
+    // Re-entry guard — defense in depth, NOT the storm fix.
     //
-    // We need the probing call (it's the only path that reliably populates
-    // per-output EDID via XRRGetOutputProperty; the Current variant returns
-    // empty blobs for moonrock's client context on the Legion). So guard
-    // the function instead of weakening the call.
+    // History: earlier slices assumed the mirror-mode hotplug storm was an
+    // intra-stack recursion (display_init → probe → synthesized RR event →
+    // hotplug handler → display_init → …). It wasn't. The actual root cause
+    // was XRRSelectInput being re-called on every display_init — each call
+    // synthesizes a fresh RRScreenChangeNotify from the server, which the
+    // main loop delivers and routes back into display_init as a hotplug,
+    // producing a sequential ping-pong at thousands of events per second.
+    // The fix is the one-shot XRRSelectInput gate further down in this
+    // function. This guard only catches intra-stack re-entry that can still
+    // happen if some driver coalesces events to the same dispatch tick.
     static bool in_init = false;
     if (in_init) {
         fprintf(stderr, "[display] display_init re-entered — skipping "
@@ -786,22 +848,68 @@ bool display_init(Display *dpy, int screen)
         }
     }
 
-    // Ask XRandR for the full screen resources. This is the probing variant
-    // (XRRGetScreenResources, not XRRGetScreenResourcesCurrent): on the
-    // Legion's AMD/Intel driver stack the Current form returns per-output
-    // EDID blobs as zero-length, which breaks EDID-keyed persistence for
-    // both scale and primary. The probe call is the reliable path to
-    // populate EDID via the subsequent XRRGetOutputProperty reads below.
+    // Choose between the probing XRRGetScreenResources (which re-reads EDID
+    // but synthesizes RRScreenChangeNotify on mirror-mode CRTC configs,
+    // feeding the hotplug re-init storm) and the cheaper Current variant
+    // (which never probes, and on the Legion returns zero-length EDID blobs).
     //
-    // The probe synthesizes an RRScreenChangeNotify on some drivers, and
-    // display_handle_hotplug re-enters display_init in response — that is
-    // the hotplug storm that starves PropertyNotify handlers. The in_init
-    // re-entry guard at the top of this function breaks that loop in a
-    // single place, without weakening either this call or the handler.
-    XRRScreenResources *res = XRRGetScreenResources(dpy, display_root);
+    // Strategy: probe only when we need fresh EDID — i.e. when we see a
+    // currently-connected output whose name isn't in our hash cache. For
+    // steady-state hotplug re-inits (same outputs, just reconfigured) we
+    // use Current and reuse cached hashes. This breaks the probe-loop
+    // without weakening per-monitor persistence.
+    bool need_probe = false;
+    {
+        XRRScreenResources *peek = XRRGetScreenResourcesCurrent(dpy, display_root);
+        if (peek) {
+            // 1. Invalidate cache entries for outputs that are now disconnected.
+            //    A same-named port may host a different monitor on next plug,
+            //    so we want to re-probe when that output comes back connected.
+            for (int c = 0; c < EDID_NAME_CACHE_MAX; c++) {
+                if (!edid_name_cache[c].valid) continue;
+                bool still_connected = false;
+                for (int i = 0; i < peek->noutput; i++) {
+                    XRROutputInfo *oi =
+                        XRRGetOutputInfo(dpy, peek, peek->outputs[i]);
+                    if (!oi) continue;
+                    if (strcmp(oi->name, edid_name_cache[c].name) == 0 &&
+                        oi->connection == RR_Connected) {
+                        still_connected = true;
+                    }
+                    XRRFreeOutputInfo(oi);
+                    if (still_connected) break;
+                }
+                if (!still_connected) {
+                    edid_name_cache[c].valid = false;
+                }
+            }
+
+            // 2. Do any currently-connected outputs lack a cached hash?
+            for (int i = 0; i < peek->noutput && !need_probe; i++) {
+                XRROutputInfo *oi =
+                    XRRGetOutputInfo(dpy, peek, peek->outputs[i]);
+                if (!oi) continue;
+                if (oi->connection == RR_Connected &&
+                    edid_cache_lookup(oi->name) == NULL) {
+                    need_probe = true;
+                }
+                XRRFreeOutputInfo(oi);
+            }
+            XRRFreeScreenResources(peek);
+        } else {
+            // Can't peek — fall back to probing to be safe.
+            need_probe = true;
+        }
+    }
+
+    XRRScreenResources *res = need_probe
+        ? XRRGetScreenResources(dpy, display_root)
+        : XRRGetScreenResourcesCurrent(dpy, display_root);
     if (!res) {
-        fprintf(stderr, "[display] ERROR: XRRGetScreenResources failed — "
-                "XRandR may not be available\n");
+        fprintf(stderr, "[display] ERROR: XRR%s failed — "
+                "XRandR may not be available\n",
+                need_probe ? "GetScreenResources"
+                           : "GetScreenResourcesCurrent");
         in_init = false;
         return false;
     }
@@ -949,17 +1057,31 @@ bool display_init(Display *dpy, int screen)
 
         // ── EDID hash for per-monitor persistence ──
         //
-        // Read the raw EDID blob and compute a 64-bit FNV-1a hash of it.
         // The hash is the key in our display-scales.conf persistence file:
         // same monitor plugged into any port on any day → same scale.
-        // If we can't read EDID (shouldn't happen on real hardware, but
-        // does on headless CI and some nested X servers), hash stays zero
-        // and the output gets the default scale with no persistence.
-        uint8_t edid[512];
-        size_t edid_len = read_edid_blob(dpy, res->outputs[i], edid, sizeof(edid));
+        //
+        // First consult the by-name cache. On hotplug re-inits where this
+        // output was present before, we already computed and stored the
+        // hash and XRRGetScreenResourcesCurrent (our path when need_probe
+        // is false) returns zero-length EDID blobs on the Legion — so a
+        // re-read would wipe the hash and break persistence. Only when
+        // the cache misses (first init or a newly-connected port) do we
+        // call read_edid_blob and store the result.
+        bool have_hash = false;
         memset(out->edid_hash, 0, sizeof(out->edid_hash));
-        if (edid_len > 0) {
-            fnv1a_64(edid, edid_len, out->edid_hash);
+        const uint8_t *cached_hash = edid_cache_lookup(out->name);
+        if (cached_hash) {
+            memcpy(out->edid_hash, cached_hash, 8);
+            have_hash = true;
+        } else {
+            uint8_t edid[512];
+            size_t edid_len = read_edid_blob(
+                dpy, res->outputs[i], edid, sizeof(edid));
+            if (edid_len > 0) {
+                fnv1a_64(edid, edid_len, out->edid_hash);
+                edid_cache_store(out->name, out->edid_hash);
+                have_hash = true;
+            }
         }
 
         // ── Scale selection ──
@@ -970,7 +1092,7 @@ bool display_init(Display *dpy, int screen)
         //                otherwise default_scale).
         out->default_scale = default_scale_from_ppi(
             out->width, out->height, out->mm_width, out->mm_height);
-        out->user_scale = (edid_len > 0)
+        out->user_scale = have_hash
                             ? find_override_scale(out->edid_hash)
                             : 0.0f;
         out->scale = (out->user_scale > 0.0f)
@@ -1070,10 +1192,22 @@ bool display_init(Display *dpy, int screen)
     // Register for XRandR notifications so we get hotplug events.
     // RROutputChangeNotifyMask triggers when monitors are plugged in or removed.
     // RRCrtcChangeNotifyMask triggers when display configuration changes.
-    XRRSelectInput(dpy, display_root,
-                   RRScreenChangeNotifyMask |
-                   RROutputChangeNotifyMask |
-                   RRCrtcChangeNotifyMask);
+    //
+    // Subscription is sticky for the client's lifetime — gate to the first
+    // display_init() call. Re-selecting on every hotplug re-entry causes
+    // the X server to synthesize an RRScreenChangeNotify for every call
+    // (sync semantics), which re-enters display_init again. Under mirror-
+    // mode CRTC configs that already emit real RR events, that amplifies
+    // into the hotplug storm that starves PropertyNotify delivery for
+    // the _MOONROCK_SET_* IPC atoms.
+    static bool randr_input_selected = false;
+    if (!randr_input_selected) {
+        XRRSelectInput(dpy, display_root,
+                       RRScreenChangeNotifyMask |
+                       RROutputChangeNotifyMask |
+                       RRCrtcChangeNotifyMask);
+        randr_input_selected = true;
+    }
 
     // Stash the RandR event-base on the first entry so events.c can
     // recognise incoming RRScreenChangeNotify / RRNotify events. The
