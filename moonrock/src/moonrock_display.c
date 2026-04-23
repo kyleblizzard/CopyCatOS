@@ -568,7 +568,13 @@ static bool save_display_config(void)
 static size_t read_edid_blob(Display *dpy, RROutput output,
                              uint8_t *buf, size_t buf_len)
 {
-    Atom edid_atom = XInternAtom(dpy, "EDID", True);
+    // NOTE: use only_if_exists=False. XInternAtom("EDID", True) can return
+    // None if moonrock is the first client this X server has seen to ask
+    // for that atom — which is our exact case on the Legion, where we
+    // start before xrandr ever runs. Interning with False creates the atom
+    // on demand. Atoms are server-global once created, so once set the
+    // atom is usable for every subsequent XRRGetOutputProperty call.
+    Atom edid_atom = XInternAtom(dpy, "EDID", False);
     if (edid_atom == None) return 0;
 
     Atom actual_type = None;
@@ -706,6 +712,26 @@ bool display_init(Display *dpy, int screen)
         return false;
     }
 
+    // Re-entry guard. XRRGetScreenResources forces an EDID re-probe which,
+    // on some AMD/Intel drivers, synthesizes another RRScreenChangeNotify
+    // while we're still mid-init. display_handle_hotplug calls us back,
+    // and without this guard the call stack walks itself off a cliff:
+    // display_init → probe → event → hotplug → display_init → probe → …
+    // and PropertyNotify handlers for _MOONROCK_SET_OUTPUT_SCALE /
+    // _MOONROCK_SET_PRIMARY_OUTPUT are starved out of the main loop.
+    //
+    // We need the probing call (it's the only path that reliably populates
+    // per-output EDID via XRRGetOutputProperty; the Current variant returns
+    // empty blobs for moonrock's client context on the Legion). So guard
+    // the function instead of weakening the call.
+    static bool in_init = false;
+    if (in_init) {
+        fprintf(stderr, "[display] display_init re-entered — skipping "
+                "(another display_init is already running on this stack)\n");
+        return true;
+    }
+    in_init = true;
+
     // Cache the display connection and screen for use by other functions
     // in this module, so callers don't have to pass them around everywhere.
     display_dpy = dpy;
@@ -719,6 +745,7 @@ bool display_init(Display *dpy, int screen)
         outputs = calloc(MAX_OUTPUTS, sizeof(MROutput));
         if (!outputs) {
             fprintf(stderr, "[display] ERROR: Failed to allocate output array\n");
+            in_init = false;
             return false;
         }
     }
@@ -759,12 +786,23 @@ bool display_init(Display *dpy, int screen)
         }
     }
 
-    // Ask XRandR for the current screen resources. This is the top-level
-    // structure that lists all outputs, CRTCs, and available modes.
+    // Ask XRandR for the full screen resources. This is the probing variant
+    // (XRRGetScreenResources, not XRRGetScreenResourcesCurrent): on the
+    // Legion's AMD/Intel driver stack the Current form returns per-output
+    // EDID blobs as zero-length, which breaks EDID-keyed persistence for
+    // both scale and primary. The probe call is the reliable path to
+    // populate EDID via the subsequent XRRGetOutputProperty reads below.
+    //
+    // The probe synthesizes an RRScreenChangeNotify on some drivers, and
+    // display_handle_hotplug re-enters display_init in response — that is
+    // the hotplug storm that starves PropertyNotify handlers. The in_init
+    // re-entry guard at the top of this function breaks that loop in a
+    // single place, without weakening either this call or the handler.
     XRRScreenResources *res = XRRGetScreenResources(dpy, display_root);
     if (!res) {
         fprintf(stderr, "[display] ERROR: XRRGetScreenResources failed — "
                 "XRandR may not be available\n");
+        in_init = false;
         return false;
     }
 
@@ -1059,6 +1097,7 @@ bool display_init(Display *dpy, int screen)
     publish_scales_to_root();
 
     fprintf(stderr, "[display] Initialized: %d output(s)\n", output_count);
+    in_init = false;
     return true;
 }
 
