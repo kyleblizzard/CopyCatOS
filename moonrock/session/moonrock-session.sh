@@ -41,8 +41,14 @@ fi
 # Set the display to native resolution before anything starts.
 # XLibre / the display manager leaves the screen at 640x480 by default.
 # This must run before moonrock starts so the WM initializes at the right size.
-xrandr --output eDP-1 --mode 1920x1200 --rate 120 --primary 2>/dev/null || \
-    xrandr --output eDP-1 --mode 1920x1200 --primary 2>/dev/null || true
+#
+# The --primary flag is deliberately omitted. MoonRock restores the user's
+# persisted primary-output choice from ~/.local/share/moonrock/display-config.conf
+# during display_init(), so forcing eDP-1 primary here would clobber that
+# state on every login (and regress mirror-mode / external-primary setups
+# for users who dock the Legion to an HDMI display).
+xrandr --output eDP-1 --mode 1920x1200 --rate 120 2>/dev/null || \
+    xrandr --output eDP-1 --mode 1920x1200 2>/dev/null || true
 
 # Display rotation for Lenovo Legion Go (uncomment if needed)
 # xrandr --output eDP-1 --rotate right

@@ -649,6 +649,15 @@ static void on_property_notify(CCWM *wm, XEvent *e)
         return;
     }
 
+    // Reverse primary-request atom: the Displays pane writes
+    // _MOONROCK_SET_PRIMARY_OUTPUT on the root window. Same dispatch
+    // shape as the scale-request atom above.
+    if (w == wm->root && e->xproperty.state == PropertyNewValue &&
+        e->xproperty.atom == display_primary_request_atom(wm->dpy)) {
+        display_handle_primary_request(wm->dpy, wm->root);
+        return;
+    }
+
     Client *c = wm_find_client(wm, w);
 
     if (c && (e->xproperty.atom == wm->atom_net_wm_name ||

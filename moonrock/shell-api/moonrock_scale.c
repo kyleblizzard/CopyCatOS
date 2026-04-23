@@ -233,3 +233,34 @@ bool moonrock_request_scale(Display *dpy, const char *output_name, float scale)
     XFlush(dpy);
     return true;
 }
+
+
+bool moonrock_request_primary(Display *dpy, const char *output_name)
+{
+    if (!dpy) return false;
+
+    // Treat NULL / empty as "clear the user override." We still write the
+    // property so MoonRock sees a PropertyNotify and can delete its
+    // persisted primary record.
+    const char *name = (output_name && *output_name) ? output_name : "";
+
+    // Guard against separator characters that would break the line parser
+    // on the MoonRock side. Output names are XRandR identifiers (ASCII
+    // plus a few punctuation chars) so this guard rejects anything weird.
+    for (const char *p = name; *p; p++) {
+        if (*p == ' ' || *p == '\n') return false;
+    }
+
+    Atom set_atom = XInternAtom(dpy, MOONROCK_SET_PRIMARY_ATOM_NAME, False);
+    Atom utf8    = XInternAtom(dpy, "UTF8_STRING", False);
+
+    char line[MOONROCK_SCALE_NAME_MAX + 2];
+    int n = snprintf(line, sizeof(line), "%s\n", name);
+    if (n < 0 || n >= (int)sizeof(line)) return false;
+
+    XChangeProperty(dpy, DefaultRootWindow(dpy),
+                    set_atom, utf8, 8, PropModeReplace,
+                    (unsigned char *)line, n);
+    XFlush(dpy);
+    return true;
+}

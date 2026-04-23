@@ -183,6 +183,29 @@ static int scale_override_count = 0;
 static bool scale_overrides_loaded = false;
 
 
+// ── Non-scale display config (primary EDID, future: arrangement) ──────
+//
+// Persistence file: ~/.local/share/moonrock/display-config.conf
+//
+//   # MoonRock display config (non-scale)
+//   primary=a1b2c3d4e5f60718
+//
+// Kept separate from display-scales.conf so the two concerns — per-EDID
+// scale overrides vs. the single system-wide primary choice — don't
+// fight for the same schema. Arrangement (and, later, mirror-mode) will
+// land as additional lines in this file under their own key prefixes.
+//
+// g_primary_edid is the EDID hash of the user's chosen primary output.
+// g_primary_edid_set gates whether we try to apply it; false means "let
+// XRandR's default pick win, same as before the setting existed." The
+// apply pass (see apply_persisted_primary) runs at the end of every
+// display_init() entry so hotplugs that (re)introduce the chosen
+// monitor immediately restore it to primary.
+static uint8_t g_primary_edid[8];
+static bool g_primary_edid_set = false;
+static bool display_config_loaded = false;
+
+
 // FNV-1a 64-bit hash. No dependencies, well-behaved avalanche on
 // short inputs (EDIDs are 128+ bytes), and the 64-bit digest is more than
 // enough to distinguish every display a user will ever own.
@@ -413,6 +436,131 @@ static bool save_scale_overrides(void)
     return true;
 }
 
+
+// ── display-config.conf: primary EDID persistence ─────────────────────
+//
+// Resolve the non-scale config file path. Honors XDG_DATA_HOME, falling
+// back to ~/.local/share. Same shape as scale_override_path() so both
+// files land in the same directory and both honor the same override.
+static bool display_config_path(char *out, size_t out_len)
+{
+    const char *xdg = getenv("XDG_DATA_HOME");
+    if (xdg && *xdg) {
+        int n = snprintf(out, out_len,
+                         "%s/moonrock/display-config.conf", xdg);
+        return n > 0 && (size_t)n < out_len;
+    }
+    const char *home = getenv("HOME");
+    if (!home || !*home) {
+        struct passwd *pw = getpwuid(getuid());
+        if (!pw || !pw->pw_dir) return false;
+        home = pw->pw_dir;
+    }
+    int n = snprintf(out, out_len,
+                     "%s/.local/share/moonrock/display-config.conf", home);
+    return n > 0 && (size_t)n < out_len;
+}
+
+// Load persisted non-scale display settings into the module-level state.
+// Called exactly once per process — like load_scale_overrides_once(),
+// the in-memory state is the source of truth after startup so hotplug
+// re-enumeration never re-reads from disk and clobbers a pending user
+// change.
+static void load_display_config_once(void)
+{
+    if (display_config_loaded) return;
+    display_config_loaded = true;
+    g_primary_edid_set = false;
+    memset(g_primary_edid, 0, sizeof(g_primary_edid));
+
+    char path[512];
+    if (!display_config_path(path, sizeof(path))) return;
+
+    FILE *fp = fopen(path, "r");
+    if (!fp) return; // First run or absent — treat as "no override."
+
+    char line[128];
+    while (fgets(line, sizeof(line), fp)) {
+        // Strip leading whitespace + comments + empty lines.
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '#' || *p == '\n' || *p == '\0') continue;
+
+        // key=value parse. Only 'primary' is recognized today; additional
+        // keys (arrangement, mirror-mode) extend the same grammar later.
+        char *eq = strchr(p, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        char *val = eq + 1;
+        // Trim the trailing newline from val.
+        char *nl = strchr(val, '\n');
+        if (nl) *nl = '\0';
+
+        if (strcmp(p, "primary") == 0) {
+            // 16 hex chars = one EDID hash.
+            if (strlen(val) >= 16 && hex_to_hash(val, g_primary_edid)) {
+                g_primary_edid_set = true;
+            } else {
+                fprintf(stderr,
+                        "[display] Ignoring malformed 'primary=%s' in %s\n",
+                        val, path);
+            }
+        }
+        // Future keys land here.
+    }
+    fclose(fp);
+
+    if (g_primary_edid_set) {
+        char hex[17];
+        hash_to_hex(g_primary_edid, hex);
+        fprintf(stderr,
+                "[display] Loaded persisted primary EDID %s from %s\n",
+                hex, path);
+    }
+}
+
+// Atomic rewrite of display-config.conf. Mirrors save_scale_overrides()
+// so the two config files stay consistent in error handling.
+static bool save_display_config(void)
+{
+    char path[512];
+    if (!display_config_path(path, sizeof(path))) return false;
+    ensure_parent_dir(path);
+
+    char tmp[576];
+    int n = snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    if (n <= 0 || (size_t)n >= sizeof(tmp)) return false;
+
+    FILE *fp = fopen(tmp, "w");
+    if (!fp) {
+        fprintf(stderr, "[display] save display config: fopen(%s): %s\n",
+                tmp, strerror(errno));
+        return false;
+    }
+
+    fprintf(fp,
+            "# MoonRock display config (non-scale)\n"
+            "# Written by MoonRock. Hand-edit at your own risk.\n");
+    if (g_primary_edid_set) {
+        char hex[17];
+        hash_to_hex(g_primary_edid, hex);
+        fprintf(fp, "primary=%s\n", hex);
+    }
+    if (fflush(fp) != 0 || fclose(fp) != 0) {
+        fprintf(stderr, "[display] save display config: write failed\n");
+        unlink(tmp);
+        return false;
+    }
+
+    if (rename(tmp, path) != 0) {
+        fprintf(stderr, "[display] save display config: rename(%s,%s): %s\n",
+                tmp, path, strerror(errno));
+        unlink(tmp);
+        return false;
+    }
+    return true;
+}
+
 // Read the raw EDID blob for an output into a caller-allocated buffer.
 // Returns the number of bytes actually read (0 on failure). EDID blocks
 // are 128 bytes; monitors with CEA-861 extensions add blocks of 128 bytes
@@ -580,6 +728,11 @@ bool display_init(Display *dpy, int screen)
     // table stays authoritative so a set from SysPrefs is never clobbered
     // by a concurrent hotplug re-enumeration.
     load_scale_overrides_once();
+
+    // Load persisted non-scale config (primary EDID today; arrangement +
+    // mirror-mode planned). Same one-shot semantics as the scale loader:
+    // in-memory state is the source of truth after startup.
+    load_display_config_once();
 
     // Startup pre-pass: catch any output that's already connected but
     // has no CRTC assigned. This happens when MoonRock launches with an
@@ -809,6 +962,55 @@ bool display_init(Display *dpy, int screen)
         outputs[0].primary = true;
         fprintf(stderr, "[display] No primary output set — defaulting to %s\n",
                 outputs[0].name);
+    }
+
+    // Apply the user's persisted primary-output choice, if any. This runs
+    // on every display_init() entry so hotplugs that reconnect the chosen
+    // monitor immediately restore it to primary — even if XRandR gave
+    // primary to a different output during re-enumeration.
+    //
+    // Guarded by an edid-match + already-primary check so a no-change
+    // re-entry (hotplug event that didn't affect primary) doesn't issue
+    // an XRRSetOutputPrimary round-trip. That same check also breaks a
+    // potential hotplug feedback loop: the XRRSetOutputPrimary below
+    // triggers an RRScreenChangeNotify which re-enters display_init;
+    // on re-entry the persisted EDID matches the now-primary output and
+    // this block is a no-op.
+    if (g_primary_edid_set) {
+        MROutput *target = NULL;
+        for (int i = 0; i < output_count; i++) {
+            if (memcmp(outputs[i].edid_hash,
+                       g_primary_edid, 8) == 0) {
+                target = &outputs[i];
+                break;
+            }
+        }
+        if (target && !target->primary) {
+            XRRSetOutputPrimary(dpy, display_root,
+                                (RROutput)target->output_id);
+            // Reflect the change locally so the publish below (and any
+            // display_get_primary() caller between here and the next
+            // RandR event) sees the corrected state.
+            for (int i = 0; i < output_count; i++) {
+                outputs[i].primary = (&outputs[i] == target);
+            }
+            fprintf(stderr,
+                    "[display] Restored persisted primary: %s\n",
+                    target->name);
+        } else if (!target) {
+            // Persisted monitor isn't plugged in right now. Leave
+            // XRandR's current choice alone; the apply runs again on
+            // every hotplug so the choice reasserts itself as soon as
+            // the monitor reappears. A debug line here helps explain
+            // to a confused user why a just-set "primary = HDMI-1"
+            // doesn't take effect this session (they undocked).
+            char hex[17];
+            hash_to_hex(g_primary_edid, hex);
+            fprintf(stderr,
+                    "[display] Persisted primary EDID %s not currently "
+                    "connected — deferring to hotplug\n",
+                    hex);
+        }
     }
 
     // Initialize the frame metrics with sensible defaults.
@@ -1533,6 +1735,130 @@ void display_handle_scale_request(Display *dpy, Window root)
     // Delete the property so an immediate re-write of the same value still
     // produces a PropertyNotify (X11 only fires notifications on value
     // *change* or on a fresh set-after-delete).
+    XDeleteProperty(dpy, root, atom);
+}
+
+
+// ============================================================================
+//  Reverse primary-request atom — pane writes, MoonRock reads
+// ============================================================================
+//
+// The Displays pane writes a single bare output name + newline to the
+// root-window property _MOONROCK_SET_PRIMARY_OUTPUT (see moonrock_scale.h).
+// MoonRock reads it here and applies the change: XRRSetOutputPrimary on
+// the matching output, in-memory update of every outputs[].primary bool,
+// republish of the scale table, and persistence of the EDID hash so the
+// choice survives logout/login.
+//
+// An empty payload clears the persisted primary — XRandR then picks the
+// primary automatically on subsequent sessions.
+
+static Atom g_set_primary_atom = None;
+
+Atom display_primary_request_atom(Display *dpy)
+{
+    if (g_set_primary_atom == None && dpy) {
+        g_set_primary_atom = XInternAtom(dpy,
+                                         MOONROCK_SET_PRIMARY_ATOM_NAME,
+                                         False);
+    }
+    return g_set_primary_atom;
+}
+
+void display_handle_primary_request(Display *dpy, Window root)
+{
+    if (!dpy) return;
+    Atom atom = display_primary_request_atom(dpy);
+    if (atom == None) return;
+
+    Atom actual_type = None;
+    int  actual_format = 0;
+    unsigned long nitems = 0, bytes_after = 0;
+    unsigned char *prop = NULL;
+
+    int rc = XGetWindowProperty(dpy, root, atom,
+                                0, 256, False, AnyPropertyType,
+                                &actual_type, &actual_format,
+                                &nitems, &bytes_after, &prop);
+    if (rc != Success || !prop) {
+        if (prop) XFree(prop);
+        return;
+    }
+
+    // The pane writes one line: a bare output name plus '\n'. An empty
+    // payload (just '\n' or zero bytes) means "clear the persisted
+    // override."
+    char line[MOONROCK_SCALE_NAME_MAX + 2];
+    size_t len = (size_t)nitems;
+    if (len >= sizeof(line)) len = sizeof(line) - 1;
+    memcpy(line, prop, len);
+    line[len] = '\0';
+    XFree(prop);
+
+    char *nl = strchr(line, '\n');
+    if (nl) *nl = '\0';
+
+    // Strip leading whitespace so "   \n" reads as "clear."
+    char *p = line;
+    while (*p == ' ' || *p == '\t') p++;
+
+    if (*p == '\0') {
+        // Empty payload — clear the persisted primary. XRandR's current
+        // choice is left in place for this session; future sessions
+        // fall back to XRandR's default pick.
+        g_primary_edid_set = false;
+        memset(g_primary_edid, 0, sizeof(g_primary_edid));
+        (void)save_display_config();
+        fprintf(stderr, "[display] Primary override cleared\n");
+        XDeleteProperty(dpy, root, atom);
+        return;
+    }
+
+    MROutput *target = find_output_by_name(p);
+    if (!target) {
+        fprintf(stderr,
+                "[display] Primary request for unknown output '%s' — ignoring\n",
+                p);
+        XDeleteProperty(dpy, root, atom);
+        return;
+    }
+
+    // Guard against outputs with no EDID — we can't persist those across
+    // reconnects, so refuse the request rather than silently write a
+    // zero-hash that matches every future EDID-less output.
+    bool has_edid = false;
+    for (int i = 0; i < 8; i++) {
+        if (target->edid_hash[i] != 0) { has_edid = true; break; }
+    }
+    if (!has_edid) {
+        fprintf(stderr,
+                "[display] Primary request for '%s' rejected: no EDID hash\n",
+                p);
+        XDeleteProperty(dpy, root, atom);
+        return;
+    }
+
+    // Commit the XRandR change first. If it fails (X server refusal,
+    // invalid output ID), we log and skip the persistence step.
+    XRRSetOutputPrimary(dpy, display_root, (RROutput)target->output_id);
+
+    // Reflect the change locally so display_get_primary() and the next
+    // publish see the correct state without waiting for the X server's
+    // follow-up RRScreenChangeNotify.
+    for (int i = 0; i < output_count; i++) {
+        outputs[i].primary = (&outputs[i] == target);
+    }
+
+    // Persist by EDID hash — same port or different port next time, the
+    // same physical monitor wins.
+    memcpy(g_primary_edid, target->edid_hash, 8);
+    g_primary_edid_set = true;
+
+    fprintf(stderr, "[display] Primary request: %s — applied + persisted\n",
+            target->name);
+
+    publish_scales_to_root();
+    (void)save_display_config();
     XDeleteProperty(dpy, root, atom);
 }
 

@@ -361,6 +361,24 @@ Atom display_scale_request_atom(Display *dpy);
 void display_handle_scale_request(Display *dpy, Window root);
 
 
+// ── Reverse primary-request atom: pane → MoonRock ──────────────────────
+// The Displays pane writes its chosen primary output to the
+// _MOONROCK_SET_PRIMARY_OUTPUT root-window property (see moonrock_scale.h).
+// The WM event loop calls display_handle_primary_request() from the
+// PropertyNotify dispatch; this reads the name, calls XRRSetOutputPrimary
+// on the matching output, persists the EDID hash to
+// ~/.local/share/moonrock/display-config.conf, and deletes the property
+// so a repeat write still produces a PropertyNotify. An empty payload
+// clears the persisted override.
+
+// Atom for _MOONROCK_SET_PRIMARY_OUTPUT. Interned lazily on first call.
+Atom display_primary_request_atom(Display *dpy);
+
+// Read, parse, dispatch, and delete the request property on `root`.
+// No-op if the property is missing or malformed.
+void display_handle_primary_request(Display *dpy, Window root);
+
+
 // Get the viewport rectangle for a specific output.
 //
 // Fills in the position and size of the given output within the virtual

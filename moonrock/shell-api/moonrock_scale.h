@@ -62,6 +62,24 @@
 // of 0 clears the user override and reverts to the EDID-derived default.
 #define MOONROCK_SET_SCALE_ATOM_NAME "_MOONROCK_SET_OUTPUT_SCALE"
 
+// Reverse-direction atom for designating an output as the XRandR primary.
+// systemcontrol's Displays pane writes a single bare output name plus
+// newline:
+//
+//     <output_name>\n             e.g. "HDMI-1\n"
+//
+// on this atom (UTF8_STRING, format 8). MoonRock parses the name, calls
+// XRRSetOutputPrimary on the matching output, persists the chosen EDID hash
+// to ~/.local/share/moonrock/display-config.conf so the choice survives
+// logout/login and cable swaps, and deletes the property so a repeat write
+// still generates a PropertyNotify. An empty payload clears the user
+// override (XRandR picks automatically).
+//
+// Slightly different naming from SET_SCALE: here the subject of the verb is
+// "the primary" not "an output's primary", so SET_PRIMARY_OUTPUT reads
+// better than SET_OUTPUT_PRIMARY.
+#define MOONROCK_SET_PRIMARY_ATOM_NAME "_MOONROCK_SET_PRIMARY_OUTPUT"
+
 // Cap on how many outputs we parse into a single table. Matches
 // MAX_OUTPUTS on the publisher side so we never drop a legitimate entry.
 #define MOONROCK_SCALE_MAX_OUTPUTS 16
@@ -146,5 +164,22 @@ moonrock_scale_primary(const MoonRockScaleTable *table);
 // out-of-range value; check the published scale table on the next
 // PropertyNotify to confirm).
 bool moonrock_request_scale(Display *dpy, const char *output_name, float scale);
+
+
+// ── Requester — systemcontrol Displays pane → MoonRock ──────────────────
+// Writes _MOONROCK_SET_PRIMARY_OUTPUT on the root window so MoonRock picks
+// up a user-initiated primary change. The new primary is persisted by the
+// output's EDID hash, so the same physical monitor stays primary next
+// login regardless of which port it's plugged into.
+//
+//   output_name — the same name MoonRock publishes in the scale table
+//                 (e.g. "HDMI-1"). Case-sensitive exact match. Pass NULL
+//                 or an empty string to clear the user override and let
+//                 XRandR pick automatically.
+//
+// Returns true on a successful X write (MoonRock rejects unknown names on
+// its side; watch the `primary` field in the next PropertyNotify scale
+// table to confirm).
+bool moonrock_request_primary(Display *dpy, const char *output_name);
 
 #endif // MOONROCK_SCALE_H
