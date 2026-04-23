@@ -411,14 +411,19 @@ static int hit_test_menu(MenuBar *mb, int mx)
         return 0;
     }
 
-    // Check each menu title region
-    const char **menus;
-    int menu_count;
-    appmenu_get_menus(mb->active_class, &menus, &menu_count);
+    // Check each menu title region. Walk the MenuNode tree — the root's
+    // children are the top-level menu titles. A NULL root happens only
+    // during the first-paint gap for a legacy-menu app (see
+    // appmenu_root_for's contract); no menu titles to hit-test in that
+    // window.
+    const MenuNode *root = appmenu_root_for(mb);
+    int menu_count = root ? root->n_children : 0;
 
     int item_x = mb->menus_x;
     for (int i = 0; i < menu_count; i++) {
-        double w = render_measure_text(menus[i], false);
+        const char *title = root->children[i]->label;
+        if (!title) continue;
+        double w = render_measure_text(title, false);
         int item_w = (int)w + S(20);
         if (mx >= item_x && mx < item_x + item_w) {
             return i + 1;
@@ -439,14 +444,15 @@ static void open_menu_at(MenuBar *mb, int index)
     if (index == 0) {
         apple_show_menu(mb);
     } else {
-        // Compute the x position for this menu's dropdown
-        const char **menus;
-        int count;
-        appmenu_get_menus(mb->active_class, &menus, &count);
+        // Walk the MenuNode titles to reach the same X offset the
+        // paint path used when it laid them out.
+        const MenuNode *root = appmenu_root_for(mb);
+        int count = root ? root->n_children : 0;
 
         int dx = mb->menus_x;
         for (int j = 0; j < index - 1 && j < count; j++) {
-            dx += (int)render_measure_text(menus[j], false) + S(20);
+            const char *t = root->children[j]->label;
+            if (t) dx += (int)render_measure_text(t, false) + S(20);
         }
         appmenu_show_dropdown(mb, index - 1, dx);
     }
@@ -509,35 +515,32 @@ void menubar_run(MenuBar *mb)
                         menubar_paint(mb);
                     }
 
-                    // Forward hover to the active dropdown if mouse is inside it
-                    if (mb->open_menu >= 0) {
-                        Window dropdown = (mb->open_menu == 0)
-                            ? apple_get_popup()
-                            : appmenu_get_dropdown_win();
-
+                    // Forward hover to the active dropdown if mouse is inside it.
+                    // Apple menu is one-deep and uses its own helper; app
+                    // menus have a multi-level submenu stack, so we ask
+                    // appmenu which level the pointer is in and forward
+                    // the synthetic motion to that window.
+                    if (mb->open_menu == 0) {
+                        Window dropdown = apple_get_popup();
                         if (dropdown != None) {
                             XWindowAttributes dwa;
                             XGetWindowAttributes(mb->dpy, dropdown, &dwa);
                             if (mx >= dwa.x && mx < dwa.x + dwa.width &&
                                 my >= dwa.y && my < dwa.y + dwa.height) {
-                                int local_y = my - dwa.y;
-                                if (mb->open_menu == 0) {
-                                    apple_handle_motion(mb, local_y);
-                                } else {
-                                    // Forward as synthetic MotionNotify
-                                    XEvent synth = ev;
-                                    synth.xmotion.window = dropdown;
-                                    synth.xmotion.x = mx - dwa.x;
-                                    synth.xmotion.y = local_y;
-                                    XSendEvent(mb->dpy, dropdown, True,
-                                               PointerMotionMask, &synth);
-                                }
+                                apple_handle_motion(mb, my - dwa.y);
                             } else {
-                                // Mouse left dropdown area — clear hover
-                                if (mb->open_menu == 0) {
-                                    apple_handle_motion(mb, -999);
-                                }
+                                apple_handle_motion(mb, -999);
                             }
+                        }
+                    } else if (mb->open_menu > 0) {
+                        Window hit; int lx, ly;
+                        if (appmenu_find_dropdown_at(mb, mx, my, &hit, &lx, &ly)) {
+                            XEvent synth = ev;
+                            synth.xmotion.window = hit;
+                            synth.xmotion.x = lx;
+                            synth.xmotion.y = ly;
+                            XSendEvent(mb->dpy, hit, True,
+                                       PointerMotionMask, &synth);
                         }
                     }
                     break;
@@ -608,50 +611,48 @@ void menubar_run(MenuBar *mb)
                             menubar_paint(mb);
                         }
                     } else {
-                        // Clicked outside the menu bar entirely.
-                        // Check if click is inside the active dropdown popup
-                        // (either the Apple menu or an app menu dropdown).
-                        Window dropdown = None;
+                        // Clicked outside the menu bar entirely. Apple
+                        // menu is a single popup; app menus have a
+                        // submenu stack, so ask appmenu which level
+                        // (if any) contains the point.
+                        bool handled = false;
+
                         if (mb->open_menu == 0) {
-                            dropdown = apple_get_popup();
-                        } else {
-                            dropdown = appmenu_get_dropdown_win();
-                        }
-
-                        if (dropdown != None) {
-                            // Get dropdown geometry to check if click is inside
-                            XWindowAttributes dwa;
-                            XGetWindowAttributes(mb->dpy, dropdown, &dwa);
-                            int dx = dwa.x, dy = dwa.y;
-                            int dw = dwa.width, dh = dwa.height;
-
-                            if (mx >= dx && mx < dx + dw &&
-                                my >= dy && my < dy + dh) {
-                                // Click is inside the dropdown.
-                                int local_x = mx - dx;
-                                int local_y = my - dy;
-
-                                if (mb->open_menu == 0) {
-                                    // Apple menu — handle click and execute action
-                                    if (apple_handle_click(mb, local_x, local_y)) {
+                            Window dropdown = apple_get_popup();
+                            if (dropdown != None) {
+                                XWindowAttributes dwa;
+                                XGetWindowAttributes(mb->dpy, dropdown, &dwa);
+                                if (mx >= dwa.x && mx < dwa.x + dwa.width &&
+                                    my >= dwa.y && my < dwa.y + dwa.height) {
+                                    if (apple_handle_click(mb,
+                                                           mx - dwa.x,
+                                                           my - dwa.y)) {
                                         dismiss_open_menu(mb);
                                         menubar_paint(mb);
                                     }
-                                } else {
-                                    // App menu — re-dispatch to dropdown handler
-                                    XEvent synth = ev;
-                                    synth.xbutton.window = dropdown;
-                                    synth.xbutton.x = local_x;
-                                    synth.xbutton.y = local_y;
-                                    XSendEvent(mb->dpy, dropdown, True, ButtonPressMask, &synth);
-                                    XFlush(mb->dpy);
+                                    handled = true;
                                 }
-                                break;
+                            }
+                        } else if (mb->open_menu > 0) {
+                            Window hit; int lx, ly;
+                            if (appmenu_find_dropdown_at(mb, mx, my,
+                                                         &hit, &lx, &ly)) {
+                                XEvent synth = ev;
+                                synth.xbutton.window = hit;
+                                synth.xbutton.x = lx;
+                                synth.xbutton.y = ly;
+                                XSendEvent(mb->dpy, hit, True,
+                                           ButtonPressMask, &synth);
+                                XFlush(mb->dpy);
+                                handled = true;
                             }
                         }
-                        // Click is truly outside — dismiss
-                        dismiss_open_menu(mb);
-                        menubar_paint(mb);
+
+                        if (!handled) {
+                            // Truly outside every popup — dismiss.
+                            dismiss_open_menu(mb);
+                            menubar_paint(mb);
+                        }
                     }
                     break;
                 }
@@ -702,8 +703,17 @@ void menubar_run(MenuBar *mb)
             case KeyPress: {
                 KeySym sym = XLookupKeysym(&ev.xkey, 0);
                 if (sym == XK_Escape && mb->open_menu >= 0) {
-                    dismiss_open_menu(mb);
-                    menubar_paint(mb);
+                    // If an app menu submenu level is open, Escape
+                    // closes just that one level (macOS parity). Only
+                    // Escape from the top-level dropdown tears the
+                    // whole stack down.
+                    if (mb->open_menu > 0 &&
+                        appmenu_pop_submenu_level(mb)) {
+                        // submenu popped; top-level stays open
+                    } else {
+                        dismiss_open_menu(mb);
+                        menubar_paint(mb);
+                    }
                 }
                 break;
             }
@@ -804,22 +814,25 @@ void menubar_paint(MenuBar *mb)
                                    true, 0.1, 0.1, 0.1);
 
     // ── Menu titles ─────────────────────────────────────────────
-    const char **menus;
-    int menu_count;
-    appmenu_get_menus(mb->active_class, &menus, &menu_count);
+    // Walk the active app's MenuNode root. NULL root = legacy app in
+    // first-paint gap; paint nothing but the app name.
+    const MenuNode *root = appmenu_root_for(mb);
+    int menu_count = root ? root->n_children : 0;
 
     mb->menus_x = mb->appname_x + (int)appname_w + S(16);
 
     int item_x = mb->menus_x;
     for (int i = 0; i < menu_count; i++) {
-        double w = render_measure_text(menus[i], false);
+        const char *title = root->children[i]->label;
+        if (!title) continue;
+        double w = render_measure_text(title, false);
         int item_w = (int)w + S(20);
 
         if (mb->hover_index == i + 1 || mb->open_menu == i + 1) {
             render_hover_highlight(cr, item_x, S(1), item_w, MENUBAR_HEIGHT - S(2));
         }
 
-        render_text(cr, menus[i],
+        render_text(cr, title,
                     item_x + S(10), text_y,
                     false, 0.1, 0.1, 0.1);
 
@@ -846,7 +859,7 @@ void menubar_shutdown(MenuBar *mb)
 {
     appmenu_bridge_shutdown(mb);
     systray_cleanup();
-    appmenu_cleanup();
+    appmenu_cleanup(mb);
     apple_cleanup();
     render_cleanup();
 

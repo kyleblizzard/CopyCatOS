@@ -1,24 +1,30 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// appmenu.c — Application menu tracking and dropdown rendering
+// appmenu.c — Application menu tracking + dropdown rendering.
 //
-// This module does two jobs:
+// Three responsibilities:
 //
 // 1. ACTIVE WINDOW TRACKING
-//    The X11 window manager updates a property called _NET_ACTIVE_WINDOW
-//    on the root window whenever the focused app changes. We read that
-//    property, then look up the window's WM_CLASS to figure out which
-//    application it is (e.g., "dolphin" -> "Finder").
+//    Read _NET_ACTIVE_WINDOW off the root, resolve WM_CLASS into a
+//    display name, write both back to mb->active_app / ->active_class.
 //
-// 2. DROPDOWN MENUS
-//    When the user clicks a menu title, we create an override-redirect
-//    popup window below it and fill it with menu items. Override-redirect
-//    means the window manager ignores the window — it appears instantly
-//    with no decorations, just like a real menu.
+// 2. MENU MODEL
+//    Native fallback: five built-in MenuNode trees, one per app class
+//    we know (Finder, Terminal, browser, sysprefs, default). Built once
+//    in appmenu_init from the Snow Leopard defaults.
+//    Legacy mode: when the active window is registered with the
+//    AppMenu.Registrar bridge, we spin up a DbusMenuClient pointed at
+//    that endpoint. Its imported root replaces the built-in fallback
+//    while that window is active. Both paths hand the renderer the
+//    same MenuNode shape — the source-tag flag on each node decides
+//    which dispatch branch fires (legacy → dbusmenu Event; built-in →
+//    label-based ICCCM/EWMH ClientMessage).
 //
-//    Hover highlighting is handled by tracking mouse motion inside the
-//    dropdown and repainting when the hovered item changes. Keyboard
-//    shortcuts are drawn right-aligned next to each item.
+// 3. DROPDOWN RENDERING
+//    Submenus need to drill in (File → Recent Files → individual file
+//    names on Qt's AppMenu). A bounded stack of popup windows lets the
+//    user hover-to-open arbitrarily deep. Each level paints its own
+//    Cairo surface; hover / spawn / dismiss logic is per-level.
 
 #define _GNU_SOURCE  // For M_PI and strcasecmp under strict C11
 
@@ -37,9 +43,13 @@
 #include <X11/keysym.h>
 
 #include "appmenu.h"
+#include "appmenu_bridge.h"
+#include "dbusmenu_client.h"
+#include "menu_model.h"
 #include "render.h"
 
 // ── Font scaling helper (mirrors the one in render.c) ──────────────
+
 static char *appmenu_scaled_font(const char *base_name, int base_size)
 {
     static char buf[128];
@@ -50,13 +60,11 @@ static char *appmenu_scaled_font(const char *base_name, int base_size)
 }
 
 // ── App name mapping ────────────────────────────────────────────────
-// Maps WM_CLASS strings to human-readable names. WM_CLASS is a
-// standardized X11 property that identifies which program owns a window.
-// We match case-insensitively to handle variations.
+// WM_CLASS → display name. Case-insensitive match.
 
 static const struct {
-    const char *wm_class;  // What the X11 window reports
-    const char *name;      // What we display in the menu bar
+    const char *wm_class;
+    const char *name;
 } app_names[] = {
     {"dolphin",          "Finder"},
     {"konsole",          "Terminal"},
@@ -69,371 +77,501 @@ static const struct {
     {"kdenlive",         "Kdenlive"},
     {"strawberry",       "Strawberry"},
     {"systemsettings",   "System Preferences"},
-    {"desktop",       "Finder"},
-
-    // KDE apps — appear as their KDE identities
-    {"ark",               "Archive Utility"},
-    {"spectacle",         "Screenshot"},
-    {"okular",            "Preview"},
-    {"gwenview",          "Preview"},
-    {"kolourpaint",       "Paintbrush"},
-    {"kcolorchooser",     "Digital Color Meter"},
-    {"kwrite",            "TextEdit"},
-    {"gedit",             "TextEdit"},
-    {"mousepad",          "TextEdit"},
-    {"featherpad",        "TextEdit"},
-    {"libreoffice",       "Pages"},
-    {"soffice",           "Pages"},
-    {"vlc",               "QuickTime Player"},
-    {"mpv",               "QuickTime Player"},
-    {"totem",             "QuickTime Player"},
-    {"audacity",          "GarageBand"},
-    {"obs",               "QuickTime Player"},
-    {"signal",            "Messages"},
-    {"thunderbird",       "Mail"},
-    {"evolution",         "Mail"},
+    {"desktop",          "Finder"},
+    {"ark",              "Archive Utility"},
+    {"spectacle",        "Screenshot"},
+    {"okular",           "Preview"},
+    {"gwenview",         "Preview"},
+    {"kolourpaint",      "Paintbrush"},
+    {"kcolorchooser",    "Digital Color Meter"},
+    {"kwrite",           "TextEdit"},
+    {"gedit",            "TextEdit"},
+    {"mousepad",         "TextEdit"},
+    {"featherpad",       "TextEdit"},
+    {"libreoffice",      "Pages"},
+    {"soffice",          "Pages"},
+    {"vlc",              "QuickTime Player"},
+    {"mpv",              "QuickTime Player"},
+    {"totem",            "QuickTime Player"},
+    {"audacity",         "GarageBand"},
+    {"obs",              "QuickTime Player"},
+    {"signal",           "Messages"},
+    {"thunderbird",      "Mail"},
+    {"evolution",        "Mail"},
     {"nm-connection-editor", "Network Preferences"},
-    {"systemcontrol",       "System Preferences"},
-    {"searchsystem",      "Spotlight"},
-    {"steam",             "Steam"},
-    {"lutris",            "Lutris"},
-    {"heroic",            "Game Center"},
-
-    {NULL,               NULL}
+    {"systemcontrol",    "System Preferences"},
+    {"searchsystem",     "Spotlight"},
+    {"steam",            "Steam"},
+    {"lutris",           "Lutris"},
+    {"heroic",           "Game Center"},
+    {NULL, NULL}
 };
 
-// ── Menu title definitions ──────────────────────────────────────────
-// Each app has a specific set of menu titles shown in the bar.
-// These are static arrays that live for the entire program lifetime.
+// ── Apple-key accelerator glyphs ────────────────────────────────────
+// UTF-8 byte sequences for the four modifier glyphs the Aqua menu
+// renders. Ctrl is mapped to ⌘ (the standard Snow Leopard substitution
+// for Linux apps — a Linux-native Ctrl+S becomes ⌘S on our bar).
 
-static const char *default_menus[] = {"File", "Edit", "View", "Window", "Help"};
-static const int   default_menu_count = 5;
+#define GLYPH_CMD        "\xe2\x8c\x98" // ⌘
+#define GLYPH_OPT        "\xe2\x8c\xa5" // ⌥
+#define GLYPH_SHIFT      "\xe2\x87\xa7" // ⇧
+#define GLYPH_CTRL_CARET "\xe2\x8c\x83" // ⌃ (unused — see shortcut_to_aqua note)
+#define GLYPH_BACKSPACE  "\xe2\x8c\xab" // ⌫
 
-static const char *finder_menus[] = {"File", "Edit", "View", "Go", "Window", "Help"};
-static const int   finder_menu_count = 6;
+// ── Built-in MenuNode trees ─────────────────────────────────────────
+// One root per app class we recognise. These replace the static char *
+// arrays that used to live here — now both the native and the legacy
+// render paths walk MenuNodes, which keeps dropdown rendering source-
+// agnostic.
 
-static const char *terminal_menus[] = {"Shell", "Edit", "View", "Window", "Help"};
-static const int   terminal_menu_count = 5;
+static MenuNode *builtin_default_root;
+static MenuNode *builtin_finder_root;
+static MenuNode *builtin_terminal_root;
+static MenuNode *builtin_browser_root;
+static MenuNode *builtin_sysprefs_root;
 
-static const char *browser_menus[] = {"File", "Edit", "View", "History", "Bookmarks", "Window", "Help"};
-static const int   browser_menu_count = 7;
+static MenuNode *mk_item(const char *label, const char *shortcut)
+{
+    MenuNode *n = menu_node_new_item(label);
+    if (shortcut) n->shortcut = strdup(shortcut);
+    // Built-in trees dispatch by label (legacy ICCCM/EWMH paths from
+    // the Snow Leopard fallback). action_kind stays MENU_ACTION_NONE —
+    // dispatch_menu_action strcmp's the label.
+    return n;
+}
 
-// System Preferences menu titles
-static const char *sysprefs_menus[] = {"File", "Edit", "View", "Window", "Help"};
-static const int   sysprefs_menu_count = 5;
+// Shared File submenu used by all non-Terminal roots.
+static MenuNode *build_finder_file_menu(void)
+{
+    MenuNode *file = menu_node_new_item("File");
+    menu_node_add_child(file, mk_item("New Finder Window", GLYPH_CMD "N"));
+    menu_node_add_child(file, mk_item("New Folder",        GLYPH_SHIFT GLYPH_CMD "N"));
+    menu_node_add_child(file, mk_item("Open",              GLYPH_CMD "O"));
+    menu_node_add_child(file, mk_item("Close Window",      GLYPH_CMD "W"));
+    menu_node_add_child(file, menu_node_new_separator());
+    menu_node_add_child(file, mk_item("Get Info",          GLYPH_CMD "I"));
+    menu_node_add_child(file, menu_node_new_separator());
+    menu_node_add_child(file, mk_item("Move to Trash",     GLYPH_CMD GLYPH_BACKSPACE));
+    return file;
+}
 
-// ── Dropdown menu item definitions ──────────────────────────────────
-// A menu item is either a regular item (with a label) or a separator
-// (drawn as a horizontal line). The "---" string signals a separator.
+static MenuNode *build_generic_file_menu(void)
+{
+    MenuNode *file = menu_node_new_item("File");
+    menu_node_add_child(file, mk_item("New",          GLYPH_CMD "N"));
+    menu_node_add_child(file, mk_item("Open",         GLYPH_CMD "O"));
+    menu_node_add_child(file, mk_item("Close Window", GLYPH_CMD "W"));
+    menu_node_add_child(file, menu_node_new_separator());
+    menu_node_add_child(file, mk_item("Save",         GLYPH_CMD "S"));
+    return file;
+}
 
-// File menu items for Finder
-static const char *file_items[] = {
-    "New Finder Window", "New Folder", "Open", "Close Window",
-    "---", "Get Info", "---", "Move to Trash"
-};
-static const int file_item_count = 8;
+static MenuNode *build_edit_menu(void)
+{
+    MenuNode *edit = menu_node_new_item("Edit");
+    menu_node_add_child(edit, mk_item("Undo",       GLYPH_CMD "Z"));
+    menu_node_add_child(edit, mk_item("Redo",       GLYPH_SHIFT GLYPH_CMD "Z"));
+    menu_node_add_child(edit, menu_node_new_separator());
+    menu_node_add_child(edit, mk_item("Cut",        GLYPH_CMD "X"));
+    menu_node_add_child(edit, mk_item("Copy",       GLYPH_CMD "C"));
+    menu_node_add_child(edit, mk_item("Paste",      GLYPH_CMD "V"));
+    menu_node_add_child(edit, mk_item("Select All", GLYPH_CMD "A"));
+    return edit;
+}
 
-// Keyboard shortcut labels for File menu items.
-// NULL means no shortcut. These are drawn right-aligned in the dropdown.
-static const char *file_shortcuts[] = {
-    "\xe2\x8c\x98N", "\xe2\x87\xa7\xe2\x8c\x98N", "\xe2\x8c\x98O", "\xe2\x8c\x98W",
-    NULL, "\xe2\x8c\x98I", NULL, "\xe2\x8c\x98\xe2\x8c\xab"
-};
+static MenuNode *build_finder_view_menu(void)
+{
+    MenuNode *view = menu_node_new_item("View");
+    menu_node_add_child(view, mk_item("as Icons",       NULL));
+    menu_node_add_child(view, mk_item("as List",        NULL));
+    menu_node_add_child(view, mk_item("as Columns",     NULL));
+    menu_node_add_child(view, mk_item("as Cover Flow",  NULL));
+    menu_node_add_child(view, menu_node_new_separator());
+    menu_node_add_child(view, mk_item("Show Path Bar",   NULL));
+    menu_node_add_child(view, mk_item("Show Status Bar", NULL));
+    return view;
+}
 
-// Edit menu items (shared by most apps)
-static const char *edit_items[] = {
-    "Undo", "Redo", "---", "Cut", "Copy", "Paste", "Select All"
-};
-static const int edit_item_count = 7;
+static MenuNode *build_generic_view_menu(void)
+{
+    MenuNode *view = menu_node_new_item("View");
+    menu_node_add_child(view, mk_item("Show Toolbar", NULL));
+    menu_node_add_child(view, mk_item("Show Sidebar", NULL));
+    return view;
+}
 
-// Keyboard shortcut labels for Edit menu items
-static const char *edit_shortcuts[] = {
-    "\xe2\x8c\x98Z", "\xe2\x87\xa7\xe2\x8c\x98Z", NULL,
-    "\xe2\x8c\x98X", "\xe2\x8c\x98C", "\xe2\x8c\x98V", "\xe2\x8c\x98A"
-};
+static MenuNode *build_go_menu(void)
+{
+    MenuNode *go = menu_node_new_item("Go");
+    menu_node_add_child(go, mk_item("Back",             NULL));
+    menu_node_add_child(go, mk_item("Forward",          NULL));
+    menu_node_add_child(go, mk_item("Enclosing Folder", NULL));
+    menu_node_add_child(go, menu_node_new_separator());
+    menu_node_add_child(go, mk_item("Computer",     NULL));
+    menu_node_add_child(go, mk_item("Home",         NULL));
+    menu_node_add_child(go, mk_item("Desktop",      NULL));
+    menu_node_add_child(go, mk_item("Downloads",    NULL));
+    menu_node_add_child(go, mk_item("Applications", NULL));
+    return go;
+}
 
-// View menu items for Finder
-static const char *view_items[] = {
-    "as Icons", "as List", "as Columns", "as Cover Flow",
-    "---", "Show Path Bar", "Show Status Bar"
-};
-static const int view_item_count = 7;
+static MenuNode *build_window_menu(void)
+{
+    MenuNode *win = menu_node_new_item("Window");
+    menu_node_add_child(win, mk_item("Minimize",           GLYPH_CMD "M"));
+    menu_node_add_child(win, mk_item("Zoom",               NULL));
+    menu_node_add_child(win, menu_node_new_separator());
+    menu_node_add_child(win, mk_item("Bring All to Front", NULL));
+    return win;
+}
 
-// Go menu items for Finder
-static const char *go_items[] = {
-    "Back", "Forward", "Enclosing Folder", "---",
-    "Computer", "Home", "Desktop", "Downloads", "Applications"
-};
-static const int go_item_count = 9;
+static MenuNode *build_help_menu(void)
+{
+    MenuNode *help = menu_node_new_item("Help");
+    menu_node_add_child(help, mk_item("Search", NULL));
+    menu_node_add_child(help, menu_node_new_separator());
+    menu_node_add_child(help, mk_item("CopyCatOS Help", NULL));
+    return help;
+}
 
-// Window menu items
-static const char *window_items[] = {
-    "Minimize", "Zoom", "---", "Bring All to Front"
-};
-static const int window_item_count = 4;
+static MenuNode *build_shell_menu(void)
+{
+    MenuNode *shell = menu_node_new_item("Shell");
+    menu_node_add_child(shell, mk_item("New Window",  GLYPH_CMD "N"));
+    menu_node_add_child(shell, mk_item("New Tab",     GLYPH_CMD "T"));
+    menu_node_add_child(shell, menu_node_new_separator());
+    menu_node_add_child(shell, mk_item("Close Window", GLYPH_CMD "W"));
+    menu_node_add_child(shell, mk_item("Close Tab",    GLYPH_OPT GLYPH_CMD "W"));
+    return shell;
+}
 
-// Keyboard shortcut labels for Window menu items.
-// ⌘M = minimize. Zoom has no keyboard shortcut in Snow Leopard.
-static const char *window_shortcuts[] = {
-    "\xe2\x8c\x98M",   // ⌘M — Minimize
-    NULL,               // Zoom (no keyboard shortcut in SL)
-    NULL,               // --- separator
-    NULL                // Bring All to Front
-};
+static MenuNode *build_history_menu(void)
+{
+    MenuNode *h = menu_node_new_item("History");
+    menu_node_add_child(h, mk_item("Show All History", NULL));
+    menu_node_add_child(h, menu_node_new_separator());
+    menu_node_add_child(h, mk_item("Recently Closed", NULL));
+    return h;
+}
 
-// Help menu items
-static const char *help_items[] = {
-    "Search", "---", "CopyCatOS Help"
-};
-static const int help_item_count = 3;
+static MenuNode *build_bookmarks_menu(void)
+{
+    MenuNode *b = menu_node_new_item("Bookmarks");
+    menu_node_add_child(b, mk_item("Show All Bookmarks",    NULL));
+    menu_node_add_child(b, mk_item("Bookmark This Page...", NULL));
+    menu_node_add_child(b, menu_node_new_separator());
+    menu_node_add_child(b, mk_item("Bookmarks Bar", NULL));
+    return b;
+}
 
-// Shell menu items for Terminal
-static const char *shell_items[] = {
-    "New Window", "New Tab", "---", "Close Window", "Close Tab"
-};
-static const int shell_item_count = 5;
+// Assemble a root whose children are a given sequence of top-level
+// menus. The root itself carries no label and no action — it's the
+// synthetic parent whose children are the bar's menu titles.
+static MenuNode *build_root(MenuNode **menus, int n)
+{
+    MenuNode *root = menu_node_new_item(NULL);
+    for (int i = 0; i < n; i++) menu_node_add_child(root, menus[i]);
+    return root;
+}
 
-// Keyboard shortcut labels for Shell menu items.
-static const char *shell_shortcuts[] = {
-    "\xe2\x8c\x98N",                           // ⌘N — New Window
-    "\xe2\x8c\x98T",                           // ⌘T — New Tab
-    NULL,                                       // --- separator
-    "\xe2\x8c\x98W",                           // ⌘W — Close Window
-    "\xe2\x8c\xa5\xe2\x8c\x98W"               // ⌥⌘W — Close Tab (Option+Cmd+W)
-};
+static void build_all_builtin_trees(void)
+{
+    // Finder
+    {
+        MenuNode *menus[] = {
+            build_finder_file_menu(),
+            build_edit_menu(),
+            build_finder_view_menu(),
+            build_go_menu(),
+            build_window_menu(),
+            build_help_menu(),
+        };
+        builtin_finder_root = build_root(menus, 6);
+    }
 
-// History menu items for browsers
-static const char *history_items[] = {
-    "Show All History", "---", "Recently Closed"
-};
-static const int history_item_count = 3;
+    // Terminal
+    {
+        MenuNode *menus[] = {
+            build_shell_menu(),
+            build_edit_menu(),
+            build_generic_view_menu(),
+            build_window_menu(),
+            build_help_menu(),
+        };
+        builtin_terminal_root = build_root(menus, 5);
+    }
 
-// Bookmarks menu items for browsers
-static const char *bookmarks_items[] = {
-    "Show All Bookmarks", "Bookmark This Page...", "---", "Bookmarks Bar"
-};
-static const int bookmarks_item_count = 4;
+    // Browser
+    {
+        MenuNode *menus[] = {
+            build_generic_file_menu(),
+            build_edit_menu(),
+            build_generic_view_menu(),
+            build_history_menu(),
+            build_bookmarks_menu(),
+            build_window_menu(),
+            build_help_menu(),
+        };
+        builtin_browser_root = build_root(menus, 7);
+    }
 
-// ── Module state ────────────────────────────────────────────────────
+    // System Preferences
+    {
+        MenuNode *menus[] = {
+            build_generic_file_menu(),
+            build_edit_menu(),
+            build_generic_view_menu(),
+            build_window_menu(),
+            build_help_menu(),
+        };
+        builtin_sysprefs_root = build_root(menus, 5);
+    }
 
-// The currently open dropdown popup window. None if no menu is open.
-static Window dropdown_win = None;
+    // Default (unknown apps)
+    {
+        MenuNode *menus[] = {
+            build_generic_file_menu(),
+            build_edit_menu(),
+            build_generic_view_menu(),
+            build_window_menu(),
+            build_help_menu(),
+        };
+        builtin_default_root = build_root(menus, 5);
+    }
+}
 
-// State for the currently open dropdown — needed for hover tracking
-// and repaint on mouse motion within the popup.
-static const char **dropdown_items     = NULL;   // Points into static item arrays
-static const char **dropdown_shortcuts = NULL;   // Keyboard shortcut labels (may be NULL)
-static int          dropdown_item_count = 0;
-static int          dropdown_hover      = -1;    // Which item the mouse is over (-1 = none)
-static int          dropdown_w          = 0;     // Popup width in pixels
-static int          dropdown_h          = 0;     // Popup height in pixels
+static const MenuNode *builtin_root_for_class(const char *app_class)
+{
+    if (!app_class) return builtin_default_root;
 
-// Event mask for the dropdown — we need mouse clicks, motion for hover
-// highlighting, expose for repaints, and key presses for Escape.
+    if (strcasecmp(app_class, "dolphin") == 0 ||
+        strcasecmp(app_class, "desktop") == 0) {
+        return builtin_finder_root;
+    }
+    if (strcasecmp(app_class, "konsole") == 0) {
+        return builtin_terminal_root;
+    }
+    if (strcasecmp(app_class, "brave-browser") == 0 ||
+        strcasecmp(app_class, "firefox") == 0) {
+        return builtin_browser_root;
+    }
+    if (strcasecmp(app_class, "systemcontrol") == 0 ||
+        strcasecmp(app_class, "systemsettings") == 0) {
+        return builtin_sysprefs_root;
+    }
+    return builtin_default_root;
+}
+
+// ── Legacy lifecycle ────────────────────────────────────────────────
+// When the active window is registered on the AppMenu.Registrar bus,
+// spin up a DbusMenuClient pointed at that endpoint. Its imported
+// MenuNode tree replaces the built-in fallback for the active app.
+
+// Last tree pointer we handed out. Used in the change callback to
+// detect a full layout refetch (pointer differs) vs an in-place prop
+// patch (pointer unchanged) — only the former invalidates open
+// dropdown MenuNode pointers, so only the former forces a dismiss.
+static const MenuNode *last_seen_legacy_root;
+
+static void dismiss_all_dropdowns(MenuBar *mb);
+
+static void on_legacy_client_changed(DbusMenuClient *client, void *user_data)
+{
+    MenuBar *mb = user_data;
+    mb->legacy_is_loading = false;
+
+    const MenuNode *root = dbusmenu_client_root(client);
+    bool tree_replaced = (root != last_seen_legacy_root);
+    last_seen_legacy_root = root;
+
+    if (tree_replaced) {
+        // A LayoutUpdated fully replaced the tree. Any open dropdown
+        // is now holding pointers into freed MenuNodes. Dismiss the
+        // whole stack; user can reopen against the fresh tree.
+        dismiss_all_dropdowns(mb);
+    }
+    menubar_paint(mb);
+}
+
+static void update_legacy_client(MenuBar *mb, Window active)
+{
+    const char *service = NULL;
+    const char *path    = NULL;
+    bool has_registration =
+        (active != None) &&
+        appmenu_bridge_lookup((uint32_t)active, &service, &path);
+
+    // Same window as last time — nothing to rebuild. (Bridge lookup
+    // returning the same (service, path) is implied — the registry is
+    // keyed by wid, so wid equality is sufficient.)
+    if (has_registration && active == mb->legacy_wid && mb->legacy_client) {
+        return;
+    }
+
+    // Tear down whatever we had.
+    if (mb->legacy_client) {
+        dbusmenu_client_free(mb->legacy_client);
+        mb->legacy_client       = NULL;
+        mb->legacy_wid          = None;
+        mb->legacy_is_loading   = false;
+        last_seen_legacy_root   = NULL;
+        dismiss_all_dropdowns(mb);
+    }
+
+    if (has_registration) {
+        mb->legacy_client = dbusmenu_client_new(
+            service, path, on_legacy_client_changed, mb);
+        mb->legacy_wid          = active;
+        mb->legacy_is_loading   = (mb->legacy_client != NULL);
+        last_seen_legacy_root   = NULL;
+    }
+}
+
+// ── Menu source resolution ──────────────────────────────────────────
+
+const MenuNode *appmenu_root_for(MenuBar *mb)
+{
+    if (mb->legacy_client) {
+        const MenuNode *root = dbusmenu_client_root(mb->legacy_client);
+        // First-paint gap: a DbusMenuClient was spun up but GetLayout
+        // hasn't replied yet. Show the app name with no menu titles —
+        // rather than flashing a stale built-in set that's about to be
+        // replaced.
+        if (!root || root->n_children == 0) return NULL;
+        return root;
+    }
+    return builtin_root_for_class(mb->active_class);
+}
+
+// ── Accelerator glyph conversion ────────────────────────────────────
+// Legacy shortcut strings arrive as "Ctrl+S" / "Shift+Ctrl+Z" / etc.
+// Map modifiers to their Aqua glyphs, dropping anything whose chord
+// includes a Super / Meta key (doesn't exist in the Mac conceptual
+// model; better blank than wrong). Ctrl gets mapped to ⌘ because
+// Linux keybindings' Ctrl is the conceptual equivalent of Mac Cmd —
+// displaying it as ⌃ would mislead the user.
+//
+// Built-in shortcut strings are already stored as glyph literals;
+// they skip this path.
+
+static bool shortcut_is_preformatted(const char *s)
+{
+    // Built-in shortcuts start with a UTF-8 glyph byte (high bit set).
+    // DBusMenu shortcuts are plain ASCII ("Ctrl", "S", etc.).
+    return s && ((unsigned char)s[0] & 0x80);
+}
+
+static const char *shortcut_to_aqua(const char *raw, char *buf, size_t buflen)
+{
+    if (!raw || !*raw) return NULL;
+    if (shortcut_is_preformatted(raw)) return raw;
+
+    // Tokenize on '+'. Collect modifier glyphs in SL display order
+    // (⌃⌥⇧⌘), then append the key token.
+    char scratch[128];
+    snprintf(scratch, sizeof(scratch), "%s", raw);
+
+    bool has_cmd = false, has_shift = false, has_opt = false;
+    char key[64] = "";
+
+    char *save = NULL;
+    for (char *tok = strtok_r(scratch, "+", &save);
+         tok;
+         tok = strtok_r(NULL, "+", &save)) {
+        if (strcasecmp(tok, "Control") == 0 || strcasecmp(tok, "Ctrl") == 0) {
+            has_cmd = true;        // Control → ⌘ (Mac-Linux convention)
+        } else if (strcasecmp(tok, "Shift") == 0) {
+            has_shift = true;
+        } else if (strcasecmp(tok, "Alt") == 0 || strcasecmp(tok, "Option") == 0) {
+            has_opt = true;
+        } else if (strcasecmp(tok, "Super") == 0 ||
+                   strcasecmp(tok, "Meta")  == 0 ||
+                   strcasecmp(tok, "Hyper") == 0) {
+            // Super/Meta/Hyper have no Aqua glyph and confuse the user
+            // more than they help. Drop the whole shortcut label.
+            return NULL;
+        } else {
+            // Whatever's left is the key. Uppercase single letters;
+            // leave "Return", "Tab", etc. as-is (the dbusmenu spec
+            // names them mostly by XKB keysym).
+            if (strlen(tok) == 1) {
+                snprintf(key, sizeof(key), "%c", toupper((unsigned char)tok[0]));
+            } else {
+                snprintf(key, sizeof(key), "%s", tok);
+            }
+        }
+    }
+
+    size_t pos = 0;
+    if (has_opt)   pos += (size_t)snprintf(buf + pos, buflen - pos, "%s", GLYPH_OPT);
+    if (has_shift) pos += (size_t)snprintf(buf + pos, buflen - pos, "%s", GLYPH_SHIFT);
+    if (has_cmd)   pos += (size_t)snprintf(buf + pos, buflen - pos, "%s", GLYPH_CMD);
+    snprintf(buf + pos, buflen - pos, "%s", key);
+    return buf[0] ? buf : NULL;
+}
+
+// ── Dropdown stack ──────────────────────────────────────────────────
+// A dropdown is a popup window showing the children of some parent
+// MenuNode. The stack lets submenus drill in — Qt AppMenu builds
+// File → Recent → <file list>, which is two levels deep, so MAX=4
+// is comfortable headroom.
+
+#define DROPDOWN_MAX_DEPTH 4
+
+typedef struct {
+    Window           win;
+    const MenuNode  *parent;          // parent->children[0..n_children-1] are items
+    int              hover;            // hovered item index, -1 = none
+    int              spawned_child_at; // item whose submenu is open, -1 if none
+    int              w, h;             // window geometry (physical pixels)
+    int              x, y;             // screen position
+} DropdownLevel;
+
+static DropdownLevel stack[DROPDOWN_MAX_DEPTH];
+static int           depth;             // number of levels currently open
+
+// Event mask for every dropdown window.
 static const long dropdown_events = ExposureMask | ButtonPressMask
                                   | PointerMotionMask | LeaveWindowMask
                                   | KeyPressMask;
 
-// ── Initialization ──────────────────────────────────────────────────
+// Row heights (points). Separators are shorter than item rows.
+#define ROW_H_ITEM 22
+#define ROW_H_SEP   7
 
-void appmenu_init(MenuBar *mb)
+static int row_height_of(const MenuNode *n)
 {
-    (void)mb; // Nothing to initialize yet
+    return (n && n->type == MENU_ITEM_SEPARATOR) ? S(ROW_H_SEP) : S(ROW_H_ITEM);
 }
 
-// ── Active window tracking ──────────────────────────────────────────
-
-void appmenu_update_active(MenuBar *mb)
+// Y offset within a dropdown for item `idx` (0-based), starting from
+// the popup's top edge. Accounts for top padding and mixed row heights.
+static int row_y_offset(const MenuNode *parent, int idx)
 {
-    // Read _NET_ACTIVE_WINDOW from the root window.
-    // This property contains the XID (window ID) of the currently
-    // focused window, set by the window manager.
-    Atom actual_type;
-    int actual_format;
-    unsigned long nitems, bytes_after;
-    unsigned char *data = NULL;
-
-    int status = XGetWindowProperty(
-        mb->dpy, mb->root,
-        mb->atom_net_active_window,
-        0, 1,              // Read 1 long (the window ID)
-        False,             // Don't delete the property
-        XA_WINDOW,         // Expected type
-        &actual_type, &actual_format,
-        &nitems, &bytes_after, &data
-    );
-
-    if (status != Success || nitems == 0 || !data) {
-        // No active window — fall back to Finder
-        if (data) XFree(data);
-        strncpy(mb->active_app, "Finder", sizeof(mb->active_app) - 1);
-        strncpy(mb->active_class, "dolphin", sizeof(mb->active_class) - 1);
-        return;
+    int y = S(4); // top padding
+    for (int i = 0; i < idx && i < parent->n_children; i++) {
+        y += row_height_of(parent->children[i]);
     }
+    return y;
+}
 
-    // Extract the window ID from the property data
-    Window active = *(Window *)data;
-    XFree(data);
-
-    // A window ID of None or 0 means no window is focused (e.g., the
-    // user clicked the desktop background).
-    if (active == None || active == 0) {
-        strncpy(mb->active_app, "Finder", sizeof(mb->active_app) - 1);
-        strncpy(mb->active_class, "dolphin", sizeof(mb->active_class) - 1);
-        return;
-    }
-
-    // ── Read WM_CLASS from the active window ────────────────────
-    // WM_CLASS is a pair of null-terminated strings: "instance\0class\0".
-    // We want the second one (the class name), which identifies the
-    // application type.
-    data = NULL;
-    status = XGetWindowProperty(
-        mb->dpy, active,
-        mb->atom_wm_class,
-        0, 256,            // Read up to 256 longs (more than enough)
-        False,
-        XA_STRING,
-        &actual_type, &actual_format,
-        &nitems, &bytes_after, &data
-    );
-
-    if (status != Success || nitems == 0 || !data) {
-        if (data) XFree(data);
-        strncpy(mb->active_app, "Finder", sizeof(mb->active_app) - 1);
-        strncpy(mb->active_class, "dolphin", sizeof(mb->active_class) - 1);
-        return;
-    }
-
-    // WM_CLASS contains two null-terminated strings packed together.
-    // Skip past the first string (instance name) to get the class name.
-    const char *instance = (const char *)data;
-    const char *classname = instance;
-
-    // Find the end of the first string
-    size_t len = strlen(instance);
-    if (len + 1 < nitems) {
-        classname = instance + len + 1; // Second string = class name
-    }
-
-    // Store the raw class name (lowercased for matching)
-    char lower_class[128];
-    strncpy(lower_class, classname, sizeof(lower_class) - 1);
-    lower_class[sizeof(lower_class) - 1] = '\0';
-    for (int i = 0; lower_class[i]; i++) {
-        lower_class[i] = (char)tolower((unsigned char)lower_class[i]);
-    }
-    strncpy(mb->active_class, lower_class, sizeof(mb->active_class) - 1);
-
-    // ── Map class name to display name ──────────────────────────
-    // Check our lookup table for a known mapping.
-    const char *display_name = NULL;
-    for (int i = 0; app_names[i].wm_class != NULL; i++) {
-        if (strcasecmp(lower_class, app_names[i].wm_class) == 0) {
-            display_name = app_names[i].name;
-            break;
+// Convert a popup-local y coordinate to the item index it falls on.
+// Returns -1 on padding or separator (separators aren't hoverable).
+static int hit_test_row(const MenuNode *parent, int local_y)
+{
+    int y = S(4);
+    for (int i = 0; i < parent->n_children; i++) {
+        const MenuNode *n = parent->children[i];
+        int rh = row_height_of(n);
+        if (local_y >= y && local_y < y + rh) {
+            return (n->type == MENU_ITEM_SEPARATOR) ? -1 : i;
         }
+        y += rh;
     }
-
-    if (display_name) {
-        strncpy(mb->active_app, display_name, sizeof(mb->active_app) - 1);
-    } else {
-        // Unknown app — capitalize the first letter and use that.
-        // e.g., "vlc" -> "Vlc"
-        strncpy(mb->active_app, lower_class, sizeof(mb->active_app) - 1);
-        if (mb->active_app[0]) {
-            mb->active_app[0] = (char)toupper((unsigned char)mb->active_app[0]);
-        }
-    }
-
-    XFree(data);
+    return -1;
 }
 
-// ── Menu title lookup ───────────────────────────────────────────────
-
-void appmenu_get_menus(const char *app_class, const char ***menus, int *count)
-{
-    // Match the app class against known apps and return the appropriate
-    // set of menu titles. Default to the generic set for unknown apps.
-
-    if (strcasecmp(app_class, "dolphin") == 0 ||
-        strcasecmp(app_class, "desktop") == 0) {
-        *menus = finder_menus;
-        *count = finder_menu_count;
-    } else if (strcasecmp(app_class, "konsole") == 0) {
-        *menus = terminal_menus;
-        *count = terminal_menu_count;
-    } else if (strcasecmp(app_class, "brave-browser") == 0 ||
-               strcasecmp(app_class, "firefox") == 0) {
-        *menus = browser_menus;
-        *count = browser_menu_count;
-    } else if (strcasecmp(app_class, "systemcontrol") == 0 ||
-               strcasecmp(app_class, "systemsettings") == 0) {
-        *menus = sysprefs_menus;
-        *count = sysprefs_menu_count;
-    } else {
-        *menus = default_menus;
-        *count = default_menu_count;
-    }
-}
-
-// ── Dropdown rendering helpers ──────────────────────────────────────
-
-// Get the list of items and keyboard shortcuts for a specific menu index
-// within the current app. Returns the item array, shortcut array, and
-// count through out-parameters. The shortcuts pointer may be NULL if the
-// menu has no shortcuts defined.
-static void get_dropdown_items(const char *app_class, int menu_index,
-                               const char ***items, const char ***shortcuts,
-                               int *count)
-{
-    // First, figure out which menu titles this app uses
-    const char **menus;
-    int menu_count;
-    appmenu_get_menus(app_class, &menus, &menu_count);
-
-    // Default: no shortcuts
-    *shortcuts = NULL;
-
-    if (menu_index < 0 || menu_index >= menu_count) {
-        *items = NULL;
-        *count = 0;
-        return;
-    }
-
-    // Match the menu title to its items and optional shortcuts
-    const char *title = menus[menu_index];
-
-    if (strcmp(title, "File") == 0) {
-        *items = file_items; *count = file_item_count;
-        *shortcuts = file_shortcuts;
-    } else if (strcmp(title, "Edit") == 0) {
-        *items = edit_items; *count = edit_item_count;
-        *shortcuts = edit_shortcuts;
-    } else if (strcmp(title, "View") == 0) {
-        *items = view_items; *count = view_item_count;
-    } else if (strcmp(title, "Go") == 0) {
-        *items = go_items; *count = go_item_count;
-    } else if (strcmp(title, "Window") == 0) {
-        *items = window_items; *count = window_item_count;
-        *shortcuts = window_shortcuts;
-    } else if (strcmp(title, "Help") == 0) {
-        *items = help_items; *count = help_item_count;
-    } else if (strcmp(title, "Shell") == 0) {
-        *items = shell_items; *count = shell_item_count;
-        *shortcuts = shell_shortcuts;
-    } else if (strcmp(title, "History") == 0) {
-        *items = history_items; *count = history_item_count;
-    } else if (strcmp(title, "Bookmarks") == 0) {
-        *items = bookmarks_items; *count = bookmarks_item_count;
-    } else {
-        // Unknown menu — show nothing
-        *items = NULL;
-        *count = 0;
-    }
-}
-
-// Helper: draw a rounded rectangle path (same as render.c but local).
+// Helper: rounded rectangle path (local copy so we don't depend on render.c's).
 static void dropdown_rounded_rect(cairo_t *cr, double x, double y,
                                   double w, double h, double radius)
 {
@@ -445,124 +583,184 @@ static void dropdown_rounded_rect(cairo_t *cr, double x, double y,
     cairo_close_path(cr);
 }
 
-// Convert a y-coordinate inside the dropdown to a menu item index.
-// Returns -1 if the y position is in padding or on a separator.
-static int y_to_item_index(int y)
+// Measure a popup's width. Accounts for labels, the optional shortcut
+// glyph column, the submenu arrow, and scaled paddings. Minimum floor
+// keeps tiny submenus from looking cramped.
+static int measure_popup_width(const MenuNode *parent)
 {
-    int cur_y = S(4); // top padding (scaled)
-    for (int i = 0; i < dropdown_item_count; i++) {
-        int row_h = (strcmp(dropdown_items[i], "---") == 0) ? S(7) : S(22);
-        if (y >= cur_y && y < cur_y + row_h) {
-            // Only return non-separator items as hoverable
-            if (strcmp(dropdown_items[i], "---") == 0) return -1;
-            return i;
+    int popup_w = S(200); // floor
+    char scbuf[128];
+
+    for (int i = 0; i < parent->n_children; i++) {
+        const MenuNode *n = parent->children[i];
+        if (n->type == MENU_ITEM_SEPARATOR) continue;
+        if (!n->label) continue;
+
+        double w = render_measure_text(n->label, false);
+        int extra = 0;
+
+        if (n->shortcut) {
+            const char *aqua = shortcut_to_aqua(n->shortcut, scbuf, sizeof(scbuf));
+            if (aqua) {
+                extra += (int)render_measure_text(aqua, false) + S(30);
+            }
         }
-        cur_y += row_h;
+        if (n->is_submenu) {
+            // Submenu arrow column on the right.
+            extra += S(18);
+        }
+
+        int needed = (int)w + S(40) + extra;
+        if (needed > popup_w) popup_w = needed;
     }
-    return -1;
+    return popup_w;
 }
 
-// Paint the contents of the dropdown popup window.
-// This is called on initial show and whenever hover state changes.
-static void paint_dropdown(MenuBar *mb)
+static int measure_popup_height(const MenuNode *parent)
 {
-    if (dropdown_win == None || !dropdown_items) return;
+    int popup_h = S(8); // S(4) top + S(4) bottom padding
+    for (int i = 0; i < parent->n_children; i++) {
+        popup_h += row_height_of(parent->children[i]);
+    }
+    return popup_h;
+}
 
-    // Create a Cairo surface for the popup window
+static void paint_level(MenuBar *mb, int level)
+{
+    if (level < 0 || level >= depth) return;
+    DropdownLevel *L = &stack[level];
+    if (!L->parent) return;
+
     cairo_surface_t *surface = cairo_xlib_surface_create(
-        mb->dpy, dropdown_win,
+        mb->dpy, L->win,
         DefaultVisual(mb->dpy, mb->screen),
-        dropdown_w, dropdown_h
-    );
+        L->w, L->h);
     cairo_t *cr = cairo_create(surface);
 
-    // ── Clear background ────────────────────────────────────────
-    // Fill with slightly transparent white to match Snow Leopard's
-    // menu appearance (not fully opaque, slightly translucent).
-    // Corner radius scales proportionally with the menubar height.
+    // Background — Snow Leopard menu fill is 245/255 translucent white.
     cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 245.0 / 255.0);
-    dropdown_rounded_rect(cr, 0, 0, dropdown_w, dropdown_h, SF(5.0));
+    dropdown_rounded_rect(cr, 0, 0, L->w, L->h, SF(5.0));
     cairo_fill(cr);
 
-    // ── Border ──────────────────────────────────────────────────
+    // Border
     cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 60.0 / 255.0);
     cairo_set_line_width(cr, 1.0);
-    dropdown_rounded_rect(cr, 0.5, 0.5, dropdown_w - 1, dropdown_h - 1, SF(5.0));
+    dropdown_rounded_rect(cr, 0.5, 0.5, L->w - 1, L->h - 1, SF(5.0));
     cairo_stroke(cr);
 
-    // ── Draw each item (all dimensions scale proportionally) ────
-    int y = S(4); // Top padding inside the dropdown
+    char scbuf[128];
+    int y = S(4);
 
-    for (int i = 0; i < dropdown_item_count; i++) {
-        if (strcmp(dropdown_items[i], "---") == 0) {
-            // Separator: a thin gray line with scaled horizontal margins
+    for (int i = 0; i < L->parent->n_children; i++) {
+        const MenuNode *n = L->parent->children[i];
+
+        if (n->type == MENU_ITEM_SEPARATOR) {
             cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 40.0 / 255.0);
             cairo_set_line_width(cr, 1.0);
             cairo_move_to(cr, S(10), y + SF(3.5));
-            cairo_line_to(cr, dropdown_w - S(10), y + SF(3.5));
+            cairo_line_to(cr, L->w - S(10), y + SF(3.5));
             cairo_stroke(cr);
-            y += S(7);
+            y += S(ROW_H_SEP);
+            continue;
+        }
+
+        // A row is "selected" (blue) when the user is hovering it OR
+        // when the user's child submenu is spawned from this item —
+        // parent stays highlighted while the child is open.
+        bool selected = (i == L->hover) || (i == L->spawned_child_at);
+        bool enabled  = n->enabled;
+
+        if (selected && enabled) {
+            cairo_set_source_rgb(cr, 56.0/255.0, 117.0/255.0, 215.0/255.0);
+            dropdown_rounded_rect(cr, S(4), y, L->w - S(8), S(ROW_H_ITEM), SF(3.0));
+            cairo_fill(cr);
+        }
+
+        // Label (left)
+        PangoLayout *layout = pango_cairo_create_layout(cr);
+        pango_layout_set_text(layout, n->label ? n->label : "", -1);
+        PangoFontDescription *desc = pango_font_description_from_string(
+            appmenu_scaled_font("Lucida Grande", 13));
+        pango_layout_set_font_description(layout, desc);
+        pango_font_description_free(desc);
+
+        // Text colour: white on selected-enabled, gray on disabled,
+        // near-black on enabled-normal.
+        if (selected && enabled) {
+            cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+        } else if (!enabled) {
+            cairo_set_source_rgb(cr, 0.65, 0.65, 0.65);
         } else {
-            // ── Hover highlight ─────────────────────────────────
-            // If this item is hovered, draw a blue rounded-rect background
-            // matching Snow Leopard's selection color (#3875D7).
-            bool hovered = (i == dropdown_hover);
-            if (hovered) {
-                // Snow Leopard uses a blue gradient for selected items.
-                // We use a solid blue that matches the top of that gradient.
-                cairo_set_source_rgb(cr, 56.0/255.0, 117.0/255.0, 215.0/255.0);
-                dropdown_rounded_rect(cr, S(4), y, dropdown_w - S(8), S(22), SF(3.0));
-                cairo_fill(cr);
-            }
+            cairo_set_source_rgb(cr, 0.1, 0.1, 0.1);
+        }
+        cairo_move_to(cr, S(18), y + S(2));
+        pango_cairo_show_layout(cr, layout);
+        g_object_unref(layout);
 
-            // ── Item label (left side) with scaled font ─────────
-            PangoLayout *layout = pango_cairo_create_layout(cr);
-            pango_layout_set_text(layout, dropdown_items[i], -1);
+        // Toggle indicator (left margin). Checkmark when the item has
+        // toggle-type=checkmark and state=1; radio dot when type=radio
+        // and state=1. Drawn as a text glyph so it picks up the row's
+        // text colour without a second colour switch.
+        if (n->toggle != MENU_TOGGLE_NONE && n->toggle_state == 1) {
+            const char *glyph = (n->toggle == MENU_TOGGLE_CHECKMARK)
+                                    ? "\xe2\x9c\x93"   // ✓ U+2713
+                                    : "\xe2\x80\xa2";  // • U+2022
+            PangoLayout *tl = pango_cairo_create_layout(cr);
+            pango_layout_set_text(tl, glyph, -1);
+            PangoFontDescription *td = pango_font_description_from_string(
+                appmenu_scaled_font("Lucida Grande", 13));
+            pango_layout_set_font_description(tl, td);
+            pango_font_description_free(td);
+            cairo_move_to(cr, S(6), y + S(2));
+            pango_cairo_show_layout(cr, tl);
+            g_object_unref(tl);
+        }
 
-            PangoFontDescription *desc = pango_font_description_from_string(
-                appmenu_scaled_font("Lucida Grande", 13)
-            );
-            pango_layout_set_font_description(layout, desc);
-            pango_font_description_free(desc);
+        // Submenu arrow (right-most), before the shortcut column.
+        int right_margin = S(14);
+        if (n->is_submenu) {
+            PangoLayout *al = pango_cairo_create_layout(cr);
+            pango_layout_set_text(al, "\xe2\x96\xb8", -1);  // ▸ U+25B8
+            PangoFontDescription *ad = pango_font_description_from_string(
+                appmenu_scaled_font("Lucida Grande", 11));
+            pango_layout_set_font_description(al, ad);
+            pango_font_description_free(ad);
+            int arrow_w, arrow_h;
+            pango_layout_get_pixel_size(al, &arrow_w, &arrow_h);
+            cairo_move_to(cr, L->w - arrow_w - right_margin, y + S(3));
+            pango_cairo_show_layout(cr, al);
+            g_object_unref(al);
+            right_margin += arrow_w + S(4);
+        }
 
-            // Hovered items use white text; normal items use dark gray
-            if (hovered) {
-                cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-            } else {
-                cairo_set_source_rgb(cr, 0.1, 0.1, 0.1);
-            }
-            cairo_move_to(cr, S(18), y + S(2)); // Scaled left indent and top padding
-            pango_cairo_show_layout(cr, layout);
-            g_object_unref(layout);
+        // Shortcut glyphs (right-aligned, before submenu arrow).
+        if (n->shortcut) {
+            const char *aqua = shortcut_to_aqua(n->shortcut, scbuf, sizeof(scbuf));
+            if (aqua) {
+                PangoLayout *sc = pango_cairo_create_layout(cr);
+                pango_layout_set_text(sc, aqua, -1);
+                PangoFontDescription *sd = pango_font_description_from_string(
+                    appmenu_scaled_font("Lucida Grande", 12));
+                pango_layout_set_font_description(sc, sd);
+                pango_font_description_free(sd);
 
-            // ── Keyboard shortcut (right side) with scaled font ─
-            // Draw the shortcut label right-aligned if one exists
-            if (dropdown_shortcuts && dropdown_shortcuts[i]) {
-                PangoLayout *sc_layout = pango_cairo_create_layout(cr);
-                pango_layout_set_text(sc_layout, dropdown_shortcuts[i], -1);
+                int sw, sh;
+                pango_layout_get_pixel_size(sc, &sw, &sh);
 
-                PangoFontDescription *sc_desc = pango_font_description_from_string(
-                    appmenu_scaled_font("Lucida Grande", 12)
-                );
-                pango_layout_set_font_description(sc_layout, sc_desc);
-                pango_font_description_free(sc_desc);
-
-                // Measure the shortcut text width for right-alignment
-                int sc_w, sc_h;
-                pango_layout_get_pixel_size(sc_layout, &sc_w, &sc_h);
-
-                if (hovered) {
+                if (selected && enabled) {
                     cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+                } else if (!enabled) {
+                    cairo_set_source_rgb(cr, 0.65, 0.65, 0.65);
                 } else {
                     cairo_set_source_rgb(cr, 0.35, 0.35, 0.35);
                 }
-                cairo_move_to(cr, dropdown_w - sc_w - S(14), y + S(2));
-                pango_cairo_show_layout(cr, sc_layout);
-                g_object_unref(sc_layout);
+                cairo_move_to(cr, L->w - sw - right_margin, y + S(2));
+                pango_cairo_show_layout(cr, sc);
+                g_object_unref(sc);
             }
-
-            y += S(22); // Each item row height scales proportionally
         }
+
+        y += S(ROW_H_ITEM);
     }
 
     cairo_destroy(cr);
@@ -570,86 +768,128 @@ static void paint_dropdown(MenuBar *mb)
     XFlush(mb->dpy);
 }
 
-// ── Public API ──────────────────────────────────────────────────────
-
-Window appmenu_get_dropdown_win(void)
+// Destroy everything >= `level`, leaving depth = level. Used by
+// dismiss, by Escape-from-submenu (level -> level-1 pop), and by
+// level-N hovering a non-submenu item (drops any child at N+1).
+static void dismiss_from(MenuBar *mb, int level)
 {
-    return dropdown_win;
+    if (level < 0) level = 0;
+    if (level >= depth) return;
+
+    for (int i = depth - 1; i >= level; i--) {
+        if (stack[i].win != None) {
+            XDestroyWindow(mb->dpy, stack[i].win);
+        }
+        stack[i].win              = None;
+        stack[i].parent           = NULL;
+        stack[i].hover            = -1;
+        stack[i].spawned_child_at = -1;
+    }
+    depth = level;
+    if (depth > 0) {
+        // Parent level no longer has a child spawned.
+        stack[depth - 1].spawned_child_at = -1;
+        paint_level(mb, depth - 1);
+    }
+    XFlush(mb->dpy);
 }
 
-void appmenu_show_dropdown(MenuBar *mb, int menu_index, int x)
+static void dismiss_all_dropdowns(MenuBar *mb)
 {
-    // Dismiss any existing dropdown first
-    appmenu_dismiss(mb);
+    dismiss_from(mb, 0);
+}
 
-    // Get the items for this menu
-    const char **items;
-    const char **shortcuts = NULL;
-    int item_count;
-    get_dropdown_items(mb->active_class, menu_index, &items, &shortcuts, &item_count);
+// Create the popup window for a new level and push it onto the stack.
+// Caller has filled in parent/x/y; we compute w/h from the MenuNode,
+// clamp to the screen, and map the window.
+static void push_level(MenuBar *mb, const MenuNode *parent, int x, int y)
+{
+    if (depth >= DROPDOWN_MAX_DEPTH || !parent) return;
 
-    if (!items || item_count == 0) return;
+    int popup_w = measure_popup_width(parent);
+    int popup_h = measure_popup_height(parent);
 
-    // Store in module state for hover tracking and repaint
-    dropdown_items     = items;
-    dropdown_shortcuts = shortcuts;
-    dropdown_item_count = item_count;
-    dropdown_hover     = -1;
-
-    // ── Calculate popup size (all dimensions scale proportionally) ──
-    // Width: find the widest item + shortcut + padding. Minimum S(200) px.
-    int popup_w = S(200);
-    for (int i = 0; i < item_count; i++) {
-        if (strcmp(items[i], "---") != 0) {
-            double w = render_measure_text(items[i], false);
-            // Account for shortcut width if present
-            int shortcut_extra = 0;
-            if (shortcuts && shortcuts[i]) {
-                shortcut_extra = (int)render_measure_text(shortcuts[i], false) + S(30);
-            }
-            int needed = (int)w + S(40) + shortcut_extra;
-            if (needed > popup_w) popup_w = needed;
+    // Clamp: never let a popup disappear below the screen. Flip to
+    // left of the spawning item if that keeps it on-screen.
+    if (x + popup_w > mb->screen_w) {
+        // Try flipping left relative to the parent level if there is one.
+        if (depth > 0) {
+            DropdownLevel *P = &stack[depth - 1];
+            int flipped = P->x - popup_w + S(2);
+            if (flipped >= 0) x = flipped;
+            else              x = mb->screen_w - popup_w;
+        } else {
+            x = mb->screen_w - popup_w;
         }
+        if (x < 0) x = 0;
+    }
+    if (y + popup_h > mb->screen_h) {
+        y = mb->screen_h - popup_h;
+        if (y < 0) y = 0;
     }
 
-    // Height: S(22) per item, S(7) per separator, plus scaled top/bottom padding
-    int popup_h = S(8); // S(4) top + S(4) bottom padding
-    for (int i = 0; i < item_count; i++) {
-        popup_h += (strcmp(items[i], "---") == 0) ? S(7) : S(22);
-    }
-
-    dropdown_w = popup_w;
-    dropdown_h = popup_h;
-
-    // ── Create the popup window ─────────────────────────────────
-    // Override-redirect = true means the window manager won't touch
-    // this window (no decorations, no placement, no focus stealing).
     XSetWindowAttributes attrs;
     attrs.override_redirect = True;
-    attrs.event_mask = dropdown_events;
-    attrs.background_pixel = WhitePixel(mb->dpy, mb->screen);
+    attrs.event_mask        = dropdown_events;
+    attrs.background_pixel  = WhitePixel(mb->dpy, mb->screen);
 
-    dropdown_win = XCreateWindow(
+    Window w = XCreateWindow(
         mb->dpy, mb->root,
-        x, MENUBAR_HEIGHT,        // Position just below the menu bar
-        (unsigned int)popup_w,
-        (unsigned int)popup_h,
-        0,                         // No border
+        x, y,
+        (unsigned int)popup_w, (unsigned int)popup_h,
+        0,
         CopyFromParent, InputOutput, CopyFromParent,
         CWOverrideRedirect | CWEventMask | CWBackPixel,
-        &attrs
-    );
+        &attrs);
+    XMapRaised(mb->dpy, w);
 
-    XMapRaised(mb->dpy, dropdown_win);
+    DropdownLevel *L = &stack[depth];
+    L->win              = w;
+    L->parent           = parent;
+    L->hover            = -1;
+    L->spawned_child_at = -1;
+    L->w = popup_w; L->h = popup_h;
+    L->x = x;       L->y = y;
+    depth++;
 
-    // Paint the dropdown contents
-    paint_dropdown(mb);
-
+    paint_level(mb, depth - 1);
 }
 
-// Get the currently active (focused) client window XID from _NET_ACTIVE_WINDOW.
-// Returns None if no window is focused. Used when menu items need to target
-// the active window (e.g., Minimize, Close Window).
+// Spawn the submenu that belongs to level `parent_level`'s hovered
+// item `item_idx`. Closes any pre-existing child first, then positions
+// the new child to the right of the parent row with clip-aware left-
+// flip if it would overflow.
+static void spawn_submenu(MenuBar *mb, int parent_level, int item_idx)
+{
+    if (parent_level < 0 || parent_level >= depth) return;
+    DropdownLevel *P = &stack[parent_level];
+    if (item_idx < 0 || item_idx >= P->parent->n_children) return;
+    const MenuNode *item = P->parent->children[item_idx];
+    if (!item->is_submenu || item->n_children == 0) return;
+
+    // Ask the server whether its cache needs a refresh before the
+    // submenu opens. Qt AppMenu lazy-populates on this call; if we
+    // skip it, large submenus (File → Recent) come up empty on first
+    // open and populate on the next.
+    if (mb->legacy_client && item->action_kind == MENU_ACTION_LEGACY) {
+        dbusmenu_client_about_to_show(mb->legacy_client, item->legacy_id);
+    }
+
+    // Close any child level above parent_level.
+    dismiss_from(mb, parent_level + 1);
+
+    int row_y = P->y + row_y_offset(P->parent, item_idx);
+    // S(2) horizontal overlap so the popup abuts the parent row cleanly.
+    int row_x = P->x + P->w - S(2);
+
+    P->spawned_child_at = item_idx;
+    paint_level(mb, parent_level);  // parent repaints with this row highlighted
+
+    push_level(mb, item, row_x, row_y);
+}
+
+// ── Dispatch ────────────────────────────────────────────────────────
+
 static Window get_active_window(MenuBar *mb)
 {
     Atom actual_type;
@@ -662,35 +902,28 @@ static Window get_active_window(MenuBar *mb)
         mb->atom_net_active_window,
         0, 1, False, XA_WINDOW,
         &actual_type, &actual_format,
-        &nitems, &bytes_after, &data
-    );
+        &nitems, &bytes_after, &data);
 
     if (status != Success || nitems == 0 || !data) {
         if (data) XFree(data);
         return None;
     }
-
     Window w = *(Window *)data;
     XFree(data);
     return w;
 }
 
-// Dispatch a menu item action when the user clicks a dropdown item.
-// 'item_label' is the text of the clicked item (e.g., "Minimize", "Close Window").
-// Most actions send ClientMessage events to the WM via the root window.
-static void dispatch_menu_action(MenuBar *mb, const char *item_label)
+// Built-in items dispatch by label: the handful of items whose Snow
+// Leopard semantics map onto a standard ICCCM/EWMH ClientMessage to
+// the WM. Everything else is still informational until native apps
+// wire into the MoonBase IPC.
+static void dispatch_native_by_label(MenuBar *mb, const char *label)
 {
-    if (!item_label || strcmp(item_label, "---") == 0) return;
+    if (!label) return;
 
-    // Get the currently focused window — most actions target it.
     Window active = get_active_window(mb);
 
-    // ── Window menu actions ──────────────────────────────────────
-    if (strcmp(item_label, "Minimize") == 0) {
-        // Send WM_CHANGE_STATE with IconicState to ask the WM to minimize.
-        // The WM (moonrock) handles this and triggers the genie animation.
-        // IconicState = 3 per ICCCM. This mirrors what clicking the yellow
-        // traffic light button does — the code path is identical in the WM.
+    if (strcmp(label, "Minimize") == 0) {
         if (active == None) return;
         XEvent ev = {0};
         ev.type                 = ClientMessage;
@@ -702,110 +935,316 @@ static void dispatch_menu_action(MenuBar *mb, const char *item_label)
                    SubstructureRedirectMask | SubstructureNotifyMask, &ev);
         XFlush(mb->dpy);
 
-    } else if (strcmp(item_label, "Close Window") == 0 ||
-               strcmp(item_label, "Close Tab") == 0) {
-        // Send _NET_CLOSE_WINDOW to ask the WM to close the active window.
-        // The WM sends WM_DELETE_WINDOW to the app so it can save and quit cleanly.
+    } else if (strcmp(label, "Close Window") == 0 ||
+               strcmp(label, "Close Tab") == 0) {
         if (active == None) return;
         XEvent ev = {0};
         ev.type                 = ClientMessage;
         ev.xclient.window       = active;
         ev.xclient.message_type = mb->atom_net_close_window;
         ev.xclient.format       = 32;
-        ev.xclient.data.l[0]    = 0; // timestamp (0 = use server time)
-        ev.xclient.data.l[1]    = 0; // source indication (0 = unknown)
+        ev.xclient.data.l[0]    = 0;
+        ev.xclient.data.l[1]    = 0;
         XSendEvent(mb->dpy, mb->root, False,
                    SubstructureRedirectMask | SubstructureNotifyMask, &ev);
         XFlush(mb->dpy);
 
-    } else if (strcmp(item_label, "Zoom") == 0) {
-        // Request a maximize toggle via _NET_ACTIVE_WINDOW ClientMessage.
-        // For now we re-activate the window to bring it front.
-        // TODO: wire to _NET_WM_STATE maximize when WM supports it.
+    } else if (strcmp(label, "Zoom") == 0) {
         if (active == None) return;
         XEvent ev = {0};
         ev.type                 = ClientMessage;
         ev.xclient.window       = active;
         ev.xclient.message_type = mb->atom_net_active_window;
         ev.xclient.format       = 32;
-        ev.xclient.data.l[0]    = 2; // source: pager/tool
+        ev.xclient.data.l[0]    = 2;
         XSendEvent(mb->dpy, mb->root, False,
                    SubstructureRedirectMask | SubstructureNotifyMask, &ev);
         XFlush(mb->dpy);
 
-    } else if (strcmp(item_label, "Bring All to Front") == 0) {
-        // Raise the active window to the top — simple implementation for now.
+    } else if (strcmp(label, "Bring All to Front") == 0) {
         if (active == None) return;
         XRaiseWindow(mb->dpy, active);
         XFlush(mb->dpy);
-
     }
-    // For all other menu items (File, Edit, Go, Help, etc.), we currently
-    // show the menu for informational purposes only. Full app integration
-    // would require IPC with each application, which is app-specific.
-    // The most impactful items (Minimize, Close) are handled above.
+    // Other labels (File items, Go, Help, etc.) are informational —
+    // native menus are a stub until the MoonBase IPC layer is wired.
+}
+
+static void dispatch_menu_item(MenuBar *mb, const MenuNode *node)
+{
+    if (!node || node->type == MENU_ITEM_SEPARATOR) return;
+    if (!node->enabled) return;
+
+    // Two branches: legacy items fire dbusmenu Event; everything else
+    // falls through to the built-in label-based dispatch.
+    if (node->action_kind == MENU_ACTION_LEGACY && mb->legacy_client) {
+        dbusmenu_client_activate(mb->legacy_client, node->legacy_id);
+        return;
+    }
+    dispatch_native_by_label(mb, node->label);
+}
+
+// ── Active window tracking ──────────────────────────────────────────
+
+void appmenu_update_active(MenuBar *mb)
+{
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *data = NULL;
+
+    int status = XGetWindowProperty(
+        mb->dpy, mb->root,
+        mb->atom_net_active_window,
+        0, 1, False, XA_WINDOW,
+        &actual_type, &actual_format,
+        &nitems, &bytes_after, &data);
+
+    if (status != Success || nitems == 0 || !data) {
+        if (data) XFree(data);
+        strncpy(mb->active_app, "Finder", sizeof(mb->active_app) - 1);
+        strncpy(mb->active_class, "dolphin", sizeof(mb->active_class) - 1);
+        update_legacy_client(mb, None);
+        return;
+    }
+
+    Window active = *(Window *)data;
+    XFree(data);
+
+    if (active == None || active == 0) {
+        strncpy(mb->active_app, "Finder", sizeof(mb->active_app) - 1);
+        strncpy(mb->active_class, "dolphin", sizeof(mb->active_class) - 1);
+        update_legacy_client(mb, None);
+        return;
+    }
+
+    // Read WM_CLASS: two NUL-terminated strings, "instance\0class\0".
+    data = NULL;
+    status = XGetWindowProperty(
+        mb->dpy, active,
+        mb->atom_wm_class,
+        0, 256, False, XA_STRING,
+        &actual_type, &actual_format,
+        &nitems, &bytes_after, &data);
+
+    if (status != Success || nitems == 0 || !data) {
+        if (data) XFree(data);
+        strncpy(mb->active_app, "Finder", sizeof(mb->active_app) - 1);
+        strncpy(mb->active_class, "dolphin", sizeof(mb->active_class) - 1);
+        update_legacy_client(mb, active);
+        return;
+    }
+
+    const char *instance = (const char *)data;
+    const char *classname = instance;
+    size_t len = strlen(instance);
+    if (len + 1 < nitems) {
+        classname = instance + len + 1;
+    }
+
+    char lower_class[128];
+    strncpy(lower_class, classname, sizeof(lower_class) - 1);
+    lower_class[sizeof(lower_class) - 1] = '\0';
+    for (int i = 0; lower_class[i]; i++) {
+        lower_class[i] = (char)tolower((unsigned char)lower_class[i]);
+    }
+    strncpy(mb->active_class, lower_class, sizeof(mb->active_class) - 1);
+
+    const char *display_name = NULL;
+    for (int i = 0; app_names[i].wm_class != NULL; i++) {
+        if (strcasecmp(lower_class, app_names[i].wm_class) == 0) {
+            display_name = app_names[i].name;
+            break;
+        }
+    }
+
+    if (display_name) {
+        strncpy(mb->active_app, display_name, sizeof(mb->active_app) - 1);
+    } else {
+        strncpy(mb->active_app, lower_class, sizeof(mb->active_app) - 1);
+        if (mb->active_app[0]) {
+            mb->active_app[0] = (char)toupper((unsigned char)mb->active_app[0]);
+        }
+    }
+
+    XFree(data);
+
+    // Reconcile the DbusMenuClient with the new active window. This is
+    // the seam between 18-A's registrar and 18-B's client — we cross
+    // it once per focus change.
+    update_legacy_client(mb, active);
+}
+
+// ── Public API: lifecycle / access ─────────────────────────────────
+
+void appmenu_init(MenuBar *mb)
+{
+    (void)mb;
+    build_all_builtin_trees();
+    for (int i = 0; i < DROPDOWN_MAX_DEPTH; i++) {
+        stack[i].win              = None;
+        stack[i].parent           = NULL;
+        stack[i].hover            = -1;
+        stack[i].spawned_child_at = -1;
+    }
+    depth = 0;
+    last_seen_legacy_root = NULL;
+}
+
+Window appmenu_get_dropdown_win(void)
+{
+    return (depth > 0) ? stack[depth - 1].win : None;
+}
+
+bool appmenu_pop_submenu_level(MenuBar *mb)
+{
+    if (depth < 2) return false;
+    dismiss_from(mb, depth - 1);
+    return true;
+}
+
+bool appmenu_find_dropdown_at(MenuBar *mb, int mx, int my,
+                              Window *out_win, int *out_lx, int *out_ly)
+{
+    (void)mb;
+    // Innermost popup wins — search top of stack first.
+    for (int i = depth - 1; i >= 0; i--) {
+        DropdownLevel *L = &stack[i];
+        if (mx >= L->x && mx < L->x + L->w &&
+            my >= L->y && my < L->y + L->h) {
+            if (out_win) *out_win = L->win;
+            if (out_lx)  *out_lx  = mx - L->x;
+            if (out_ly)  *out_ly  = my - L->y;
+            return true;
+        }
+    }
+    return false;
+}
+
+void appmenu_show_dropdown(MenuBar *mb, int menu_index, int x)
+{
+    dismiss_all_dropdowns(mb);
+
+    const MenuNode *root = appmenu_root_for(mb);
+    if (!root || menu_index < 0 || menu_index >= root->n_children) return;
+
+    const MenuNode *menu = root->children[menu_index];
+    if (!menu || menu->n_children == 0) return;
+
+    // Ask the server for a pre-show refresh — same reason as
+    // submenu spawn.
+    if (mb->legacy_client && menu->action_kind == MENU_ACTION_LEGACY) {
+        dbusmenu_client_about_to_show(mb->legacy_client, menu->legacy_id);
+    }
+
+    push_level(mb, menu, x, MENUBAR_HEIGHT);
+}
+
+void appmenu_dismiss(MenuBar *mb)
+{
+    dismiss_all_dropdowns(mb);
+}
+
+// ── Event handling ─────────────────────────────────────────────────
+
+static int find_level_for_window(Window w)
+{
+    for (int i = 0; i < depth; i++) {
+        if (stack[i].win == w) return i;
+    }
+    return -1;
 }
 
 bool appmenu_handle_dropdown_event(MenuBar *mb, XEvent *ev, bool *should_dismiss)
 {
     *should_dismiss = false;
+    if (depth == 0) return false;
 
-    if (dropdown_win == None) return false;
-
-    // Only handle events for our dropdown window
     Window ev_win = None;
     switch (ev->type) {
-        case Expose:       ev_win = ev->xexpose.window; break;
-        case ButtonPress:  ev_win = ev->xbutton.window; break;
-        case MotionNotify: ev_win = ev->xmotion.window; break;
+        case Expose:       ev_win = ev->xexpose.window;   break;
+        case ButtonPress:  ev_win = ev->xbutton.window;   break;
+        case MotionNotify: ev_win = ev->xmotion.window;   break;
         case LeaveNotify:  ev_win = ev->xcrossing.window; break;
-        case KeyPress:     ev_win = ev->xkey.window; break;
+        case KeyPress:     ev_win = ev->xkey.window;      break;
         default: return false;
     }
 
-    if (ev_win != dropdown_win) return false;
+    int level = find_level_for_window(ev_win);
+    if (level < 0) return false;
+    DropdownLevel *L = &stack[level];
 
     switch (ev->type) {
         case Expose:
-            // Repaint the dropdown on expose
-            if (ev->xexpose.count == 0) {
-                paint_dropdown(mb);
-            }
+            if (ev->xexpose.count == 0) paint_level(mb, level);
             return true;
 
         case MotionNotify: {
-            // Update hover state based on mouse position
-            int new_hover = y_to_item_index(ev->xmotion.y);
-            if (new_hover != dropdown_hover) {
-                dropdown_hover = new_hover;
-                paint_dropdown(mb);
+            int new_hover = hit_test_row(L->parent, ev->xmotion.y);
+            if (new_hover != L->hover) {
+                L->hover = new_hover;
+                // Hover moved to a different row at this level: kill
+                // any child popup from a different spawning row.
+                if (L->spawned_child_at != -1 && L->spawned_child_at != new_hover) {
+                    dismiss_from(mb, level + 1);
+                }
+                paint_level(mb, level);
+            }
+            // Hover landed on a submenu item that isn't currently
+            // spawned — open it.
+            if (new_hover >= 0) {
+                const MenuNode *n = L->parent->children[new_hover];
+                if (n->is_submenu && n->n_children > 0 &&
+                    L->spawned_child_at != new_hover) {
+                    spawn_submenu(mb, level, new_hover);
+                }
             }
             return true;
         }
 
         case LeaveNotify:
-            // Mouse left the dropdown — clear hover
-            if (dropdown_hover != -1) {
-                dropdown_hover = -1;
-                paint_dropdown(mb);
-            }
+            // Don't clear hover when leaving in favour of a child —
+            // keep the parent row highlighted for continuity. We only
+            // clear when leaving the whole dropdown (handled when the
+            // menubar loop routes motion that's outside every popup).
             return true;
 
-        case ButtonPress:
-            // Click on a menu item. If the mouse is hovering over a real item
-            // (not a separator, not empty space), dispatch its action before
-            // dismissing the dropdown.
-            if (dropdown_hover >= 0 && dropdown_hover < dropdown_item_count) {
-                dispatch_menu_action(mb, dropdown_items[dropdown_hover]);
+        case ButtonPress: {
+            int idx = L->hover;
+            if (idx < 0 || idx >= L->parent->n_children) {
+                // Click on padding / separator → dismiss all.
+                *should_dismiss = true;
+                return true;
             }
+            const MenuNode *n = L->parent->children[idx];
+            if (n->type == MENU_ITEM_SEPARATOR) {
+                *should_dismiss = true;
+                return true;
+            }
+            if (n->is_submenu && n->n_children > 0) {
+                // Click on submenu parent: ensure submenu is open and
+                // stay in the tree. (Hover already opened it.)
+                if (L->spawned_child_at != idx) spawn_submenu(mb, level, idx);
+                return true;
+            }
+            // Leaf: dispatch and dismiss the whole stack.
+            dispatch_menu_item(mb, n);
             *should_dismiss = true;
             return true;
+        }
 
         case KeyPress: {
-            // Escape key dismisses the dropdown
             KeySym sym = XLookupKeysym(&ev->xkey, 0);
             if (sym == XK_Escape) {
+                if (depth > 1) {
+                    // Pop one submenu level — don't dismiss the whole
+                    // stack. Only the top-level Escape tears everything
+                    // down, and the menubar loop handles that.
+                    dismiss_from(mb, depth - 1);
+                    return true;
+                }
                 *should_dismiss = true;
+                return true;
             }
             return true;
         }
@@ -815,26 +1254,23 @@ bool appmenu_handle_dropdown_event(MenuBar *mb, XEvent *ev, bool *should_dismiss
     }
 }
 
-void appmenu_dismiss(MenuBar *mb)
-{
-    if (dropdown_win != None) {
-        XDestroyWindow(mb->dpy, dropdown_win);
-        dropdown_win = None;
-        dropdown_items = NULL;
-        dropdown_shortcuts = NULL;
-        dropdown_item_count = 0;
-        dropdown_hover = -1;
-        XFlush(mb->dpy);
-    }
-}
+// ── Shutdown ───────────────────────────────────────────────────────
 
-void appmenu_cleanup(void)
+void appmenu_cleanup(MenuBar *mb)
 {
-    // dropdown_win will be destroyed when the display closes,
-    // but we clean up explicitly for good hygiene.
-    dropdown_win = None;
-    dropdown_items = NULL;
-    dropdown_shortcuts = NULL;
-    dropdown_item_count = 0;
-    dropdown_hover = -1;
+    dismiss_all_dropdowns(mb);
+
+    if (mb && mb->legacy_client) {
+        dbusmenu_client_free(mb->legacy_client);
+        mb->legacy_client       = NULL;
+        mb->legacy_wid          = None;
+        mb->legacy_is_loading   = false;
+    }
+
+    menu_node_free(builtin_default_root);   builtin_default_root   = NULL;
+    menu_node_free(builtin_finder_root);    builtin_finder_root    = NULL;
+    menu_node_free(builtin_terminal_root);  builtin_terminal_root  = NULL;
+    menu_node_free(builtin_browser_root);   builtin_browser_root   = NULL;
+    menu_node_free(builtin_sysprefs_root);  builtin_sysprefs_root  = NULL;
+    last_seen_legacy_root = NULL;
 }

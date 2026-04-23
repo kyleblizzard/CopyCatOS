@@ -425,6 +425,44 @@ void dbusmenu_client_activate(DbusMenuClient *client, int32_t legacy_id) {
                       NULL, NULL);
 }
 
+static void on_about_to_show_reply(GObject *src, GAsyncResult *res,
+                                   gpointer ud) {
+    DbusMenuClient *client = ud;
+    GError *err = NULL;
+    GVariant *reply = g_dbus_proxy_call_finish(G_DBUS_PROXY(src), res, &err);
+
+    if (err && g_error_matches(err, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+        g_error_free(err);
+        return;
+    }
+
+    if (!reply) {
+        // Servers sometimes reject AboutToShow on ids they don't know —
+        // that's fine, the cached layout stays valid. Log quietly.
+        if (err) g_error_free(err);
+        return;
+    }
+
+    gboolean need_update = FALSE;
+    g_variant_get(reply, "(b)", &need_update);
+    g_variant_unref(reply);
+
+    if (need_update) trigger_refetch(client);
+}
+
+void dbusmenu_client_about_to_show(DbusMenuClient *client, int32_t legacy_id) {
+    if (!client || !client->proxy) return;
+    GVariant *args = g_variant_new("(i)", legacy_id);
+    g_dbus_proxy_call(client->proxy,
+                      "AboutToShow",
+                      args,
+                      G_DBUS_CALL_FLAGS_NO_AUTO_START,
+                      -1,
+                      client->cancel,
+                      on_about_to_show_reply,
+                      client);
+}
+
 void dbusmenu_client_free(DbusMenuClient *client) {
     if (!client) return;
 

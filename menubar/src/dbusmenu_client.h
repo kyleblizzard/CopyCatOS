@@ -61,6 +61,15 @@ const MenuNode *dbusmenu_client_root(const DbusMenuClient *client);
 // alike, so 18-C will reuse it for both paths.
 void dbusmenu_client_activate(DbusMenuClient *client, int32_t legacy_id);
 
+// Ask the remote service whether `legacy_id` needs a fresh layout before
+// the user sees its submenu. The dbusmenu spec lets servers defer
+// populating submenus until a client calls AboutToShow — Qt's appmenu
+// module in particular uses this to lazy-build. Reply comes back on the
+// GLib main context: if the server says need_update=true, this client
+// triggers a full refetch and fires on_changed. Renderer calls this the
+// moment a submenu branch is about to be drilled into.
+void dbusmenu_client_about_to_show(DbusMenuClient *client, int32_t legacy_id);
+
 // Unsubscribe from signals, drop the proxy, free the root. Safe on NULL.
 void dbusmenu_client_free(DbusMenuClient *client);
 

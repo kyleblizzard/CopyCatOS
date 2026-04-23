@@ -18,6 +18,8 @@
 #include <X11/Xatom.h>
 #include <stdbool.h>
 
+#include "dbusmenu_client.h"
+
 // Default height matching macOS Snow Leopard. Configurable 22-88 via
 // ~/.config/copycatos/desktop.conf [menubar] section.
 // Range 22-44 is standard desktop use; 44-88 enables touch-friendly sizing
@@ -82,6 +84,24 @@ typedef struct {
     int  hover_index;        // Which item the mouse is over: -1=none, 0=apple, 1+=menus
     int  open_menu;          // Which dropdown is open: -1=none, 0=apple, 1+=menus
     bool running;            // Set to false to exit the event loop
+
+    // Legacy Mode DBusMenu import (slice 18-C).
+    //
+    // When the active window's wid is registered with the AppMenu registrar
+    // (GTK3, Qt5, Qt6 with the appmenu module), we build a DbusMenuClient
+    // pointed at the app's dbusmenu endpoint. `legacy_client` is non-NULL
+    // for the lifetime of that registration — replaced when focus changes
+    // to another registered window, freed when focus moves to a window
+    // without a registration or to a native MoonBase app.
+    //
+    // `legacy_wid` tracks which window the current client is pointed at so
+    // we can skip rebuild churn when focus bounces between two windows of
+    // the same app (same wid → same client). `legacy_is_loading` is true
+    // between client creation and the first GetLayout reply — the bar
+    // shows the app name only during that ~200–400ms window.
+    DbusMenuClient *legacy_client;
+    Window          legacy_wid;
+    bool            legacy_is_loading;
 
     // X11 atoms — pre-interned for performance.
     // Atoms are unique identifiers for property names in X11. We look them
