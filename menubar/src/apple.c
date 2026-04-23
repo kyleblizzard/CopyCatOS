@@ -216,11 +216,13 @@ void apple_init(MenuBar *mb)
     snprintf(path_selected, sizeof(path_selected),
              "%s/.local/share/aqua-widgets/menubar/apple_logo_selected.png", home);
 
-    // Load and scale to proportionally-sized mask. At scale 1.0 (22px bar),
-    // the logo is 22x15 pixels (measured from real Snow Leopard: x=14..36,
-    // y=3..18). At larger bar heights the logo scales proportionally.
-    logo_normal   = load_and_scale_png(path_normal, S(22), S(15));
-    logo_selected = load_and_scale_png(path_selected, S(22), S(15));
+    // Load and scale to proportionally-sized mask. Measured from real
+    // Snow Leopard menu.png: Apple ink x=20..34 (w=15), y=1..16 (h~16) —
+    // a portrait aspect ~0.82. Source HiResAppleMenu.png is 76×88, same
+    // aspect within 2%. Target 15×18 keeps the logo upright; the earlier
+    // 22×15 was a landscape aspect that squashed the logo at 1.75×.
+    logo_normal   = load_and_scale_png(path_normal, S(15), S(18));
+    logo_selected = load_and_scale_png(path_selected, S(15), S(18));
 
     if (!logo_normal) {
         fprintf(stderr, "menubar: Apple logo not found at %s (using fallback)\n",
@@ -246,11 +248,11 @@ void apple_reload(MenuBar *mb)
     snprintf(path_selected, sizeof(path_selected),
              "%s/.local/share/aqua-widgets/menubar/apple_logo_selected.png", home);
 
-    logo_normal   = load_and_scale_png(path_normal, S(22), S(15));
-    logo_selected = load_and_scale_png(path_selected, S(22), S(15));
+    logo_normal   = load_and_scale_png(path_normal, S(15), S(18));
+    logo_selected = load_and_scale_png(path_selected, S(15), S(18));
 
     fprintf(stderr, "[apple] Reloaded logos at scale %.1f (%dx%d)\n",
-            menubar_scale, S(22), S(15));
+            menubar_scale, S(15), S(18));
 }
 
 void apple_paint(MenuBar *mb, cairo_t *cr)
@@ -261,10 +263,10 @@ void apple_paint(MenuBar *mb, cairo_t *cr)
     bool active = (mb->hover_index == 0 || mb->open_menu == 0);
     cairo_surface_t *logo = (active && logo_selected) ? logo_selected : logo_normal;
 
-    // Position: x=S(14), vertically centered in the bar
-    // Measured from real Snow Leopard: logo starts at x=14, y=3 (at 22px height)
-    double x = SF(14.0);
-    double y = (MENUBAR_HEIGHT - S(15)) / 2.0;
+    // Position: logo ink left-edge x=20, vertically centered in the bar.
+    // Measured from real Snow Leopard menu.png: ink bbox x=20..34, y=1..16.
+    double x = SF(20.0);
+    double y = (MENUBAR_HEIGHT - S(18)) / 2.0;
 
     if (logo) {
         // Draw the logo as a solid-color silhouette using the alpha mask.
