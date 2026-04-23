@@ -28,6 +28,7 @@
 #include "render.h"
 #include "apple.h"
 #include "appmenu.h"
+#include "appmenu_bridge.h"
 #include "systray.h"
 
 // MoonRock -> shell scale bridge. MoonRock publishes per-output HiDPI scale
@@ -351,6 +352,10 @@ bool menubar_init(MenuBar *mb)
     apple_init(mb);
     appmenu_init(mb);
     systray_init(mb);
+    // DBusMenu / AppMenu.Registrar bridge (slice 18-A). Non-fatal on
+    // failure: a KDE dev box where kwin already owns the name gets a
+    // warning and a nil bridge; menubar still runs.
+    (void)appmenu_bridge_init(mb);
 
     // ── Set initial state ───────────────────────────────────────
     strncpy(mb->active_app, "Finder", sizeof(mb->active_app) - 1);
@@ -740,15 +745,27 @@ void menubar_run(MenuBar *mb)
         }
 
         // ── Wait for next event or timeout ──────────────────────
+        // The DBusMenu bridge folds the GLib main context's file
+        // descriptors into this same fd_set via appmenu_bridge_prepare_
+        // select, and shortens the timeout if a GLib source has a
+        // nearer deadline. After select() returns, dispatch drains any
+        // ready GDBus work. Keeps the 500ms clock-tick cadence while
+        // letting DBus traffic wake the loop immediately.
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(x11_fd, &fds);
+        int max_fd     = x11_fd;
+        int timeout_ms = 500;
+
+        appmenu_bridge_prepare_select(&fds, &max_fd, &timeout_ms);
 
         struct timeval tv;
-        tv.tv_sec  = 0;
-        tv.tv_usec = 500000;
+        tv.tv_sec  =  timeout_ms / 1000;
+        tv.tv_usec = (timeout_ms % 1000) * 1000;
 
-        select(x11_fd + 1, &fds, NULL, NULL, &tv);
+        select(max_fd + 1, &fds, NULL, NULL, &tv);
+
+        appmenu_bridge_dispatch(&fds);
     }
 }
 
@@ -827,6 +844,7 @@ void menubar_paint(MenuBar *mb)
 
 void menubar_shutdown(MenuBar *mb)
 {
+    appmenu_bridge_shutdown(mb);
     systray_cleanup();
     appmenu_cleanup();
     apple_cleanup();
