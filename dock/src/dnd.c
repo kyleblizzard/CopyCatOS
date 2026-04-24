@@ -294,8 +294,15 @@ bool dnd_handle_button_release(DockState *state, DndState *dnd,
     // --- Case 2: Pending but never reached the threshold ---
     // The user clicked and released without moving much. This is a normal
     // click — return false so the caller can launch the app.
+    //
+    // IMPORTANT: do NOT call dnd_cleanup() here. The caller reads
+    // dnd->pending and dnd->icon_idx to decide whether to fire
+    // launch_app(). Resetting those fields here silently drops every
+    // dock click on the floor — the caller's `else if (dnd->pending)`
+    // branch never runs because pending flipped to false under its
+    // feet. The caller already performs the cleanup itself after it
+    // pulls icon_idx out.
     if (dnd->pending && !dnd->active) {
-        dnd_cleanup(dnd);
         return false;
     }
 
