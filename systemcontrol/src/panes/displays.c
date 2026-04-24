@@ -1,20 +1,25 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
 // ============================================================================
-// panes/displays.c — Displays preferences pane (v1-minimum: scale picker)
+// panes/displays.c — Displays preferences pane (v1-minimum: scale picker +
+//                    primary toggle)
 // ============================================================================
 //
 // Enumerates XRandR outputs directly (the _MOONROCK_OUTPUT_SCALES atom only
 // carries name + geometry + effective scale, not mm dimensions), reads each
-// output's current effective scale from the atom, and renders a row per
-// output with a segmented pill control showing the 11 scale choices
-// 0.50 → 3.00 in 0.25 steps.
+// output's current effective scale + primary flag from the atom, and renders
+// a row per output with:
+//   - a segmented pill control showing the 11 scale choices 0.50 → 3.00 in
+//     0.25 steps,
+//   - a right-aligned "Primary display" radio that picks which output owns
+//     the menu bar (and anchors dock/desktop placement in later slices).
 //
-// Clicking a pill sends moonrock_request_scale() over
-// _MOONROCK_SET_OUTPUT_SCALE. The pane updates its local state
-// optimistically — MoonRock will re-publish on _MOONROCK_OUTPUT_SCALES and
-// anyone who subscribed (menubar, dock, desktop) gets the scale change via
-// PropertyNotify.
+// Clicking a pill sends moonrock_request_scale() over _MOONROCK_SET_OUTPUT_SCALE.
+// Clicking a primary radio sends moonrock_request_primary() over
+// _MOONROCK_SET_PRIMARY_OUTPUT. Both updates are optimistic locally —
+// MoonRock re-publishes on _MOONROCK_OUTPUT_SCALES and anyone who subscribed
+// (menubar, dock, desktop) gets the change via PropertyNotify; the pane
+// refreshes from the atom on next entry.
 // ============================================================================
 
 #include "displays.h"
@@ -41,6 +46,15 @@
 #define PILL_H             28
 #define PILL_RADIUS         6.0
 
+// Primary radio — right-aligned on the title row. The whole 120px block
+// (circle + label) is the clickable target; clicking anywhere in it flips
+// that output to primary.
+#define PRIMARY_CTRL_W    128   // reserved width at the right edge
+#define PRIMARY_RADIO_D    14   // outer-circle diameter
+#define PRIMARY_RADIO_IN    5   // inner-dot diameter when selected
+#define PRIMARY_GAP         6   // space between circle and label
+#define PRIMARY_HIT_PAD_Y   4   // vertical slop for hit-testing the radio
+
 // ── Scale choices ───────────────────────────────────────────────────────
 
 #define STEP_COUNT         11
@@ -59,6 +73,7 @@ typedef struct {
     int   mm_width, mm_height;    // physical size from EDID
     float current_scale;          // effective scale MoonRock is using
     int   picked_step;            // last clicked step; -1 for "match current"
+    bool  is_primary;             // reflected from _MOONROCK_OUTPUT_SCALES
 } DisplayRow;
 
 static DisplayRow g_rows[MAX_ROWS];
@@ -115,6 +130,7 @@ static void enumerate_outputs(Display *dpy, Window root)
                 r->mm_height = oi->mm_height;
                 r->current_scale = 1.0f;  // filled in by refresh_scales()
                 r->picked_step   = -1;
+                r->is_primary    = false; // filled in by refresh_scales()
                 XRRFreeCrtcInfo(ci);
             }
         }
@@ -125,9 +141,9 @@ static void enumerate_outputs(Display *dpy, Window root)
     XRRFreeScreenResources(res);
 }
 
-// Read _MOONROCK_OUTPUT_SCALES and copy the effective scale into each row.
-// Rows whose name isn't in the table (e.g. MoonRock hasn't started yet)
-// stay at the default 1.0.
+// Read _MOONROCK_OUTPUT_SCALES and copy the effective scale + primary flag
+// into each row. Rows whose name isn't in the table (e.g. MoonRock hasn't
+// started yet) stay at scale 1.0 and primary=false.
 static void refresh_scales(Display *dpy)
 {
     MoonRockScaleTable table;
@@ -136,10 +152,75 @@ static void refresh_scales(Display *dpy)
     for (int i = 0; i < g_row_count; i++) {
         g_rows[i].current_scale =
             moonrock_scale_for_name(&table, g_rows[i].name);
+        g_rows[i].is_primary = false;
+        if (!table.valid) continue;
+        for (int j = 0; j < table.count; j++) {
+            if (strcmp(table.outputs[j].name, g_rows[i].name) == 0) {
+                g_rows[i].is_primary = table.outputs[j].primary;
+                break;
+            }
+        }
     }
 }
 
 // ── Drawing helpers ────────────────────────────────────────────────────
+
+// Draw the right-aligned "Primary display" radio + label for one row.
+// The circle's left edge sits at (PANE_RIGHT - PRIMARY_CTRL_W), vertically
+// centered with the title text. Label is Lucida Grande 12; text + circle
+// both shift to Aqua selection blue when primary, gray otherwise, so state
+// is readable even without color cues.
+static void draw_primary_radio(cairo_t *cr, double title_y, bool is_primary)
+{
+    const double cx = PANE_RIGHT - PRIMARY_CTRL_W + PRIMARY_RADIO_D / 2.0;
+    const double cy = title_y + 9.0; // roughly cap-height center of Bold 13
+
+    if (is_primary) {
+        // Filled blue outer circle + white inner dot
+        cairo_set_source_rgb(cr, 0.220, 0.459, 0.843); // #3875D7
+        cairo_arc(cr, cx, cy, PRIMARY_RADIO_D / 2.0, 0, 2 * 3.14159265358979);
+        cairo_fill(cr);
+
+        cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+        cairo_arc(cr, cx, cy, PRIMARY_RADIO_IN / 2.0, 0, 2 * 3.14159265358979);
+        cairo_fill(cr);
+    } else {
+        // White fill, gray outline
+        cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+        cairo_arc(cr, cx, cy, PRIMARY_RADIO_D / 2.0, 0, 2 * 3.14159265358979);
+        cairo_fill(cr);
+
+        cairo_set_source_rgb(cr, 0.55, 0.55, 0.55);
+        cairo_set_line_width(cr, 1.0);
+        cairo_arc(cr, cx, cy, PRIMARY_RADIO_D / 2.0 - 0.5,
+                  0, 2 * 3.14159265358979);
+        cairo_stroke(cr);
+    }
+
+    // Label — "Primary display" in blue when active, secondary-gray when not
+    PangoLayout *layout = pango_cairo_create_layout(cr);
+    pango_layout_set_text(layout, "Primary display", -1);
+    PangoFontDescription *font =
+        pango_font_description_from_string("Lucida Grande 12");
+    pango_layout_set_font_description(layout, font);
+    pango_font_description_free(font);
+
+    int lw, lh;
+    pango_layout_get_pixel_size(layout, &lw, &lh);
+
+    if (is_primary) {
+        cairo_set_source_rgb(cr, 0.220, 0.459, 0.843);
+    } else {
+        cairo_set_source_rgb(cr, 0.40, 0.40, 0.40);
+    }
+    cairo_move_to(cr,
+                  PANE_RIGHT - PRIMARY_CTRL_W + PRIMARY_RADIO_D + PRIMARY_GAP,
+                  title_y + (PRIMARY_RADIO_D + 2 - lh) / 2.0 + 1);
+    pango_cairo_show_layout(cr, layout);
+    g_object_unref(layout);
+
+    (void)lw;
+}
 
 // Filled rounded rectangle — used for pill buttons and the row background.
 static void rounded_rect(cairo_t *cr, double x, double y,
@@ -281,10 +362,19 @@ void displays_pane_paint(SysPrefsState *state)
             pango_font_description_from_string("Lucida Grande Bold 13");
         pango_layout_set_font_description(tl, tf);
         pango_font_description_free(tf);
+        // Clamp title width so a long "HDMI-1 — 3840 × 2160" can't spill
+        // into the right-side primary control's region.
+        pango_layout_set_width(tl,
+            (PANE_RIGHT - PANE_LEFT - PRIMARY_CTRL_W - 12) * PANGO_SCALE);
+        pango_layout_set_ellipsize(tl, PANGO_ELLIPSIZE_END);
         cairo_set_source_rgb(cr, 0.15, 0.15, 0.15);
         cairo_move_to(cr, PANE_LEFT, row_y + ROW_TITLE_Y);
         pango_cairo_show_layout(cr, tl);
         g_object_unref(tl);
+
+        // Primary radio + "Primary display" label, right-aligned on the
+        // title row.
+        draw_primary_radio(cr, row_y + ROW_TITLE_Y, r->is_primary);
 
         // Meta: "14" panel · 323 PPI" if EDID reports mm, otherwise just
         // the current effective scale so the row is never empty.
@@ -351,8 +441,56 @@ static bool hit_test(int x, int y, int *row_out, int *step_out)
     return false;
 }
 
+// Hit-test for the primary radio on the title row. Matches the full
+// 128px control block (circle + label) so clicks feel forgiving. Returns
+// the row index on hit, -1 otherwise.
+static int hit_test_primary(int x, int y)
+{
+    double row_y = ROW_TOP_MARGIN + 20;
+    const double ctrl_x0 = PANE_RIGHT - PRIMARY_CTRL_W;
+    const double ctrl_x1 = PANE_RIGHT;
+
+    for (int i = 0; i < g_row_count; i++) {
+        double ty = row_y + ROW_TITLE_Y;
+        double y0 = ty - PRIMARY_HIT_PAD_Y;
+        double y1 = ty + PRIMARY_RADIO_D + PRIMARY_HIT_PAD_Y;
+        if (y >= y0 && y <= y1 && x >= ctrl_x0 && x <= ctrl_x1) {
+            return i;
+        }
+        row_y += ROW_HEIGHT + ROW_V_GAP;
+    }
+    return -1;
+}
+
 bool displays_pane_click(SysPrefsState *state, int x, int y)
 {
+    // Primary radio takes priority — it sits on the title row, well
+    // separated from the pill strip, but check it first for clarity.
+    int prow = hit_test_primary(x, y);
+    if (prow >= 0) {
+        DisplayRow *r = &g_rows[prow];
+        if (r->is_primary) {
+            // Already primary — no-op, no atom traffic. Return false so
+            // caller doesn't repaint a frame that wouldn't change.
+            return false;
+        }
+        fprintf(stderr,
+                "[sysprefs:displays] Requesting primary = %s\n", r->name);
+        if (!moonrock_request_primary(state->dpy, r->name)) {
+            fprintf(stderr,
+                    "[sysprefs:displays] moonrock_request_primary() "
+                    "failed — request dropped\n");
+            return false;
+        }
+        // Optimistic local flip — exactly one row primary. MoonRock
+        // re-publishes on _MOONROCK_OUTPUT_SCALES; next pane entry will
+        // confirm or revert via refresh_scales().
+        for (int i = 0; i < g_row_count; i++) {
+            g_rows[i].is_primary = (i == prow);
+        }
+        return true;
+    }
+
     int row, step;
     if (!hit_test(x, y, &row, &step)) return false;
 

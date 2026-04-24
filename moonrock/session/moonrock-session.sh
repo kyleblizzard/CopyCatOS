@@ -64,18 +64,30 @@ xrandr --output eDP-1 --mode 1920x1200 --rate 120 2>/dev/null || \
 #
 # Behavior:
 #   - Walk DP-* / HDMI-* outputs; pick the first connected external.
-#   - Apply --same-as eDP-1 --primary on that output.
+#   - Apply --same-as eDP-1 on that output (mirror at shared origin).
 #   - If modes don't match exactly, xrandr will pick the external's
 #     preferred mode and align at 0,0. eDP-1 keeps its own mode; the
 #     user can tune via xrandr or the Displays pane once it lands.
 #   - Silent no-op when undocked (no externals connected).
+#
+# --primary is deliberately omitted here for the same reason as the eDP-1
+# line above: MoonRock restores the user's persisted primary-output choice
+# from ~/.local/share/moonrock/display-config.conf during display_init(),
+# and slice 55's Displays pane lets the user pick which output owns the
+# menu bar. Forcing --primary on the external here would clobber that
+# choice on every docked login.
+#
+# TODO(slice-55 mirror/extend): the --same-as eDP-1 below will stomp any
+# future "extend" choice the user makes in the Displays pane until
+# display-config.conf persists per-output geometry and moonrock restores
+# it on login. Drop this whole block once that lands.
 EXT=""
 for o in $(xrandr 2>/dev/null | awk '/^(DP|HDMI)-[0-9]+ connected/ {print $1}'); do
     EXT="$o"
     break
 done
 if [ -n "$EXT" ]; then
-    xrandr --output "$EXT" --auto --same-as eDP-1 --primary 2>/dev/null || true
+    xrandr --output "$EXT" --auto --same-as eDP-1 2>/dev/null || true
 fi
 
 # ─── Theme configuration ───
