@@ -10,6 +10,14 @@ export XDG_SESSION_TYPE=x11
 export XDG_SESSION_DESKTOP=CopyCatOS
 export XDG_CURRENT_DESKTOP=CopyCatOS
 
+# Prefer user-local binaries over /usr/local/bin. Every shell component
+# (moonrock, menubar, dock, desktop, searchsystem, moonbase, fileviewer,
+# inputsession) is resolved via PATH below — prepending ~/.local/bin lets
+# `meson setup build --prefix=$HOME/.local && meson install -C build`
+# roll a new binary into the session without sudo. A /usr/local/bin
+# install still works as a system-wide fallback when ~/.local is empty.
+export PATH="$HOME/.local/bin:$PATH"
+
 # Clean session-type marker for inputd. A single file at a stable path
 # per user is the only signal inputd reads to pick DESKTOP vs GAME profile.
 # /run/user/$UID/ is tmpfs, owned by the session user, and goes away on
