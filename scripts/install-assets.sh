@@ -344,7 +344,35 @@ copy_dir "$SYSPREFS_ICONS" "$ASSET_DST/sysprefs/icons"
 copy_dir "$SYSPREFS_ICONS_128" "$ASSET_DST/sysprefs/icons-128"
 
 # ---------------------------------------------------------------------------
-# 10. Desktop shortcut .desktop files
+# 10. Aqua icon theme (freedesktop layout)
+# ---------------------------------------------------------------------------
+# fileviewer/sidebar.c, fileviewer/content.c, and desktop/icons.c read icons
+# directly as files at ~/.local/share/icons/Aqua/<size>/<subdir>/<name>.png —
+# no XDG / GTK lookup, no /usr/share fallback. Without this deploy step the
+# shell falls back to hand-drawn Cairo placeholders for every folder, home,
+# trash, and document icon.
+#
+# Destination intentionally differs from $ASSET_DST: the theme needs to live
+# where XDG dictates so third-party Qt/GTK apps can find it too (the one KDE
+# app we care about is the tray) — it's not exclusive to the CopyCatOS shell.
+header "Aqua icon theme"
+
+AQUA_ICON_SRC="$ASSET_SRC/icons/Aqua"
+AQUA_ICON_DST="$HOME/.local/share/icons/Aqua"
+
+if [[ -d "$AQUA_ICON_SRC" ]]; then
+    mkdir -p "$AQUA_ICON_DST"
+    copy_dir "$AQUA_ICON_SRC" "$AQUA_ICON_DST"
+    # index.theme sits at the theme root, not under a size/context subdir —
+    # copy_dir already grabs it because it's a regular file in $AQUA_ICON_SRC.
+else
+    warn "Aqua icon theme source not found: $AQUA_ICON_SRC"
+    WARN_MSGS+=("Missing dir: $AQUA_ICON_SRC")
+    (( WARNINGS++ )) || true
+fi
+
+# ---------------------------------------------------------------------------
+# 11. Desktop shortcut .desktop files
 # ---------------------------------------------------------------------------
 header "Desktop shortcuts"
 
@@ -367,7 +395,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 11. Summary
+# 12. Summary
 # ---------------------------------------------------------------------------
 header "Summary"
 

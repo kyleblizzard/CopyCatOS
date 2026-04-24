@@ -36,7 +36,14 @@ __pycache__/
 # assets/source/ dirs hold raw high-res icon sources (e.g. Grok Imagine
 # outputs at 3000×3000+) — only the downscaled derivatives ship.
 snowleopardaura/
-/icons/
+# /icons/ holds asset caches we generally don't ship, but the Aqua dev theme
+# tracked here (/icons/Aqua/) IS shipped — fileviewer + desktop read it at
+# runtime and it's the only reason folder/home/trash icons render as real SL
+# art instead of Cairo placeholders. Still dev-only (redrawn before release).
+# Git refuses to re-include a path whose parent dir is excluded, so we ignore
+# /icons/ contents one level deep then un-ignore Aqua/ specifically.
+/icons/*
+!/icons/Aqua/
 tutorial/
 screenshots/
 screenshotsforkyle/
