@@ -495,12 +495,19 @@ void displays_pane_paint(SysPrefsState *state)
         pango_cairo_show_layout(cr, ml);
         g_object_unref(ml);
 
-        // Rotation pills — right-aligned on the meta row.
-        draw_rotation_pills(cr,
-                            rotation_strip_x0(),
-                            rotation_strip_y(row_y),
-                            r->rotation,
-                            -1);
+        // Rotation pills — right-aligned on the meta row. Only offered
+        // when the built-in panel is the sole connected output: rotating
+        // one output of a multi-display setup implies geometry decisions
+        // (break mirror, re-pack positions) that the pane doesn't yet
+        // make, and the externals themselves don't physically rotate.
+        // "Rotate my tablet when I'm undocked" is the intended UX.
+        if (g_row_count == 1) {
+            draw_rotation_pills(cr,
+                                rotation_strip_x0(),
+                                rotation_strip_y(row_y),
+                                r->rotation,
+                                -1);
+        }
 
         // Pills
         int active = (r->picked_step >= 0)
@@ -542,6 +549,11 @@ static bool hit_test(int x, int y, int *row_out, int *step_out)
 // fills *row_out + *rot_index_out (0..3 mapping to 0°/90°/180°/270°).
 static bool hit_test_rotation(int x, int y, int *row_out, int *rot_index_out)
 {
+    // Rotation pills are only drawn when the built-in panel is the sole
+    // connected output; refuse hits otherwise so an invisible strip can't
+    // be clicked by a touch that happens to land on the meta row.
+    if (g_row_count != 1) return false;
+
     double row_y = ROW_TOP_MARGIN + 20;
     const double x0 = rotation_strip_x0();
 
