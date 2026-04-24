@@ -264,6 +264,11 @@ void wm_focus_client(CCWM *wm, Client *c)
                         XA_WINDOW, 32, PropModeReplace,
                         (unsigned char *)&c->client, 1);
     }
+
+    // Focus change shifts active output AND reorders the stack — the
+    // new focus gets raised above siblings on its host output, which
+    // can change frontmost-per-output for more than one row.
+    ewmh_publish_output_focus_state(wm);
 }
 
 void wm_unfocus_client(CCWM *wm, Client *c)

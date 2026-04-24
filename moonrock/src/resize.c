@@ -21,6 +21,7 @@
 
 #include "resize.h"
 #include "frame.h"
+#include "ewmh.h"
 #include <X11/cursorfont.h>
 #include <X11/Xcursor/Xcursor.h>
 #include <stdio.h>
@@ -358,6 +359,11 @@ void resize_end(CCWM *wm)
     wm->resizing = false;
     wm->drag_client = NULL;
     current_resize_dir = RESIZE_NONE;
+
+    // Resize may have extended the window across an output boundary,
+    // shifting its midpoint onto a new output. Republish focus state so
+    // shell subscribers stay row-aligned with _MOONROCK_OUTPUT_SCALES.
+    ewmh_publish_output_focus_state(wm);
 }
 
 

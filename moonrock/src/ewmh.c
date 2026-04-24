@@ -8,11 +8,13 @@
 #include "ewmh.h"
 #include "frame.h"
 #include "moonrock.h"
+#include "moonrock_display.h"
+#include "moonrock_scale.h"
 #include <X11/Xcursor/Xcursor.h>
+#include <X11/Xatom.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 void ewmh_setup(CCWM *wm)
 {
@@ -107,6 +109,11 @@ void ewmh_update_client_list(CCWM *wm)
     XChangeProperty(wm->dpy, wm->root, wm->atom_net_client_list_stacking,
                     XA_WINDOW, 32, PropModeReplace,
                     (unsigned char *)clients, n);
+
+    // Map/unmap changes the frontmost-per-output table; republish so
+    // menubar (Modern mode) picks up the new topmost app per output
+    // without waiting on the next scale or focus event.
+    ewmh_publish_output_focus_state(wm);
 }
 
 void ewmh_set_frame_extents(CCWM *wm, Window client)
@@ -482,5 +489,187 @@ void ewmh_check_ping_timeouts(CCWM *wm)
             fprintf(stderr, "[moonrock] '%s' is unresponsive — beach ball!\n",
                     c->title);
         }
+    }
+}
+
+
+// ── Per-output focus state publisher ───────────────────────────────────
+//
+// Two atoms live here rather than in moonrock_display.c because their
+// value comes from the WM (focused client, managed client list) rather
+// than the display table. moonrock_display.c provides the output row
+// order; we provide the focus/frontmost overlay.
+//
+// _MOONROCK_ACTIVE_OUTPUT (CARDINAL, format 32, length 1):
+//     Row index in _MOONROCK_OUTPUT_SCALES hosting the focused window.
+//     MOONROCK_ACTIVE_OUTPUT_NONE (0xFFFFFFFF) when no window focused.
+//
+// _MOONROCK_FRONTMOST_PER_OUTPUT (WINDOW, format 32, length == output count):
+//     Topmost managed client per output in the same row order as the
+//     scale table. Uses XQueryTree for real X stacking order so
+//     subscribers match what the user sees on screen.
+
+static CCWM *focus_state_wm = NULL;
+static Atom  active_output_atom = None;
+static Atom  frontmost_atom = None;
+
+// Thunk handed to display_set_scales_published_cb(). The display module's
+// hook is void(void), so it finds the WM via the file-static stashed by
+// ewmh_register_focus_state_hook().
+static void focus_state_republish_thunk(void)
+{
+    if (focus_state_wm) {
+        ewmh_publish_output_focus_state(focus_state_wm);
+    }
+}
+
+void ewmh_register_focus_state_hook(CCWM *wm)
+{
+    focus_state_wm = wm;
+    if (wm && wm->dpy) {
+        if (active_output_atom == None) {
+            active_output_atom = XInternAtom(
+                wm->dpy, MOONROCK_ACTIVE_OUTPUT_ATOM_NAME, False);
+        }
+        if (frontmost_atom == None) {
+            frontmost_atom = XInternAtom(
+                wm->dpy, MOONROCK_FRONTMOST_PER_OUTPUT_ATOM_NAME, False);
+        }
+    }
+    display_set_scales_published_cb(focus_state_republish_thunk);
+
+    // Kick one initial publish so subscribers that start after MoonRock
+    // see a valid state even if the scale table doesn't change.
+    ewmh_publish_output_focus_state(wm);
+}
+
+// Pick the output row index whose rect contains a given point. Midpoint
+// of the client's frame is the intent — any part on the output counts.
+// Returns -1 if no output matches (shouldn't happen when outputs are
+// connected, but stays sensible during hotplug races).
+static int output_index_for_point(MROutput *outputs, int n, int x, int y)
+{
+    for (int i = 0; i < n; i++) {
+        if (x >= outputs[i].x && x < outputs[i].x + outputs[i].width &&
+            y >= outputs[i].y && y < outputs[i].y + outputs[i].height) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int home_output_for_client(const Client *c, MROutput *outputs, int n)
+{
+    if (!c || !c->mapped || c->w <= 0 || c->h <= 0) return -1;
+    int mx = c->x + c->w / 2;
+    int my = c->y + c->h / 2;
+    int idx = output_index_for_point(outputs, n, mx, my);
+    if (idx >= 0) return idx;
+
+    // Fall back to primary — happens if the window sits in a gap
+    // between outputs during a hotplug frame.
+    for (int i = 0; i < n; i++) {
+        if (outputs[i].primary) return i;
+    }
+    return (n > 0) ? 0 : -1;
+}
+
+void ewmh_publish_output_focus_state(CCWM *wm)
+{
+    if (!wm || !wm->dpy) return;
+    if (active_output_atom == None) {
+        active_output_atom = XInternAtom(
+            wm->dpy, MOONROCK_ACTIVE_OUTPUT_ATOM_NAME, False);
+    }
+    if (frontmost_atom == None) {
+        frontmost_atom = XInternAtom(
+            wm->dpy, MOONROCK_FRONTMOST_PER_OUTPUT_ATOM_NAME, False);
+    }
+
+    int output_count = 0;
+    MROutput *outputs = display_get_outputs(&output_count);
+    if (!outputs || output_count <= 0) {
+        // No output table yet (display_init hasn't run). Subscribers
+        // treat missing properties as "no data", so leave the atoms
+        // untouched.
+        return;
+    }
+
+    // ── Active output: keyboard-focused window's home output. ──
+    unsigned long active_idx =
+        (unsigned long)MOONROCK_ACTIVE_OUTPUT_NONE;
+    if (wm->focused) {
+        int idx = home_output_for_client(wm->focused, outputs, output_count);
+        if (idx >= 0) active_idx = (unsigned long)idx;
+    }
+
+    // ── Frontmost per output via real X stacking order. ──
+    //
+    // XQueryTree returns children bottom-to-top. Walk top-to-bottom,
+    // map each frame window back to a managed Client, and record its
+    // home output as the frontmost for that row (first write wins =
+    // topmost). Unmanaged windows (override-redirect children, the
+    // compositor's own helper windows) are skipped naturally because
+    // wm_find_client_by_frame returns NULL.
+    unsigned long frontmost[MOONROCK_SCALE_MAX_OUTPUTS];
+    for (int i = 0; i < output_count && i < MOONROCK_SCALE_MAX_OUTPUTS; i++) {
+        frontmost[i] = (unsigned long)None;
+    }
+
+    Window root_ret, parent_ret;
+    Window *children = NULL;
+    unsigned int n_children = 0;
+    if (XQueryTree(wm->dpy, wm->root, &root_ret, &parent_ret,
+                   &children, &n_children) && children) {
+        // Top of stack is last element — walk in reverse.
+        for (int i = (int)n_children - 1; i >= 0; i--) {
+            Client *c = wm_find_client_by_frame(wm, children[i]);
+            if (!c || !c->mapped) continue;
+            int idx = home_output_for_client(c, outputs, output_count);
+            if (idx < 0 || idx >= output_count) continue;
+            if (idx >= MOONROCK_SCALE_MAX_OUTPUTS) continue;
+            if (frontmost[idx] == (unsigned long)None) {
+                frontmost[idx] = (unsigned long)c->client;
+            }
+        }
+        XFree(children);
+    }
+
+    int emit_count = output_count;
+    if (emit_count > MOONROCK_SCALE_MAX_OUTPUTS) {
+        emit_count = MOONROCK_SCALE_MAX_OUTPUTS;
+    }
+
+    // Dedup: skip XChangeProperty writes when neither payload changed.
+    // Every focus / map / unmap / hotplug hits this path, and most of
+    // them leave one or both atoms unchanged. Avoiding the write also
+    // avoids the PropertyNotify round-trip to every subscriber.
+    static unsigned long  last_active = 0xDEADBEEFul;  // sentinel
+    static unsigned long  last_frontmost[MOONROCK_SCALE_MAX_OUTPUTS];
+    static int            last_frontmost_count = -1;
+
+    bool active_changed = (last_active != active_idx);
+    bool frontmost_changed = (last_frontmost_count != emit_count) ||
+        memcmp(last_frontmost, frontmost,
+               (size_t)emit_count * sizeof(unsigned long)) != 0;
+
+    if (active_changed) {
+        XChangeProperty(wm->dpy, wm->root, active_output_atom,
+                        XA_CARDINAL, 32, PropModeReplace,
+                        (unsigned char *)&active_idx, 1);
+        last_active = active_idx;
+    }
+
+    if (frontmost_changed) {
+        XChangeProperty(wm->dpy, wm->root, frontmost_atom,
+                        XA_WINDOW, 32, PropModeReplace,
+                        (unsigned char *)frontmost, emit_count);
+        memcpy(last_frontmost, frontmost,
+               (size_t)emit_count * sizeof(unsigned long));
+        last_frontmost_count = emit_count;
+    }
+
+    if (active_changed || frontmost_changed) {
+        XFlush(wm->dpy);
     }
 }

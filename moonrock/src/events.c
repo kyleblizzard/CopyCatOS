@@ -573,6 +573,10 @@ static void on_button_release(CCWM *wm, XEvent *e)
         XUngrabPointer(wm->dpy, CurrentTime);
         wm->dragging = false;
         wm->drag_client = NULL;
+        // Drag end may have crossed an output boundary — the window's
+        // midpoint determines home output, so republish focus state so
+        // the menubar and other shell subscribers stay row-aligned.
+        ewmh_publish_output_focus_state(wm);
     }
 }
 

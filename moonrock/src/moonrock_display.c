@@ -1030,6 +1030,17 @@ static void edid_cache_store(const char *name, const uint8_t *hash)
 // Callers: end of display_init() (covers startup and hotplug, since
 // display_handle_hotplug() re-enters display_init) and end of
 // display_set_scale_for_output() (covers SysPrefs changing user scale).
+// Hook fired after the scales atom is rewritten (and only if the
+// payload actually changed — dedup filter runs first). Set by
+// display_set_scales_published_cb(); NULL by default so standalone
+// libmoonrock builds don't need a WM attached.
+static void (*scales_published_cb)(void) = NULL;
+
+void display_set_scales_published_cb(void (*cb)(void))
+{
+    scales_published_cb = cb;
+}
+
 static void publish_scales_to_root(void)
 {
     if (!display_dpy || display_root == None) return;
@@ -1086,6 +1097,14 @@ static void publish_scales_to_root(void)
     fprintf(stderr, "[display] Published %d scale entr%s to %s (%zu bytes)\n",
             output_count, output_count == 1 ? "y" : "ies",
             MOONROCK_SCALE_ATOM_NAME, pos);
+
+    // Fire the companion-publish hook so sibling atoms
+    // (_MOONROCK_ACTIVE_OUTPUT, _MOONROCK_FRONTMOST_PER_OUTPUT) stay
+    // aligned with this table's row order. Runs only when the payload
+    // actually changed (dedup check above returns early otherwise).
+    if (scales_published_cb) {
+        scales_published_cb();
+    }
 }
 
 

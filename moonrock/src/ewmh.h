@@ -13,6 +13,30 @@ void ewmh_setup(CCWM *wm);
 // Update _NET_CLIENT_LIST and _NET_CLIENT_LIST_STACKING
 void ewmh_update_client_list(CCWM *wm);
 
+// Publish _MOONROCK_ACTIVE_OUTPUT (CARDINAL, row index into
+// _MOONROCK_OUTPUT_SCALES of the keyboard-focused window's home output)
+// and _MOONROCK_FRONTMOST_PER_OUTPUT (XA_WINDOW array, one WID per
+// output in the same row order). These two atoms travel with the
+// scale table — shell components (menubar in Modern mode) read all
+// three and expect matching row order.
+//
+// Call this from:
+//   - wm_focus_client() — focus change
+//   - ewmh_update_client_list() — map/unmap
+//   - via display_set_scales_published_cb() — hotplug / scale / primary /
+//     rotation reshuffles. Registered from moonrock.c at startup.
+//
+// Dedup identical payloads so subscribers aren't spammed when nothing
+// changed.
+void ewmh_publish_output_focus_state(CCWM *wm);
+
+// Register the display-module scales-published hook so
+// _MOONROCK_OUTPUT_SCALES rewrites automatically trigger a matching
+// rewrite of _MOONROCK_ACTIVE_OUTPUT + _MOONROCK_FRONTMOST_PER_OUTPUT.
+// Stashes `wm` in a file-static so the void(void) hook can find it.
+// Call once, after display_init() succeeds.
+void ewmh_register_focus_state_hook(CCWM *wm);
+
 // Set _NET_FRAME_EXTENTS on a client window
 void ewmh_set_frame_extents(CCWM *wm, Window client);
 

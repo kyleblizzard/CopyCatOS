@@ -16,6 +16,8 @@
 
 #include "moonrock_scale.h"
 
+#include <X11/Xatom.h>
+
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -360,5 +362,104 @@ bool moonrock_request_interface_scale(Display *dpy,
                     set_atom, utf8, 8, PropModeReplace,
                     (unsigned char *)line, n);
     XFlush(dpy);
+    return true;
+}
+
+
+// ── Readers — per-output focus state ─────────────────────────────────
+//
+// The two atoms below travel with _MOONROCK_OUTPUT_SCALES: publisher
+// rewrites all three whenever row order changes (hotplug / scale /
+// primary / rotation) or whenever focus / the managed client list
+// changes. Subscribers read both per PropertyNotify and cross-reference
+// the row index against their cached MoonRockScaleTable.
+
+static Atom g_active_output_atom = None;
+static Atom g_frontmost_atom     = None;
+
+Atom moonrock_active_output_atom(Display *dpy)
+{
+    if (g_active_output_atom == None && dpy) {
+        g_active_output_atom = XInternAtom(
+            dpy, MOONROCK_ACTIVE_OUTPUT_ATOM_NAME, False);
+    }
+    return g_active_output_atom;
+}
+
+Atom moonrock_frontmost_per_output_atom(Display *dpy)
+{
+    if (g_frontmost_atom == None && dpy) {
+        g_frontmost_atom = XInternAtom(
+            dpy, MOONROCK_FRONTMOST_PER_OUTPUT_ATOM_NAME, False);
+    }
+    return g_frontmost_atom;
+}
+
+int moonrock_active_output_index(Display *dpy)
+{
+    if (!dpy) return -1;
+    Atom a = moonrock_active_output_atom(dpy);
+    if (a == None) return -1;
+
+    Atom type;
+    int  fmt;
+    unsigned long nitems, after;
+    unsigned char *data = NULL;
+
+    if (XGetWindowProperty(dpy, DefaultRootWindow(dpy), a,
+                           0, 1, False, XA_CARDINAL,
+                           &type, &fmt, &nitems, &after, &data) != Success
+        || !data || nitems == 0 || fmt != 32) {
+        if (data) XFree(data);
+        return -1;
+    }
+
+    // CARDINAL comes back as unsigned long (at least 32 bits). Mask to
+    // the wire's 32-bit width so a 0xFFFFFFFF sentinel compares equal
+    // regardless of the local long width.
+    unsigned long raw = *(unsigned long *)data;
+    XFree(data);
+    if ((raw & 0xFFFFFFFFul) == (unsigned long)MOONROCK_ACTIVE_OUTPUT_NONE) {
+        return -1;
+    }
+    return (int)(raw & 0xFFFFFFFFul);
+}
+
+bool moonrock_frontmost_per_output(Display *dpy,
+                                   Window *out, int cap, int *count)
+{
+    if (count) *count = 0;
+    if (!dpy || !out || cap <= 0) return false;
+
+    Atom a = moonrock_frontmost_per_output_atom(dpy);
+    if (a == None) return false;
+
+    Atom type;
+    int  fmt;
+    unsigned long nitems, after;
+    unsigned char *data = NULL;
+
+    if (XGetWindowProperty(dpy, DefaultRootWindow(dpy), a,
+                           0, MOONROCK_SCALE_MAX_OUTPUTS,
+                           False, XA_WINDOW,
+                           &type, &fmt, &nitems, &after, &data) != Success
+        || !data || fmt != 32) {
+        if (data) XFree(data);
+        return false;
+    }
+
+    int n = (int)nitems;
+    if (n > cap) n = cap;
+
+    // XGetWindowProperty returns format-32 properties as a packed
+    // array of `unsigned long` on 64-bit systems. Copy into the
+    // caller's XID array one element at a time.
+    unsigned long *src = (unsigned long *)data;
+    for (int i = 0; i < n; i++) {
+        out[i] = (Window)src[i];
+    }
+    if (count) *count = n;
+
+    XFree(data);
     return true;
 }

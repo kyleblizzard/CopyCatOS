@@ -473,6 +473,21 @@ void display_handle_interface_scale_request(Display *dpy, Window root);
 bool display_set_interface_scale_for_output(MROutput *output, float multiplier);
 
 
+// ── Scales-published hook ──────────────────────────────────────────────
+// Invoked at the tail of every publish_scales_to_root(), AFTER the
+// _MOONROCK_OUTPUT_SCALES atom has been rewritten. The WM uses this to
+// keep sibling atoms (_MOONROCK_ACTIVE_OUTPUT, _MOONROCK_FRONTMOST_PER_OUTPUT)
+// in lockstep with the scale table's row order — if hotplug reorders
+// outputs, the companion atoms must be rewritten in the same pass so
+// subscribers see a consistent view across all three.
+//
+// Pass NULL to clear. The hook is invoked only when the serialized
+// scales payload actually changed (dedup rule already applied); a hook
+// that does more work than publishing a property should add its own
+// dedup.
+void display_set_scales_published_cb(void (*cb)(void));
+
+
 // Get the viewport rectangle for a specific output.
 //
 // Fills in the position and size of the given output within the virtual

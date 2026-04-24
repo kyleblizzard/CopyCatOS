@@ -135,6 +135,47 @@
 // of the same value still generates a PropertyNotify.
 #define MOONROCK_SET_INTERFACE_SCALE_ATOM_NAME "_MOONROCK_SET_OUTPUT_INTERFACE_SCALE"
 
+// Companion atoms — per-output focus state, row-index-aligned with
+// _MOONROCK_OUTPUT_SCALES. Published together with the scales table
+// so subscribers can read all three with a single PropertyNotify
+// round-trip.
+//
+// _MOONROCK_ACTIVE_OUTPUT
+//     Type: CARDINAL, format 32, length 1.
+//     Value: row index into _MOONROCK_OUTPUT_SCALES of the output
+//     hosting the keyboard-focused top-level window (_NET_ACTIVE_WINDOW's
+//     home output). 0xFFFFFFFF when no window is focused.
+//
+//     "Home output" is the output containing the focused window's
+//     geometric midpoint. This matches macOS's semantic — the active
+//     output is the focused window's host, not the pointer's host.
+//     Menubar uses it to pick which pane draws at full opacity and
+//     which pane opens dropdowns when clicked.
+//
+// _MOONROCK_FRONTMOST_PER_OUTPUT
+//     Type: WINDOW (XA_WINDOW), format 32, length == row count of
+//     _MOONROCK_OUTPUT_SCALES.
+//     Value: parallel array, one WID per output in the same row
+//     order as _MOONROCK_OUTPUT_SCALES. Each entry is the X window
+//     ID of the topmost managed client whose home output is that
+//     row (using X stacking order via XQueryTree), or None (0) if
+//     no managed window lives on that output. Menubar uses this to
+//     label each per-output pane with its own output's frontmost app.
+//
+// Publication cadence: rewritten whenever _MOONROCK_OUTPUT_SCALES is
+// rewritten (so row order stays in sync) AND whenever focus or the
+// managed client list changes. Dedup identical writes so subscribers
+// aren't spammed when nothing changed.
+#define MOONROCK_ACTIVE_OUTPUT_ATOM_NAME        "_MOONROCK_ACTIVE_OUTPUT"
+#define MOONROCK_FRONTMOST_PER_OUTPUT_ATOM_NAME "_MOONROCK_FRONTMOST_PER_OUTPUT"
+
+// Sentinel value for _MOONROCK_ACTIVE_OUTPUT when no window is focused.
+// CARDINAL is unsigned 32-bit on the wire, so we use 0xFFFFFFFF as the
+// "no active output" marker. Subscribers should treat values >= output
+// count as "no active output."
+#define MOONROCK_ACTIVE_OUTPUT_NONE 0xFFFFFFFFu
+
+
 // Cap on how many outputs we parse into a single table. Matches
 // MAX_OUTPUTS on the publisher side so we never drop a legitimate entry.
 #define MOONROCK_SCALE_MAX_OUTPUTS 16
@@ -281,5 +322,33 @@ bool moonrock_request_rotation(Display *dpy, const char *output_name,
 bool moonrock_request_interface_scale(Display *dpy,
                                       const char *output_name,
                                       float multiplier);
+
+
+// ── Reader — _MOONROCK_ACTIVE_OUTPUT ───────────────────────────────────
+// Returns the 0-based row index published by MoonRock, or -1 if the
+// property is missing / malformed / marked as "no active output"
+// (MOONROCK_ACTIVE_OUTPUT_NONE). Callers typically cross-reference the
+// returned index against a recently-refreshed MoonRockScaleTable.
+int moonrock_active_output_index(Display *dpy);
+
+// Intern the atom so callers can compare against ev.xproperty.atom in
+// their PropertyNotify handler without another round-trip.
+Atom moonrock_active_output_atom(Display *dpy);
+
+
+// ── Reader — _MOONROCK_FRONTMOST_PER_OUTPUT ────────────────────────────
+// Reads the parallel WID array into `out`. On success `*count` receives
+// the number of entries (matches the output row count of the scale
+// table captured at the publisher's last write) and the function returns
+// true. On missing / malformed property, `*count` is set to 0 and the
+// function returns false.
+//
+// Callers should size `out` to MOONROCK_SCALE_MAX_OUTPUTS; any extra
+// entries from the publisher are silently dropped.
+bool moonrock_frontmost_per_output(Display *dpy,
+                                   Window *out, int cap, int *count);
+
+// Intern the atom for event-loop comparison.
+Atom moonrock_frontmost_per_output_atom(Display *dpy);
 
 #endif // MOONROCK_SCALE_H

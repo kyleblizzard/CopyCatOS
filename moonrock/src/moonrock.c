@@ -788,6 +788,13 @@ bool mr_init(CCWM *wm)
                 "(multi-monitor features unavailable)\n");
     }
 
+    // Hook ewmh focus-state publisher into display's scale-publish event
+    // so _MOONROCK_ACTIVE_OUTPUT + _MOONROCK_FRONTMOST_PER_OUTPUT rewrite
+    // atomically with _MOONROCK_OUTPUT_SCALES on hotplug / scale /
+    // primary / rotation changes. Safe to call even if display_init
+    // failed — the publisher no-ops when no outputs exist.
+    ewmh_register_focus_state_hook(wm);
+
     // Color management — detects display PPI and computes scale factors for
     // HiDPI rendering. Also loads GL uniform functions for tone mapping.
     if (!color_init(wm->dpy, wm->screen)) {
