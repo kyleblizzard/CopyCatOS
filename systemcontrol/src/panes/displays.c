@@ -134,6 +134,45 @@ static int  g_iscale_drag_row = -1;
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
+// Read ~/.config/copycatos/desktop.conf and return the
+// `[displays] interface_scale_apply_all` flag. Default is false: a
+// slider drag commits only to the row the user grabbed. When the flag
+// is true the release handler fans the same multiplier out to every
+// enumerated output so a user with the Legion docked to an external
+// gets one-slider global zoom.
+//
+// Parser matches dock.c's INI walker: track the current [section] name
+// then match "key=value" on lines that start with our key. Unknown
+// sections and keys are silently ignored so this can coexist with the
+// other desktop.conf consumers (dock, menubar) without a schema.
+static bool read_apply_all_flag(void)
+{
+    const char *home = getenv("HOME");
+    if (!home) return false;
+
+    char path[512];
+    snprintf(path, sizeof(path),
+             "%s/.config/copycatos/desktop.conf", home);
+    FILE *fp = fopen(path, "r");
+    if (!fp) return false;
+
+    bool apply_all = false;
+    bool in_displays = false;
+    char line[256];
+    while (fgets(line, sizeof(line), fp)) {
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '[') {
+            in_displays = (strncmp(p, "[displays]", 10) == 0);
+        } else if (in_displays &&
+                   strncmp(p, "interface_scale_apply_all=", 26) == 0) {
+            apply_all = atoi(p + 26) != 0;
+        }
+    }
+    fclose(fp);
+    return apply_all;
+}
+
 // Nearest step to the given scale — used to highlight the active pill when
 // MoonRock's value doesn't exactly hit one of our discrete steps (e.g. an
 // EDID-derived default of 1.75 for the Legion Go S panel matches exactly;
@@ -985,18 +1024,34 @@ void displays_pane_release(SysPrefsState *state)
         int drag_row = g_iscale_drag_row;
         g_iscale_drag_row = -1;
 
-        if (m > 0.0f) {
+        if (m <= 0.0f) return;
+
+        // Apply-to-all flag — when set, the same multiplier fans out to
+        // every enumerated output so a docked Legion + external zoom in
+        // lockstep. Read on release (not cached) so a user who edits
+        // desktop.conf between drags doesn't need to restart SysPrefs.
+        bool apply_all = read_apply_all_flag();
+
+        for (int i = 0; i < g_row_count; i++) {
+            if (!apply_all && i != drag_row) continue;
+            DisplayRow *t = &g_rows[i];
             fprintf(stderr,
                     "[sysprefs:displays] Requesting %s interface scale "
-                    "→ %.2f×\n", r->name, (double)m);
-            if (!moonrock_request_interface_scale(state->dpy, r->name, m)) {
+                    "→ %.2f×%s\n",
+                    t->name, (double)m,
+                    apply_all && i != drag_row ? " (apply-to-all)" : "");
+            if (!moonrock_request_interface_scale(state->dpy, t->name, m)) {
                 fprintf(stderr,
                         "[sysprefs:displays] "
-                        "moonrock_request_interface_scale() failed — "
-                        "request dropped\n");
+                        "moonrock_request_interface_scale() failed for %s — "
+                        "request dropped\n", t->name);
+                continue;
             }
+            // Mirror the optimistic local state so the fan-out rows'
+            // sliders jump to the new value immediately too; MoonRock's
+            // re-publish will confirm or correct.
+            if (i != drag_row) t->multiplier = m;
         }
-        (void)drag_row;
         return;
     }
 }
