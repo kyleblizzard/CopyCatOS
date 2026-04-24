@@ -1015,16 +1015,146 @@ bool display_init(Display *dpy, int screen)
     // set from SysPrefs can't be clobbered by a concurrent hotplug.
     load_rotation_overrides_once();
 
-    // Startup pre-pass: catch any output that's already connected but
-    // has no CRTC assigned. This happens when MoonRock launches with an
-    // external monitor already docked — no RandR event fires during
-    // start-up, and the main enumeration loop skips connected-inactive
-    // outputs, so without this pass the monitor stays dark.
+    // Startup pre-pass A — undock: tear down any CRTC that is still
+    // driving a now-disconnected output. RandR does NOT auto-disable a
+    // CRTC when the cable is pulled: the CRTC keeps its mode, position,
+    // and (sometimes) primary flag until a client calls XRRSetCrtcConfig
+    // with mode=None. Without this pass, undock events leave the virtual
+    // screen stretched across the old external monitor's footprint and
+    // the shell (menu bar, desktop) lays out against a phantom output.
+    //
+    // We iterate CRTCs (not outputs) deliberately: some drivers clear
+    // oi->crtc on disconnect but leave the CRTC's own output list
+    // populated, so the output-side back-pointer is unreliable. A CRTC
+    // is phantom when it has outputs bound AND every one of those
+    // outputs is now RR_Disconnected.
+    {
+        XRRScreenResources *pre = XRRGetScreenResourcesCurrent(dpy, display_root);
+        if (pre) {
+            bool disabled_any = false;
+            for (int i = 0; i < pre->ncrtc; i++) {
+                XRRCrtcInfo *ci = XRRGetCrtcInfo(dpy, pre, pre->crtcs[i]);
+                if (!ci) continue;
+                if (ci->mode == None || ci->noutput == 0) {
+                    XRRFreeCrtcInfo(ci);
+                    continue;
+                }
+                bool any_connected = false;
+                for (int j = 0; j < ci->noutput; j++) {
+                    XRROutputInfo *oi =
+                        XRRGetOutputInfo(dpy, pre, ci->outputs[j]);
+                    if (!oi) continue;
+                    if (oi->connection == RR_Connected) any_connected = true;
+                    XRRFreeOutputInfo(oi);
+                    if (any_connected) break;
+                }
+                if (!any_connected) {
+                    fprintf(stderr,
+                            "[display] undock: disabling phantom CRTC %lu "
+                            "(%ux%u+%d+%d) — bound outputs are all "
+                            "disconnected\n",
+                            (unsigned long)pre->crtcs[i],
+                            ci->width, ci->height, ci->x, ci->y);
+                    XRRSetCrtcConfig(dpy, pre, pre->crtcs[i],
+                                     pre->configTimestamp,
+                                     0, 0, None, RR_Rotate_0, NULL, 0);
+                    disabled_any = true;
+                }
+                XRRFreeCrtcInfo(ci);
+            }
+            XRRFreeScreenResources(pre);
+
+            if (disabled_any) {
+                // Clear XRandR's primary if it still points at a now-
+                // disconnected output. The persisted-EDID apply further
+                // down in this function will reassert a chosen primary
+                // when the monitor comes back; this just prevents a
+                // stale phantom from being returned between now and the
+                // next hotplug.
+                RROutput prim = XRRGetOutputPrimary(dpy, display_root);
+                if (prim != None) {
+                    XRRScreenResources *r2 =
+                        XRRGetScreenResourcesCurrent(dpy, display_root);
+                    if (r2) {
+                        XRROutputInfo *poi =
+                            XRRGetOutputInfo(dpy, r2, prim);
+                        if (poi && poi->connection == RR_Disconnected) {
+                            fprintf(stderr,
+                                    "[display] undock: clearing primary "
+                                    "(%s is disconnected)\n",
+                                    poi->name ? poi->name : "?");
+                            XRRSetOutputPrimary(dpy, display_root, None);
+                        }
+                        if (poi) XRRFreeOutputInfo(poi);
+                        XRRFreeScreenResources(r2);
+                    }
+                }
+
+                // Shrink the virtual screen to the bounding box of what's
+                // still live. The rest of the codebase only grows — that's
+                // the right policy mid-session — but undock is the one
+                // place where shrinking is correct: every window, menu bar,
+                // and desktop surface needs to re-layout against the new
+                // (smaller) screen. Floor at 1×1 so a fully-dark desktop
+                // (no outputs at all) doesn't pass a zero dimension to
+                // XRRSetScreenSize, which some servers reject.
+                XRRScreenResources *post =
+                    XRRGetScreenResourcesCurrent(dpy, display_root);
+                if (post) {
+                    int bbox_w = 0, bbox_h = 0;
+                    for (int i = 0; i < post->ncrtc; i++) {
+                        XRRCrtcInfo *ci = XRRGetCrtcInfo(dpy, post,
+                                                         post->crtcs[i]);
+                        if (!ci) continue;
+                        if (ci->mode != None && ci->noutput > 0) {
+                            int r = (int)ci->x + (int)ci->width;
+                            int b = (int)ci->y + (int)ci->height;
+                            if (r > bbox_w) bbox_w = r;
+                            if (b > bbox_h) bbox_h = b;
+                        }
+                        XRRFreeCrtcInfo(ci);
+                    }
+
+                    int screen_w    = DisplayWidth(dpy, display_screen);
+                    int screen_h    = DisplayHeight(dpy, display_screen);
+                    int screen_mm_w = DisplayWidthMM(dpy, display_screen);
+                    int screen_mm_h = DisplayHeightMM(dpy, display_screen);
+
+                    if (bbox_w > 0 && bbox_h > 0 &&
+                        (bbox_w < screen_w || bbox_h < screen_h)) {
+                        int new_mm_w = screen_w > 0
+                          ? (int)((double)screen_mm_w * bbox_w / screen_w)
+                          : bbox_w;
+                        int new_mm_h = screen_h > 0
+                          ? (int)((double)screen_mm_h * bbox_h / screen_h)
+                          : bbox_h;
+                        fprintf(stderr,
+                                "[display] undock: shrinking virtual "
+                                "screen %dx%d -> %dx%d\n",
+                                screen_w, screen_h, bbox_w, bbox_h);
+                        XRRSetScreenSize(dpy, display_root,
+                                         bbox_w, bbox_h,
+                                         new_mm_w, new_mm_h);
+                    }
+                    XRRFreeScreenResources(post);
+                }
+            }
+        }
+    }
+
+    // Startup pre-pass B — dock: catch any output that's already
+    // connected but has no CRTC assigned. This happens when MoonRock
+    // launches with an external monitor already docked — no RandR event
+    // fires during start-up, and the main enumeration loop skips
+    // connected-inactive outputs, so without this pass the monitor
+    // stays dark.
     //
     // Each auto_enable_output() call commits an XRRSetCrtcConfig; the
     // enumeration below then picks the output up as active on its first
     // pass. Safe to run on every re-entry (hotplug path) because it's a
-    // no-op when every connected output already has a CRTC.
+    // no-op when every connected output already has a CRTC. Runs AFTER
+    // pass A so any CRTC freed by the undock sweep is available for a
+    // freshly-plugged monitor on the same hotplug flush.
     {
         XRRScreenResources *pre = XRRGetScreenResourcesCurrent(dpy, display_root);
         if (pre) {
