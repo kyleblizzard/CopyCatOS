@@ -239,12 +239,16 @@ void systray_init(MenuBar *mb)
     last_battery_poll = time(NULL);
 }
 
-int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
+int systray_paint(MenuBar *mb, MenuBarPane *pane, cairo_t *cr)
 {
     (void)mb;
 
-    // Paint right-to-left from the right edge with scaled margin
-    int cursor = right_edge - S(8);
+    // Paint right-to-left from the pane's right edge with scaled margin.
+    // The spotlight glyph hit bbox is cached per-paint; in Classic mode
+    // only pane 0 paints, so the cache maps to that pane. A.2.3 needs
+    // per-pane spotlight bboxes so clicks on a secondary bar activate
+    // searchsystem there too.
+    int cursor = pane->screen_w - S(8);
 
     // ── Spotlight icon (rightmost) ──────────────────────────────────
     int spot_x = 0, spot_w = 0;
@@ -417,7 +421,7 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
         cursor -= S(10); // Final gap
     }
 
-    return right_edge - cursor;
+    return pane->screen_w - cursor;
 }
 
 void systray_update(MenuBar *mb)

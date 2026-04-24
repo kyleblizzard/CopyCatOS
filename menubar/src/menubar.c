@@ -3,14 +3,20 @@
 // menubar.c — Core menu bar lifecycle and event handling
 //
 // This is the heart of the menu bar. It manages:
-//   - The X11 dock-type window pinned to the top of the screen
+//   - One or more X11 dock-type windows, one per pane, pinned to the
+//     top edge of their host outputs
 //   - The main event loop (mouse, expose, property changes)
-//   - Layout computation (where each clickable region is)
+//   - Layout computation per pane
 //   - Coordination between all subsystems
 //
-// The window uses _NET_WM_WINDOW_TYPE_DOCK so the window manager knows
+// Each pane uses _NET_WM_WINDOW_TYPE_DOCK so the window manager knows
 // to keep it always on top and not give it decorations. The _NET_WM_STRUT
 // properties reserve screen space so other windows don't overlap the bar.
+// The STRUT_PARTIAL horizontal range narrows the reservation to the
+// hosting output only — other outputs stay unreserved at their top.
+//
+// Classic mode (A.2.2 baseline): pane_count == 1 on the primary output.
+// Modern mode (A.2.3): pane_count == number of connected outputs.
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,9 +40,7 @@
 
 // MoonRock -> shell scale bridge. MoonRock publishes per-output HiDPI scale
 // to the root window; we subscribe so menubar knows the effective scale for
-// its hosting output. Task 3 wiring is proof-of-life only — the logged value
-// will drive real pixel-size math once Phase E task 2 converts our
-// hardcoded constants to points.
+// its hosting output.
 #include "moonrock_scale.h"
 
 // Logical bar height in points, from ~/.config/copycatos/desktop.conf.
@@ -71,11 +75,15 @@ static void recompute_menubar_scale(void)
 // into menubar_hidpi_scale, and recompute menubar_scale. Returns the
 // previous hidpi value so callers can detect change.
 //
-// The bar anchors to the primary output, so its scale is the primary's
-// scale. A point-based lookup at (0,0) ambiguously matches every output
-// that shares the origin — e.g. mirror layouts where eDP-1 and DP-2 both
-// sit at (0,0) — and would otherwise return whichever output walked
-// first, not necessarily the primary.
+// In Classic mode the bar anchors to the primary output, so its scale is
+// the primary's scale. A point-based lookup at (0,0) ambiguously matches
+// every output that shares the origin — e.g. mirror layouts where eDP-1
+// and DP-2 both sit at (0,0) — and would otherwise return whichever
+// output walked first, not necessarily the primary.
+//
+// TODO A.2.3: Modern mode needs per-pane scale. This function stays as
+// the Classic-mode single-scale derivation until the per-pane refactor
+// lands.
 static float apply_hidpi_scale_from_table(void)
 {
     float old = menubar_hidpi_scale;
@@ -167,23 +175,58 @@ static void read_menubar_config(void)
 
 // ── Forward declarations ────────────────────────────────────────────
 static void dismiss_open_menu(MenuBar *mb);
-static int  hit_test_menu(MenuBar *mb, int mx);
+static int  hit_test_menu(MenuBar *mb, MenuBarPane *pane, int mx);
 static void grab_pointer(MenuBar *mb);
 static void ungrab_pointer(MenuBar *mb);
+static void paint_pane(MenuBar *mb, MenuBarPane *pane);
+static void compute_pane_layout(MenuBarPane *pane);
+
+// ── Pane lookup helpers ─────────────────────────────────────────────
+
+MenuBarPane *mb_pane_for_window(MenuBar *mb, Window w)
+{
+    for (int i = 0; i < mb->pane_count; i++) {
+        if (mb->panes[i].win == w) return &mb->panes[i];
+    }
+    return NULL;
+}
+
+MenuBarPane *mb_pane_for_point(MenuBar *mb, int rx, int ry)
+{
+    for (int i = 0; i < mb->pane_count; i++) {
+        MenuBarPane *p = &mb->panes[i];
+        if (rx >= p->screen_x && rx < p->screen_x + p->screen_w &&
+            ry >= p->screen_y && ry < p->screen_y + p->screen_h) {
+            return p;
+        }
+    }
+    return NULL;
+}
+
+MenuBarPane *mb_primary_pane(MenuBar *mb)
+{
+    return (mb->pane_count >= 1) ? &mb->panes[0] : NULL;
+}
 
 // Pull the primary-output geometry out of the cached MoonRock scale
-// table and stuff it into mb->screen_{x,y,w,h}. Falls back to the
+// table and stuff it into panes[0].screen_{x,y,w,h}. Falls back to the
 // virtual-root dimensions when the table is empty or has no primary
 // entry — a single-display setup or a MoonRock that pre-dates the
 // primary field still lands somewhere sensible.
 //
 // Returns true if any of the four fields changed, so callers can skip
 // the resize path when nothing moved.
+//
+// TODO A.2.3: generalize to populate panes[0..N-1] from every output
+// when Modern mode is active.
 static bool lookup_primary_geometry(MenuBar *mb)
 {
+    MenuBarPane *pane = &mb->panes[0];
+
     int nx = 0, ny = 0;
     int nw = DisplayWidth(mb->dpy, mb->screen);
     int nh = DisplayHeight(mb->dpy, mb->screen);
+    const char *out_name = "";
 
     const MoonRockOutputScale *p = moonrock_scale_primary(&g_output_scales);
     if (p) {
@@ -191,6 +234,7 @@ static bool lookup_primary_geometry(MenuBar *mb)
         ny = p->y;
         nw = p->width;
         nh = p->height;
+        out_name = p->name;
     } else if (g_output_scales.valid && g_output_scales.count > 0) {
         // No primary flag set (shouldn't normally happen, but guard it).
         // Prefer the first entry over the whole virtual-root span.
@@ -199,56 +243,80 @@ static bool lookup_primary_geometry(MenuBar *mb)
         ny = o->y;
         nw = o->width;
         nh = o->height;
+        out_name = o->name;
     }
 
-    bool changed = (nx != mb->screen_x) || (ny != mb->screen_y) ||
-                   (nw != mb->screen_w) || (nh != mb->screen_h);
-    mb->screen_x = nx;
-    mb->screen_y = ny;
-    mb->screen_w = nw;
-    mb->screen_h = nh;
+    bool changed = (nx != pane->screen_x) || (ny != pane->screen_y) ||
+                   (nw != pane->screen_w) || (nh != pane->screen_h);
+    pane->screen_x = nx;
+    pane->screen_y = ny;
+    pane->screen_w = nw;
+    pane->screen_h = nh;
+    strncpy(pane->output_name, out_name, sizeof(pane->output_name) - 1);
+    pane->output_name[sizeof(pane->output_name) - 1] = '\0';
     return changed;
 }
 
-// Apply the current menubar_scale to the live window: resize, rewrite
-// struts, recompute scale-dependent layout regions, reload any cached
-// scale-sized assets (Apple logo), and repaint. Called after either a
-// SIGHUP-driven height change or a MoonRock-driven HiDPI change.
+// Populate the pane-local layout anchors (apple_x/w, appname_x, menus_x).
+// Called from init after the pane's screen rect is resolved, and from
+// apply_menubar_resize after a scale change so every point constant
+// tracks the current menubar_scale.
+static void compute_pane_layout(MenuBarPane *pane)
+{
+    pane->apple_x   = 0;
+    pane->apple_w   = S(50);
+    pane->appname_x = S(58);
+    pane->appname_w = 0;
+    // menus_x is written every paint (depends on live app-name width),
+    // but seed it so hit_test_menu before the first paint doesn't trip.
+    pane->menus_x   = 0;
+}
+
+// Apply the current menubar_scale to every live pane: resize the dock
+// window, rewrite its struts, recompute scale-dependent layout regions,
+// reload any cached scale-sized assets (Apple logo), and repaint.
+// Called after either a SIGHUP-driven height change or a MoonRock-driven
+// HiDPI change. The strut writes are per-pane — each pane reserves only
+// its own output's top edge.
 static void apply_menubar_resize(MenuBar *mb)
 {
     int h_px = MENUBAR_HEIGHT;  // S(22) — physical pixels on host output
 
-    // Move+resize together so the window tracks primary-output changes
-    // (hotplug reassigning primary, EDID-override rerunning) without a
-    // one-frame flash at the old position.
-    XMoveResizeWindow(mb->dpy, mb->win,
-                      mb->screen_x, mb->screen_y,
-                      mb->screen_w, h_px);
+    for (int i = 0; i < mb->pane_count; i++) {
+        MenuBarPane *pane = &mb->panes[i];
 
-    // Struts are in virtual-root coordinates. `top=h_px` reserves the
-    // top strip at the root's top edge; `top_start_x/top_end_x` narrow
-    // that reservation to the primary output's X range so windows on a
-    // secondary can still use the full top of their own output.
-    long strut_partial[12] = {0};
-    strut_partial[2] = h_px;
-    strut_partial[8] = mb->screen_x;
-    strut_partial[9] = mb->screen_x + mb->screen_w - 1;
-    XChangeProperty(mb->dpy, mb->win,
-                    mb->atom_net_wm_strut_partial, XA_CARDINAL, 32,
-                    PropModeReplace, (unsigned char *)strut_partial, 12);
-    long strut[4] = { 0, 0, h_px, 0 };
-    XChangeProperty(mb->dpy, mb->win,
-                    mb->atom_net_wm_strut, XA_CARDINAL, 32,
-                    PropModeReplace, (unsigned char *)strut, 4);
+        // Move+resize together so the window tracks primary-output changes
+        // (hotplug reassigning primary, EDID-override rerunning) without a
+        // one-frame flash at the old position.
+        XMoveResizeWindow(mb->dpy, pane->win,
+                          pane->screen_x, pane->screen_y,
+                          pane->screen_w, h_px);
 
-    // Recompute point-scaled layout anchors
-    mb->apple_w   = S(50);
-    mb->appname_x = S(58);
+        // Struts are in virtual-root coordinates. `top=h_px` reserves the
+        // top strip at the root's top edge; `top_start_x/top_end_x`
+        // narrow that reservation to this pane's X range so windows on a
+        // secondary can still use the full top of their own output.
+        long strut_partial[12] = {0};
+        strut_partial[2] = h_px;
+        strut_partial[8] = pane->screen_x;
+        strut_partial[9] = pane->screen_x + pane->screen_w - 1;
+        XChangeProperty(mb->dpy, pane->win,
+                        mb->atom_net_wm_strut_partial, XA_CARDINAL, 32,
+                        PropModeReplace, (unsigned char *)strut_partial, 12);
+        long strut[4] = { 0, 0, h_px, 0 };
+        XChangeProperty(mb->dpy, pane->win,
+                        mb->atom_net_wm_strut, XA_CARDINAL, 32,
+                        PropModeReplace, (unsigned char *)strut, 4);
 
-    // Apple logo is pre-rasterized at S(22)×S(15) in apple_init; rebuild
-    // at the new scale. Other submodules (render, systray) draw their
-    // scale-dependent content per-frame so they don't need a reload.
-    apple_reload(mb);
+        // Recompute point-scaled layout anchors.
+        compute_pane_layout(pane);
+
+        // Apple logo is pre-rasterized in apple_init; rebuild at the new
+        // scale for this pane. Other submodules (render, systray) draw
+        // their scale-dependent content per-frame so they don't need a
+        // reload.
+        apple_reload(mb, pane);
+    }
 
     menubar_paint(mb);
 }
@@ -274,10 +342,15 @@ bool menubar_init(MenuBar *mb)
         sigaction(SIGHUP, &sa, NULL);
     }
 
-    // Zero out the entire struct
+    // Zero out the entire struct, then seed the invariant fields that
+    // can't legitimately be 0.
     memset(mb, 0, sizeof(MenuBar));
-    mb->hover_index = -1;
     mb->open_menu   = -1;
+    mb->active_pane = -1;
+    mb->pane_count  = 0;
+    for (int i = 0; i < MENUBAR_MAX_PANES; i++) {
+        mb->panes[i].hover_index = -1;
+    }
 
     // Connect to the X server. NULL means use the DISPLAY environment
     // variable, which is the standard way to find the X server.
@@ -287,20 +360,10 @@ bool menubar_init(MenuBar *mb)
         return false;
     }
 
-    // Get basic screen info — we need the dimensions to make a
-    // full-width window and the root window to watch for active
-    // window changes.
+    // Get basic screen info — we need the root window to watch for
+    // active window changes and the default screen for visual lookup.
     mb->screen   = DefaultScreen(mb->dpy);
     mb->root     = RootWindow(mb->dpy, mb->screen);
-    // Geometry is populated from the MoonRock scale bridge further down
-    // in this function, after moonrock_scale_refresh() runs. A
-    // DisplayWidth/Height seed here is only useful as a stale fallback
-    // if MoonRock isn't publishing yet, and lookup_primary_geometry()
-    // covers that path on its own.
-    mb->screen_x = 0;
-    mb->screen_y = 0;
-    mb->screen_w = 0;
-    mb->screen_h = 0;
 
     // ── Intern atoms ────────────────────────────────────────────
     mb->atom_net_active_window       = XInternAtom(mb->dpy, "_NET_ACTIVE_WINDOW", False);
@@ -359,6 +422,11 @@ bool menubar_init(MenuBar *mb)
     apply_hidpi_scale_from_table();
     log_scale_table("init");
 
+    // Classic mode: single pane on the primary. A.2.3 promotes this to
+    // one pane per output when _COPYCATOS_MENUBAR_MODE is Modern.
+    mb->pane_count  = 1;
+    MenuBarPane *pane = &mb->panes[0];
+
     // Resolve primary-output geometry from the refreshed table. Done
     // BEFORE XCreateWindow so the window is born on the right output at
     // the right width — avoids a visible jump from (0,0,virtual_w,22)
@@ -374,10 +442,10 @@ bool menubar_init(MenuBar *mb)
     attrs.colormap = colormap;
     attrs.border_pixel = 0;
 
-    mb->win = XCreateWindow(
+    pane->win = XCreateWindow(
         mb->dpy, mb->root,
-        mb->screen_x, mb->screen_y,
-        (unsigned int)mb->screen_w,
+        pane->screen_x, pane->screen_y,
+        (unsigned int)pane->screen_w,
         MENUBAR_HEIGHT,
         0,
         depth,
@@ -387,48 +455,40 @@ bool menubar_init(MenuBar *mb)
         &attrs
     );
 
-    XSetWindowBackgroundPixmap(mb->dpy, mb->win, None);
+    XSetWindowBackgroundPixmap(mb->dpy, pane->win, None);
 
     // ── Set window type to DOCK ─────────────────────────────────
     Atom dock_type = mb->atom_net_wm_window_type_dock;
-    XChangeProperty(mb->dpy, mb->win,
+    XChangeProperty(mb->dpy, pane->win,
                     mb->atom_net_wm_window_type, XA_ATOM,
                     32, PropModeReplace,
                     (unsigned char *)&dock_type, 1);
 
     // ── Reserve screen space with struts ────────────────────────
-    // top_start_x / top_end_x narrow the "top strut" to the primary
+    // top_start_x / top_end_x narrow the "top strut" to this pane's
     // output only; other monitors stay unreserved at their top.
     long strut_partial[12] = {
         0, 0, MENUBAR_HEIGHT, 0,
         0, 0, 0, 0,
-        mb->screen_x, mb->screen_x + mb->screen_w - 1, 0, 0
+        pane->screen_x, pane->screen_x + pane->screen_w - 1, 0, 0
     };
-    XChangeProperty(mb->dpy, mb->win,
+    XChangeProperty(mb->dpy, pane->win,
                     mb->atom_net_wm_strut_partial, XA_CARDINAL,
                     32, PropModeReplace,
                     (unsigned char *)strut_partial, 12);
 
     long strut[4] = { 0, 0, MENUBAR_HEIGHT, 0 };
-    XChangeProperty(mb->dpy, mb->win,
+    XChangeProperty(mb->dpy, pane->win,
                     mb->atom_net_wm_strut, XA_CARDINAL,
                     32, PropModeReplace,
                     (unsigned char *)strut, 4);
 
     // ── Map (show) the window ───────────────────────────────────
-    XMapWindow(mb->dpy, mb->win);
+    XMapWindow(mb->dpy, pane->win);
     XFlush(mb->dpy);
 
     // ── Compute layout regions ──────────────────────────────────
-    // All positions scale proportionally so the bar looks correct
-    // at any height from 22px to 88px.
-    mb->apple_x = 0;
-    mb->apple_w = S(50);
-
-    mb->appname_x = S(58);
-    mb->appname_w = 0;
-
-    mb->menus_x = 0;
+    compute_pane_layout(pane);
 
     // ── Initialize subsystems ───────────────────────────────────
     render_init(mb);
@@ -446,8 +506,9 @@ bool menubar_init(MenuBar *mb)
 
     mb->running = true;
 
-    fprintf(stdout, "menubar: initialized (%dx%d screen)\n",
-            mb->screen_w, mb->screen_h);
+    fprintf(stdout, "menubar: initialized (%d pane(s); primary %dx%d on %s)\n",
+            mb->pane_count, pane->screen_w, pane->screen_h,
+            pane->output_name[0] ? pane->output_name : "<unknown>");
 
     return true;
 }
@@ -480,17 +541,19 @@ static void dismiss_open_menu(MenuBar *mb)
     } else if (mb->open_menu > 0) {
         appmenu_dismiss(mb);
     }
-    mb->open_menu = -1;
+    mb->open_menu   = -1;
+    mb->active_pane = -1;
     ungrab_pointer(mb);
 }
 
 // ── Helper: figure out which menu title was clicked ─────────────────
-// Returns: -1 = nothing, 0 = Apple logo, 1+ = menu title index
+// Returns: -1 = nothing, 0 = Apple logo, 1+ = menu title index.
+// `mx` is pane-local (relative to pane->win left edge).
 
-static int hit_test_menu(MenuBar *mb, int mx)
+static int hit_test_menu(MenuBar *mb, MenuBarPane *pane, int mx)
 {
     // Check Apple logo region
-    if (mx >= mb->apple_x && mx < mb->apple_x + mb->apple_w) {
+    if (mx >= pane->apple_x && mx < pane->apple_x + pane->apple_w) {
         return 0;
     }
 
@@ -502,7 +565,7 @@ static int hit_test_menu(MenuBar *mb, int mx)
     const MenuNode *root = appmenu_root_for(mb);
     int menu_count = root ? root->n_children : 0;
 
-    int item_x = mb->menus_x;
+    int item_x = pane->menus_x;
     for (int i = 0; i < menu_count; i++) {
         const char *title = root->children[i]->label;
         if (!title) continue;
@@ -545,11 +608,13 @@ static void fire_spotlight(MenuBar *mb)
 }
 
 // ── Helper: open a specific menu by index ───────────────────────────
-// index 0 = Apple, 1+ = app menus.
+// index 0 = Apple, 1+ = app menus. `pane` is the pane that spawned the
+// click; it becomes mb->active_pane for the lifetime of the dropdown.
 
-static void open_menu_at(MenuBar *mb, int index)
+static void open_menu_at(MenuBar *mb, MenuBarPane *pane, int index)
 {
-    mb->open_menu = index;
+    mb->open_menu   = index;
+    mb->active_pane = (int)(pane - mb->panes);
 
     if (index == 0) {
         apple_show_menu(mb);
@@ -559,7 +624,7 @@ static void open_menu_at(MenuBar *mb, int index)
         const MenuNode *root = appmenu_root_for(mb);
         int count = root ? root->n_children : 0;
 
-        int dx = mb->menus_x;
+        int dx = pane->menus_x;
         for (int j = 0; j < index - 1 && j < count; j++) {
             const char *t = root->children[j]->label;
             if (t) dx += (int)render_measure_text(t, false) + S(20);
@@ -599,20 +664,39 @@ void menubar_run(MenuBar *mb)
             switch (ev.type) {
             case Expose:
                 if (ev.xexpose.count == 0) {
-                    menubar_paint(mb);
+                    MenuBarPane *pane = mb_pane_for_window(mb, ev.xexpose.window);
+                    if (pane) paint_pane(mb, pane);
                 }
                 break;
 
             case MotionNotify: {
                 // When a menu is open, the pointer is grabbed on root,
-                // so we get root coordinates. Convert to menubar-relative.
+                // so we get root coordinates. Convert to pane-local.
                 int mx, my;
+                MenuBarPane *pane;
                 if (mb->open_menu >= 0) {
-                    // Grabbed on root — coordinates are screen/root coords
-                    mx = ev.xmotion.x_root;
-                    my = ev.xmotion.y_root;
+                    // Grabbed on root — coordinates are screen/root coords.
+                    // Recover the pane from the pointer position.
+                    int rx = ev.xmotion.x_root;
+                    int ry = ev.xmotion.y_root;
+                    pane = mb_pane_for_point(mb, rx, ry);
+                    if (!pane) {
+                        // Pointer outside every pane's output — forward
+                        // to the dropdown below as usual via the "mouse
+                        // below the bar" branch, anchored on the pane
+                        // that hosts the open dropdown.
+                        pane = (mb->active_pane >= 0)
+                               ? &mb->panes[mb->active_pane]
+                               : mb_primary_pane(mb);
+                        if (!pane) break;
+                    }
+                    mx = rx - pane->screen_x;
+                    my = ry - pane->screen_y;
                 } else {
-                    // Not grabbed — coordinates are relative to mb->win
+                    // Not grabbed — coordinates are relative to the pane's
+                    // own window, and ev.xmotion.window identifies it.
+                    pane = mb_pane_for_window(mb, ev.xmotion.window);
+                    if (!pane) break;
                     mx = ev.xmotion.x;
                     my = ev.xmotion.y;
                 }
@@ -620,31 +704,36 @@ void menubar_run(MenuBar *mb)
                 // Mouse below the bar — might be in the dropdown popup.
                 // Route hover events to the active dropdown for highlight.
                 if (my < 0 || my >= MENUBAR_HEIGHT) {
-                    if (mb->hover_index != -1) {
-                        mb->hover_index = -1;
-                        menubar_paint(mb);
+                    if (pane->hover_index != -1) {
+                        pane->hover_index = -1;
+                        paint_pane(mb, pane);
                     }
 
-                    // Forward hover to the active dropdown if mouse is inside it.
-                    // Apple menu is one-deep and uses its own helper; app
-                    // menus have a multi-level submenu stack, so we ask
-                    // appmenu which level the pointer is in and forward
-                    // the synthetic motion to that window.
+                    // Forward hover to the active dropdown if mouse is
+                    // inside it. Apple menu is one-deep and uses its
+                    // own helper; app menus have a multi-level submenu
+                    // stack, so we ask appmenu which level the pointer
+                    // is in and forward the synthetic motion to that
+                    // window. Coordinates fed to the dropdown are root
+                    // coords — the popup windows themselves live in
+                    // root space.
+                    int rx = ev.xmotion.x_root;
+                    int ry = ev.xmotion.y_root;
                     if (mb->open_menu == 0) {
                         Window dropdown = apple_get_popup();
                         if (dropdown != None) {
                             XWindowAttributes dwa;
                             XGetWindowAttributes(mb->dpy, dropdown, &dwa);
-                            if (mx >= dwa.x && mx < dwa.x + dwa.width &&
-                                my >= dwa.y && my < dwa.y + dwa.height) {
-                                apple_handle_motion(mb, my - dwa.y);
+                            if (rx >= dwa.x && rx < dwa.x + dwa.width &&
+                                ry >= dwa.y && ry < dwa.y + dwa.height) {
+                                apple_handle_motion(mb, ry - dwa.y);
                             } else {
                                 apple_handle_motion(mb, -999);
                             }
                         }
                     } else if (mb->open_menu > 0) {
                         Window hit; int lx, ly;
-                        if (appmenu_find_dropdown_at(mb, mx, my, &hit, &lx, &ly)) {
+                        if (appmenu_find_dropdown_at(mb, rx, ry, &hit, &lx, &ly)) {
                             XEvent synth = ev;
                             synth.xmotion.window = hit;
                             synth.xmotion.x = lx;
@@ -656,16 +745,20 @@ void menubar_run(MenuBar *mb)
                     break;
                 }
 
-                int old_hover = mb->hover_index;
-                int new_hover = hit_test_menu(mb, mx);
+                int old_hover = pane->hover_index;
+                int new_hover = hit_test_menu(mb, pane, mx);
 
                 if (new_hover != old_hover) {
-                    mb->hover_index = new_hover;
+                    pane->hover_index = new_hover;
 
                     // If a menu is already open and we hover a different
                     // title, switch to that menu (menu bar scrubbing).
+                    // Only allowed inside the same pane — crossing to a
+                    // different pane's bar doesn't trigger scrub in
+                    // Classic mode (single pane, can't happen).
                     if (mb->open_menu >= 0 && new_hover >= 0 &&
-                        new_hover != mb->open_menu) {
+                        new_hover != mb->open_menu &&
+                        mb->active_pane == (int)(pane - mb->panes)) {
                         // Dismiss the old dropdown (keep the grab!)
                         if (mb->open_menu == 0) {
                             apple_dismiss(mb);
@@ -674,10 +767,10 @@ void menubar_run(MenuBar *mb)
                         }
 
                         // Open the new one (without re-grabbing)
-                        open_menu_at(mb, new_hover);
+                        open_menu_at(mb, pane, new_hover);
                     }
 
-                    menubar_paint(mb);
+                    paint_pane(mb, pane);
                 }
                 break;
             }
@@ -686,24 +779,46 @@ void menubar_run(MenuBar *mb)
                 // When pointer is grabbed on root, ButtonPress coords
                 // are in root/screen coordinates.
                 int mx, my;
+                int rx = ev.xbutton.x_root;
+                int ry = ev.xbutton.y_root;
+                MenuBarPane *pane;
+
                 if (mb->open_menu >= 0) {
-                    mx = ev.xbutton.x_root;
-                    my = ev.xbutton.y_root;
+                    pane = mb_pane_for_point(mb, rx, ry);
+                    if (pane) {
+                        mx = rx - pane->screen_x;
+                        my = ry - pane->screen_y;
+                    } else {
+                        // Click outside every pane's output — treat as
+                        // "clicked somewhere far from the bar." Fall
+                        // through to the out-of-bar dismiss path.
+                        mx = 0;
+                        my = -1;
+                    }
                 } else {
+                    pane = mb_pane_for_window(mb, ev.xbutton.window);
+                    if (!pane) break;
                     mx = ev.xbutton.x;
                     my = ev.xbutton.y;
                 }
 
-
                 if (mb->open_menu >= 0) {
                     // A menu is currently open.
 
-                    // Check if click is within the menu bar
-                    if (my >= 0 && my < MENUBAR_HEIGHT) {
-                        int clicked = hit_test_menu(mb, mx);
+                    // Check if click is within the menu bar of the pane
+                    // that currently hosts the dropdown. Clicking on a
+                    // different pane's bar is treated as an out-of-bar
+                    // click — the dropdown dismisses, and a re-click on
+                    // that pane will open its own menu next.
+                    bool in_active_bar =
+                        pane && my >= 0 && my < MENUBAR_HEIGHT &&
+                        mb->active_pane == (int)(pane - mb->panes);
+
+                    if (in_active_bar) {
+                        int clicked = hit_test_menu(mb, pane, mx);
 
                         if (clicked == mb->open_menu) {
-                            // Clicked the same menu title — toggle it closed
+                            // Clicked the same menu title — toggle closed
                             dismiss_open_menu(mb);
                             menubar_paint(mb);
                         } else if (clicked >= 0) {
@@ -714,17 +829,18 @@ void menubar_run(MenuBar *mb)
                             } else {
                                 appmenu_dismiss(mb);
                             }
-                            open_menu_at(mb, clicked);
+                            open_menu_at(mb, pane, clicked);
                         } else {
                             // Clicked empty space in the menu bar — dismiss
                             dismiss_open_menu(mb);
                             menubar_paint(mb);
                         }
                     } else {
-                        // Clicked outside the menu bar entirely. Apple
-                        // menu is a single popup; app menus have a
-                        // submenu stack, so ask appmenu which level
-                        // (if any) contains the point.
+                        // Clicked outside the active pane's bar entirely.
+                        // Apple menu is a single popup; app menus have a
+                        // submenu stack, so ask appmenu which level (if
+                        // any) contains the point. Popup coordinates are
+                        // root-absolute.
                         bool handled = false;
 
                         if (mb->open_menu == 0) {
@@ -732,11 +848,11 @@ void menubar_run(MenuBar *mb)
                             if (dropdown != None) {
                                 XWindowAttributes dwa;
                                 XGetWindowAttributes(mb->dpy, dropdown, &dwa);
-                                if (mx >= dwa.x && mx < dwa.x + dwa.width &&
-                                    my >= dwa.y && my < dwa.y + dwa.height) {
+                                if (rx >= dwa.x && rx < dwa.x + dwa.width &&
+                                    ry >= dwa.y && ry < dwa.y + dwa.height) {
                                     if (apple_handle_click(mb,
-                                                           mx - dwa.x,
-                                                           my - dwa.y)) {
+                                                           rx - dwa.x,
+                                                           ry - dwa.y)) {
                                         dismiss_open_menu(mb);
                                         menubar_paint(mb);
                                     }
@@ -745,7 +861,7 @@ void menubar_run(MenuBar *mb)
                             }
                         } else if (mb->open_menu > 0) {
                             Window hit; int lx, ly;
-                            if (appmenu_find_dropdown_at(mb, mx, my,
+                            if (appmenu_find_dropdown_at(mb, rx, ry,
                                                          &hit, &lx, &ly)) {
                                 XEvent synth = ev;
                                 synth.xbutton.window = hit;
@@ -777,21 +893,23 @@ void menubar_run(MenuBar *mb)
                 }
 
                 // No menu is open — check if a menu title was clicked
-                int clicked = hit_test_menu(mb, mx);
+                int clicked = hit_test_menu(mb, pane, mx);
                 if (clicked >= 0) {
                     grab_pointer(mb);
-                    open_menu_at(mb, clicked);
+                    open_menu_at(mb, pane, clicked);
                 }
                 break;
             }
 
-            case LeaveNotify:
-                // Mouse left the menu bar window — clear hover
-                if (mb->open_menu < 0 && mb->hover_index != -1) {
-                    mb->hover_index = -1;
-                    menubar_paint(mb);
+            case LeaveNotify: {
+                // Mouse left the menu bar window — clear hover on that pane
+                MenuBarPane *pane = mb_pane_for_window(mb, ev.xcrossing.window);
+                if (pane && mb->open_menu < 0 && pane->hover_index != -1) {
+                    pane->hover_index = -1;
+                    paint_pane(mb, pane);
                 }
                 break;
+            }
 
             case PropertyNotify:
                 if (ev.xproperty.atom == mb->atom_net_active_window) {
@@ -812,13 +930,16 @@ void menubar_run(MenuBar *mb)
                     bool geom_changed = lookup_primary_geometry(mb);
                     log_scale_table("property-notify");
                     if (old_hidpi != menubar_hidpi_scale || geom_changed) {
+                        MenuBarPane *p = mb_primary_pane(mb);
                         fprintf(stderr,
                                 "[menubar] hidpi: %.2f → %.2f, "
                                 "primary: %d,%d %dx%d%s\n",
                                 (double)old_hidpi,
                                 (double)menubar_hidpi_scale,
-                                mb->screen_x, mb->screen_y,
-                                mb->screen_w, mb->screen_h,
+                                p ? p->screen_x : 0,
+                                p ? p->screen_y : 0,
+                                p ? p->screen_w : 0,
+                                p ? p->screen_h : 0,
                                 geom_changed ? " (moved)" : "");
                         apply_menubar_resize(mb);
                     }
@@ -906,14 +1027,18 @@ void menubar_run(MenuBar *mb)
 
 // ── Painting ────────────────────────────────────────────────────────
 
-void menubar_paint(MenuBar *mb)
+// Paint a single pane's dock window. All coordinates are pane-local
+// (0..pane->screen_w on X, 0..MENUBAR_HEIGHT on Y) — the pane's window
+// sits at (screen_x, screen_y) in virtual-root space, but everything
+// inside its Cairo surface is zero-based.
+static void paint_pane(MenuBar *mb, MenuBarPane *pane)
 {
     XWindowAttributes wa;
-    XGetWindowAttributes(mb->dpy, mb->win, &wa);
+    XGetWindowAttributes(mb->dpy, pane->win, &wa);
     cairo_surface_t *surface = cairo_xlib_surface_create(
-        mb->dpy, mb->win,
+        mb->dpy, pane->win,
         wa.visual,
-        mb->screen_w, MENUBAR_HEIGHT
+        pane->screen_w, MENUBAR_HEIGHT
     );
     cairo_t *cr = cairo_create(surface);
 
@@ -923,10 +1048,10 @@ void menubar_paint(MenuBar *mb)
     cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
     // ── Background ──────────────────────────────────────────────
-    render_background(mb, cr);
+    render_background(mb, pane, cr);
 
     // ── Apple logo (far left) ───────────────────────────────────
-    apple_paint(mb, cr);
+    apple_paint(mb, pane, cr);
 
     // ── Bold app name ───────────────────────────────────────────
     // Vertically center text against the layout's ACTUAL pixel height
@@ -938,7 +1063,7 @@ void menubar_paint(MenuBar *mb)
     int text_y = render_text_center_y(mb->active_app, true);
 
     double appname_w = render_text(cr, mb->active_app,
-                                   mb->appname_x, text_y,
+                                   pane->appname_x, text_y,
                                    true, 0.1, 0.1, 0.1);
 
     // ── Menu titles ─────────────────────────────────────────────
@@ -947,16 +1072,22 @@ void menubar_paint(MenuBar *mb)
     const MenuNode *root = appmenu_root_for(mb);
     int menu_count = root ? root->n_children : 0;
 
-    mb->menus_x = mb->appname_x + (int)appname_w + S(16);
+    pane->menus_x = pane->appname_x + (int)appname_w + S(16);
 
-    int item_x = mb->menus_x;
+    int pane_idx = (int)(pane - mb->panes);
+    bool pane_hosts_dropdown = (mb->active_pane == pane_idx);
+
+    int item_x = pane->menus_x;
     for (int i = 0; i < menu_count; i++) {
         const char *title = root->children[i]->label;
         if (!title) continue;
         double w = render_measure_text(title, false);
         int item_w = (int)w + S(20);
 
-        if (mb->hover_index == i + 1 || mb->open_menu == i + 1) {
+        bool highlighted =
+            pane->hover_index == i + 1 ||
+            (pane_hosts_dropdown && mb->open_menu == i + 1);
+        if (highlighted) {
             render_hover_highlight(cr, item_x, S(1), item_w, MENUBAR_HEIGHT - S(2));
         }
 
@@ -968,17 +1099,28 @@ void menubar_paint(MenuBar *mb)
     }
 
     // ── Hover highlight for Apple logo ──────────────────────────
-    if (mb->hover_index == 0 || mb->open_menu == 0) {
-        render_hover_highlight(cr, mb->apple_x, S(1), mb->apple_w, MENUBAR_HEIGHT - S(2));
+    bool apple_highlighted =
+        pane->hover_index == 0 ||
+        (pane_hosts_dropdown && mb->open_menu == 0);
+    if (apple_highlighted) {
+        render_hover_highlight(cr, pane->apple_x, S(1),
+                               pane->apple_w, MENUBAR_HEIGHT - S(2));
     }
 
     // ── System tray (right side) ────────────────────────────────
-    systray_paint(mb, cr, mb->screen_w);
+    systray_paint(mb, pane, cr);
 
     // ── Clean up Cairo resources ────────────────────────────────
     cairo_destroy(cr);
     cairo_surface_destroy(surface);
     XFlush(mb->dpy);
+}
+
+void menubar_paint(MenuBar *mb)
+{
+    for (int i = 0; i < mb->pane_count; i++) {
+        paint_pane(mb, &mb->panes[i]);
+    }
 }
 
 // ── Shutdown ────────────────────────────────────────────────────────
@@ -991,8 +1133,11 @@ void menubar_shutdown(MenuBar *mb)
     apple_cleanup();
     render_cleanup();
 
-    if (mb->win) {
-        XDestroyWindow(mb->dpy, mb->win);
+    for (int i = 0; i < mb->pane_count; i++) {
+        if (mb->panes[i].win) {
+            XDestroyWindow(mb->dpy, mb->panes[i].win);
+            mb->panes[i].win = None;
+        }
     }
     if (mb->dpy) {
         XCloseDisplay(mb->dpy);

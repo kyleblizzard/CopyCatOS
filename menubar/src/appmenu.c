@@ -813,22 +813,34 @@ static void push_level(MenuBar *mb, const MenuNode *parent, int x, int y)
     int popup_w = measure_popup_width(parent);
     int popup_h = measure_popup_height(parent);
 
-    // Clamp: never let a popup disappear below the screen. Flip to
-    // left of the spawning item if that keeps it on-screen.
-    if (x + popup_w > mb->screen_w) {
+    // Clamp: never let a popup disappear below the host output's screen
+    // rect. Anchoring off the pane that spawned the dropdown (active_pane)
+    // keeps submenus on the same output as the bar they came from, even
+    // when other outputs are shorter or narrower. A.2.3 will also translate
+    // `x`/`y` into this pane's origin; today the dropdown is born in root
+    // coords starting at (0, MENUBAR_HEIGHT), so clamping against the pane
+    // works only when the pane lives at the root origin — matches today's
+    // Classic behavior on single-output and primary-at-(0,0) setups.
+    MenuBarPane *host = (mb->active_pane >= 0 && mb->active_pane < mb->pane_count)
+                       ? &mb->panes[mb->active_pane]
+                       : mb_primary_pane(mb);
+    int clamp_w = host ? host->screen_w : 0;
+    int clamp_h = host ? host->screen_h : 0;
+
+    if (x + popup_w > clamp_w) {
         // Try flipping left relative to the parent level if there is one.
         if (depth > 0) {
             DropdownLevel *P = &stack[depth - 1];
             int flipped = P->x - popup_w + S(2);
             if (flipped >= 0) x = flipped;
-            else              x = mb->screen_w - popup_w;
+            else              x = clamp_w - popup_w;
         } else {
-            x = mb->screen_w - popup_w;
+            x = clamp_w - popup_w;
         }
         if (x < 0) x = 0;
     }
-    if (y + popup_h > mb->screen_h) {
-        y = mb->screen_h - popup_h;
+    if (y + popup_h > clamp_h) {
+        y = clamp_h - popup_h;
         if (y < 0) y = 0;
     }
 

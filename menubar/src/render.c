@@ -78,8 +78,9 @@ void render_init(MenuBar *mb)
 
 // ── Background ──────────────────────────────────────────────────────
 
-void render_background(MenuBar *mb, cairo_t *cr)
+void render_background(MenuBar *mb, MenuBarPane *pane, cairo_t *cr)
 {
+    (void)mb;
     if (bg_texture) {
         // Render the real Snow Leopard menubar_bg.png (400x22).
         // Tile horizontally, scale vertically to match current height.
@@ -97,7 +98,7 @@ void render_background(MenuBar *mb, cairo_t *cr)
         cairo_pattern_set_matrix(pattern, &matrix);
 
         cairo_set_source(cr, pattern);
-        cairo_rectangle(cr, 0, 0, mb->screen_w, MENUBAR_HEIGHT);
+        cairo_rectangle(cr, 0, 0, pane->screen_w, MENUBAR_HEIGHT);
         cairo_fill(cr);
         cairo_pattern_destroy(pattern);
     } else {
@@ -110,7 +111,7 @@ void render_background(MenuBar *mb, cairo_t *cr)
         cairo_pattern_add_color_stop_rgb(grad, 0.8, 215/255.0, 215/255.0, 215/255.0);
         cairo_pattern_add_color_stop_rgb(grad, 1.0, 210/255.0, 210/255.0, 210/255.0);
         cairo_set_source(cr, grad);
-        cairo_rectangle(cr, 0, 0, mb->screen_w, MENUBAR_HEIGHT);
+        cairo_rectangle(cr, 0, 0, pane->screen_w, MENUBAR_HEIGHT);
         cairo_fill(cr);
         cairo_pattern_destroy(grad);
 
@@ -118,7 +119,7 @@ void render_background(MenuBar *mb, cairo_t *cr)
         cairo_set_source_rgb(cr, 168/255.0, 168/255.0, 168/255.0);
         cairo_set_line_width(cr, 1.0);
         cairo_move_to(cr, 0, MENUBAR_HEIGHT - 0.5);
-        cairo_line_to(cr, mb->screen_w, MENUBAR_HEIGHT - 0.5);
+        cairo_line_to(cr, pane->screen_w, MENUBAR_HEIGHT - 0.5);
         cairo_stroke(cr);
     }
 }

@@ -25,11 +25,14 @@ void apple_init(MenuBar *mb);
 
 // Reload Apple logo at the current scale. Call after menubar_scale changes
 // (e.g., on SIGHUP height change) so the logo renders at the right size.
-void apple_reload(MenuBar *mb);
+// `pane` is provided for symmetry with apple_paint and for future
+// per-pane scale support in A.2.3 — the underlying logo cache is global
+// today, shared across panes.
+void apple_reload(MenuBar *mb, MenuBarPane *pane);
 
-// Draw the Apple logo in its designated region of the menu bar.
-// Uses the selected variant if the Apple menu is open or hovered.
-void apple_paint(MenuBar *mb, cairo_t *cr);
+// Draw the Apple logo in `pane`'s dock window. Uses the selected variant
+// if this pane hosts the open Apple menu or the logo is hovered.
+void apple_paint(MenuBar *mb, MenuBarPane *pane, cairo_t *cr);
 
 // Show the Apple dropdown menu. Creates an override-redirect popup
 // at (0, MENUBAR_HEIGHT) with system actions.

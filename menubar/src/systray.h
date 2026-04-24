@@ -25,11 +25,11 @@
 // Initialize the system tray — reads initial volume and battery state.
 void systray_init(MenuBar *mb);
 
-// Paint all system tray items onto the menu bar.
-// Draws right-to-left starting from (right_edge - 8px margin).
+// Paint all system tray items onto one pane's menu bar.
+// Draws right-to-left starting from (pane->screen_w - 8px margin).
 // Returns the total pixel width consumed by the tray, so the caller
 // knows where the available space for menu items ends.
-int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge);
+int systray_paint(MenuBar *mb, MenuBarPane *pane, cairo_t *cr);
 
 // Re-read battery and volume levels. Called periodically from the
 // event loop so the display stays current without constant polling.

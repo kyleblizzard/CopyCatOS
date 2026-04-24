@@ -24,10 +24,11 @@
 // If the texture file is missing, the gradient fallback is used instead.
 void render_init(MenuBar *mb);
 
-// Draw the menu bar background across the full width.
+// Draw the menu bar background across the full width of one pane.
 // Uses the loaded texture if available, otherwise paints a 4-stop
-// vertical gradient matching Snow Leopard's appearance.
-void render_background(MenuBar *mb, cairo_t *cr);
+// vertical gradient matching Snow Leopard's appearance. `pane` is the
+// target pane — its screen_w sets the fill width.
+void render_background(MenuBar *mb, MenuBarPane *pane, cairo_t *cr);
 
 // Draw a text string at the given position using Pango + Lucida Grande.
 // Parameters:

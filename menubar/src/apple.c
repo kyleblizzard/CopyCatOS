@@ -230,9 +230,10 @@ void apple_init(MenuBar *mb)
     }
 }
 
-void apple_reload(MenuBar *mb)
+void apple_reload(MenuBar *mb, MenuBarPane *pane)
 {
     (void)mb;
+    (void)pane;
 
     // Free old logo surfaces
     if (logo_normal)   { cairo_surface_destroy(logo_normal);   logo_normal = NULL; }
@@ -255,12 +256,18 @@ void apple_reload(MenuBar *mb)
             menubar_scale, S(15), S(18));
 }
 
-void apple_paint(MenuBar *mb, cairo_t *cr)
+void apple_paint(MenuBar *mb, MenuBarPane *pane, cairo_t *cr)
 {
     // Choose which logo variant to draw based on current state.
-    // If the Apple menu is open or the mouse is hovering, use the
-    // selected variant (or fall back to the normal one).
-    bool active = (mb->hover_index == 0 || mb->open_menu == 0);
+    // The "selected" variant shows when the pointer is hovering THIS
+    // pane's Apple logo, or when THIS pane is the one hosting the open
+    // Apple menu. Other panes stay on the normal variant even if the
+    // menu is open somewhere — matches Snow Leopard's "only the active
+    // output's bar shows the open state" feel.
+    int pane_idx = (int)(pane - mb->panes);
+    bool active =
+        pane->hover_index == 0 ||
+        (mb->active_pane == pane_idx && mb->open_menu == 0);
     cairo_surface_t *logo = (active && logo_selected) ? logo_selected : logo_normal;
 
     // Position: logo ink left-edge x=20, vertically centered in the bar.
