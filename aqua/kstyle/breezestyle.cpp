@@ -1691,7 +1691,11 @@ bool Style::eventFilter(QObject *object, QEvent *event)
                         painter.drawPixmap(groove.x(), groove.y() + capH, W, midH, tMid);
                     painter.drawPixmap(groove.x(), groove.bottom() - tBot.height() + 1, W, tBot.height(), tBot);
                 } else {
-                    QTransform rot; rot.rotate(90);
+                    // Rotate -90° (counter-clockwise) so the vertical top-cap's
+                    // rounded outer edge lands on the LEFT of the horizontal track,
+                    // and the bottom-cap's rounded edge lands on the RIGHT. A +90°
+                    // (clockwise) rotation would swap the caps.
+                    QTransform rot; rot.rotate(-90);
                     QPixmap lc = tTop.transformed(rot), cc = tMid.transformed(rot), rc = tBot.transformed(rot);
                     int capW = lc.width();
                     int midW = groove.width() - lc.width() - rc.width();
@@ -1717,7 +1721,9 @@ bool Style::eventFilter(QObject *object, QEvent *event)
                         painter.drawPixmap(slider.x(), slider.y() + capH, W, midH, cMid);
                     painter.drawPixmap(slider.x(), slider.bottom() - cBot.height() + 1, W, cBot.height(), cBot);
                 } else {
-                    QTransform rot; rot.rotate(90);
+                    // Same -90° rotation as the track above — thumb caps must
+                    // match the track's left/right orientation.
+                    QTransform rot; rot.rotate(-90);
                     QPixmap lc = cTop.transformed(rot), cc = cMid.transformed(rot), rc = cBot.transformed(rot);
                     int capW = lc.width();
                     int midW = slider.width() - lc.width() - rc.width();
