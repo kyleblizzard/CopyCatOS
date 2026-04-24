@@ -37,6 +37,23 @@
 // covers any realistic multi-monitor wall without dynamic allocation.
 #define MENUBAR_MAX_PANES 8
 
+// Atom systemcontrol writes (A.2.4) and menubar subscribes to here.
+// Value is an XA_STRING of exactly "modern" or "classic"; any other
+// value — including an unset atom — is treated as Modern (the default).
+// Exposed here so the A.2.4 writer can include this header and use the
+// same literal, avoiding a silent divergence between writer and reader.
+#define COPYCATOS_MENUBAR_MODE_ATOM_NAME "_COPYCATOS_MENUBAR_MODE"
+
+// Menu-bar mode. Modern is the default — every connected output hosts its
+// own pane. Classic keeps a single pane pinned to the primary output,
+// matching the pre-A.2.3 baseline; users who prefer the Snow Leopard
+// "one global bar on primary" flow toggle to Classic in systemcontrol's
+// Appearance pane.
+typedef enum {
+    MENUBAR_MODE_MODERN = 0,
+    MENUBAR_MODE_CLASSIC = 1,
+} MenuBarMode;
+
 // Logical bar height in points, from user config. 22 at Snow Leopard
 // baseline, 22–88 for handheld/touch. This value is in points — it does
 // NOT fold in per-output HiDPI scale. See menubar_scale for the combined
@@ -132,6 +149,22 @@ typedef struct {
 
     bool        running;     // Set to false to exit the event loop
 
+    // Current menu-bar mode. Read from _COPYCATOS_MENUBAR_MODE at init and
+    // on every PropertyNotify on that atom. Drives reconcile_panes_to_outputs
+    // — Modern spawns one pane per connected output, Classic collapses back
+    // to a single pane on the primary. Default Modern on startup.
+    MenuBarMode menubar_mode;
+
+    // Index of the pane hosting the focused application — the one that shows
+    // the non-dimmed menus and receives dropdown clicks on the first press.
+    // Sourced from _MOONROCK_ACTIVE_OUTPUT via the scale-table row index.
+    // A non-focused pane requires one promoting click (which retargets
+    // _NET_ACTIVE_WINDOW to that output's frontmost) before a second click
+    // can open a dropdown. Clamped to 0 in Classic mode where only one pane
+    // exists. Stays valid across reconciler runs — reseeded when the host
+    // pane's output disappears.
+    int         focused_pane_idx;
+
     // Application tracking state. Tracks the frontmost window globally;
     // every pane shows the same app name and menus in Modern mode.
     char active_app[128];    // Human-readable name of the active app (e.g. "Finder")
@@ -167,6 +200,12 @@ typedef struct {
     Atom atom_net_wm_strut_partial;
     Atom atom_wm_class;
     Atom atom_utf8_string;
+
+    // Mode atom — listens for systemcontrol's Modern/Classic toggle write
+    // on the root window. PropertyNotify on this atom triggers a
+    // reconcile_panes_to_outputs pass, which either spawns or retires
+    // pane windows to match the new mode.
+    Atom atom_copycatos_menubar_mode;
 } MenuBar;
 
 // Initialize the menu bar: open X display, create one dock window on the

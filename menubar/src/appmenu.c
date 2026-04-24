@@ -804,8 +804,9 @@ static void dismiss_all_dropdowns(MenuBar *mb)
 }
 
 // Create the popup window for a new level and push it onto the stack.
-// Caller has filled in parent/x/y; we compute w/h from the MenuNode,
-// clamp to the screen, and map the window.
+// Caller has filled in parent and root-absolute (x, y); we compute w/h
+// from the MenuNode, clamp the popup to the host pane's output rect
+// (still in root coordinates), and map the window.
 static void push_level(MenuBar *mb, const MenuNode *parent, int x, int y)
 {
     if (depth >= DROPDOWN_MAX_DEPTH || !parent) return;
@@ -813,35 +814,34 @@ static void push_level(MenuBar *mb, const MenuNode *parent, int x, int y)
     int popup_w = measure_popup_width(parent);
     int popup_h = measure_popup_height(parent);
 
-    // Clamp: never let a popup disappear below the host output's screen
-    // rect. Anchoring off the pane that spawned the dropdown (active_pane)
-    // keeps submenus on the same output as the bar they came from, even
-    // when other outputs are shorter or narrower. A.2.3 will also translate
-    // `x`/`y` into this pane's origin; today the dropdown is born in root
-    // coords starting at (0, MENUBAR_HEIGHT), so clamping against the pane
-    // works only when the pane lives at the root origin — matches today's
-    // Classic behavior on single-output and primary-at-(0,0) setups.
+    // Clamp to the host output's root-space rect. Anchoring off the pane
+    // that spawned the dropdown (active_pane) keeps submenus on the same
+    // output as the bar they came from, even when other outputs are
+    // shorter or narrower. Every (x, y) in this function is in virtual-
+    // root space, so the clamp uses screen_{x,y,w,h} verbatim.
     MenuBarPane *host = (mb->active_pane >= 0 && mb->active_pane < mb->pane_count)
                        ? &mb->panes[mb->active_pane]
                        : mb_primary_pane(mb);
-    int clamp_w = host ? host->screen_w : 0;
-    int clamp_h = host ? host->screen_h : 0;
+    int left   = host ? host->screen_x : 0;
+    int top    = host ? host->screen_y : 0;
+    int right  = host ? host->screen_x + host->screen_w : 0;
+    int bottom = host ? host->screen_y + host->screen_h : 0;
 
-    if (x + popup_w > clamp_w) {
+    if (x + popup_w > right) {
         // Try flipping left relative to the parent level if there is one.
         if (depth > 0) {
             DropdownLevel *P = &stack[depth - 1];
             int flipped = P->x - popup_w + S(2);
-            if (flipped >= 0) x = flipped;
-            else              x = clamp_w - popup_w;
+            if (flipped >= left) x = flipped;
+            else                 x = right - popup_w;
         } else {
-            x = clamp_w - popup_w;
+            x = right - popup_w;
         }
-        if (x < 0) x = 0;
+        if (x < left) x = left;
     }
-    if (y + popup_h > clamp_h) {
-        y = clamp_h - popup_h;
-        if (y < 0) y = 0;
+    if (y + popup_h > bottom) {
+        y = bottom - popup_h;
+        if (y < top) y = top;
     }
 
     XSetWindowAttributes attrs;
@@ -1137,7 +1137,8 @@ bool appmenu_find_dropdown_at(MenuBar *mb, int mx, int my,
     return false;
 }
 
-void appmenu_show_dropdown(MenuBar *mb, int menu_index, int x)
+void appmenu_show_dropdown(MenuBar *mb, int menu_index,
+                           int root_x, int root_y)
 {
     dismiss_all_dropdowns(mb);
 
@@ -1153,7 +1154,7 @@ void appmenu_show_dropdown(MenuBar *mb, int menu_index, int x)
         dbusmenu_client_about_to_show(mb->legacy_client, menu->legacy_id);
     }
 
-    push_level(mb, menu, x, MENUBAR_HEIGHT);
+    push_level(mb, menu, root_x, root_y);
 }
 
 void appmenu_dismiss(MenuBar *mb)

@@ -52,12 +52,21 @@ void appmenu_update_active(MenuBar *mb);
 // the DbusMenuClient refetches; callers don't cache across events.
 const MenuNode *appmenu_root_for(MenuBar *mb);
 
-// Show a dropdown menu below a specific top-level menu title.
+// Show a dropdown menu below a specific top-level menu title. Coordinates
+// are root-absolute — the caller translates the pane-local x of the menu
+// title and the pane-local y of the bar bottom into virtual-root space
+// using the host pane's (screen_x, screen_y) origin. This module treats
+// every popup as a root-space override-redirect window; any pane-local
+// math stays in menubar.c.
+//
 // Parameters:
 //   mb         — menu bar state (X display, active app)
 //   menu_index — 0-based index into the top-level menu children
-//   x          — X pixel position where the dropdown should appear
-void appmenu_show_dropdown(MenuBar *mb, int menu_index, int x);
+//   root_x     — virtual-root X where the dropdown's left edge belongs
+//   root_y     — virtual-root Y where the dropdown's top edge belongs
+//                (the menu bar's bottom on the host output)
+void appmenu_show_dropdown(MenuBar *mb, int menu_index,
+                           int root_x, int root_y);
 
 // Dismiss every open dropdown in the submenu stack.
 void appmenu_dismiss(MenuBar *mb);

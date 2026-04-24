@@ -448,6 +448,20 @@ void apple_show_menu(MenuBar *mb)
         popup_h += (strcmp(apple_items[i], "---") == 0) ? S(7) : S(22);
     }
 
+    // ── Anchor in root-absolute coordinates ─────────────────────
+    // Override-redirect popup windows live in the virtual-root space,
+    // so we translate the pane's apple_x/logo origin into root coords
+    // using the active pane's screen_{x,y}. In Modern mode the Apple
+    // menu anchors under the Apple logo of whichever pane spawned it
+    // (mb->active_pane). In Classic mode pane 0 is the only pane, so
+    // active_pane == 0 and the math collapses to the historical case.
+    MenuBarPane *host =
+        (mb->active_pane >= 0 && mb->active_pane < mb->pane_count)
+            ? &mb->panes[mb->active_pane]
+            : mb_primary_pane(mb);
+    int popup_x = host ? host->screen_x + host->apple_x : 0;
+    int popup_y = host ? host->screen_y + MENUBAR_HEIGHT : MENUBAR_HEIGHT;
+
     // ── Create the popup window ─────────────────────────────────
     XSetWindowAttributes attrs;
     attrs.override_redirect = True;
@@ -457,7 +471,7 @@ void apple_show_menu(MenuBar *mb)
 
     apple_popup = XCreateWindow(
         mb->dpy, mb->root,
-        0, MENUBAR_HEIGHT,            // Directly below the Apple logo
+        popup_x, popup_y,
         (unsigned int)popup_w,
         (unsigned int)popup_h,
         0,

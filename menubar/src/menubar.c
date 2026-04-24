@@ -62,6 +62,15 @@ double menubar_scale = 1.0;
 // table for the point (0,0) — the origin of the bar's hosting output.
 static MoonRockScaleTable g_output_scales;
 
+// Visual/depth/colormap the pane windows are born with. Cached at
+// menubar_init time so the reconciler can spawn new pane windows on
+// hotplug without re-walking XGetVisualInfo. In practice every pane
+// uses the same 32-bit ARGB visual on the default screen, so one
+// cached triple is enough for all panes.
+static Visual  *g_pane_visual   = NULL;
+static int      g_pane_depth    = 0;
+static Colormap g_pane_colormap = 0;
+
 // Recompute the combined scale factor. Must run any time menubar_height
 // (user config / SIGHUP) or menubar_hidpi_scale (MoonRock output scale)
 // changes.
@@ -208,52 +217,266 @@ MenuBarPane *mb_primary_pane(MenuBar *mb)
     return (mb->pane_count >= 1) ? &mb->panes[0] : NULL;
 }
 
-// Pull the primary-output geometry out of the cached MoonRock scale
-// table and stuff it into panes[0].screen_{x,y,w,h}. Falls back to the
-// virtual-root dimensions when the table is empty or has no primary
-// entry — a single-display setup or a MoonRock that pre-dates the
-// primary field still lands somewhere sensible.
-//
-// Returns true if any of the four fields changed, so callers can skip
-// the resize path when nothing moved.
-//
-// TODO A.2.3: generalize to populate panes[0..N-1] from every output
-// when Modern mode is active.
-static bool lookup_primary_geometry(MenuBar *mb)
+// Write the standard dock-window properties onto a pane we just created:
+// _NET_WM_WINDOW_TYPE_DOCK and the per-pane strut. Struts are narrowed to
+// this pane's X range via top_start_x / top_end_x so only this pane's
+// output has its top edge reserved. Called from create_pane_window and
+// from apply_menubar_resize whenever the X range changes.
+static void write_pane_properties(MenuBar *mb, MenuBarPane *pane, int h_px)
 {
-    MenuBarPane *pane = &mb->panes[0];
+    Atom dock_type = mb->atom_net_wm_window_type_dock;
+    XChangeProperty(mb->dpy, pane->win,
+                    mb->atom_net_wm_window_type, XA_ATOM,
+                    32, PropModeReplace,
+                    (unsigned char *)&dock_type, 1);
 
-    int nx = 0, ny = 0;
-    int nw = DisplayWidth(mb->dpy, mb->screen);
-    int nh = DisplayHeight(mb->dpy, mb->screen);
-    const char *out_name = "";
+    long strut_partial[12] = {0};
+    strut_partial[2] = h_px;
+    strut_partial[8] = pane->screen_x;
+    strut_partial[9] = pane->screen_x + pane->screen_w - 1;
+    XChangeProperty(mb->dpy, pane->win,
+                    mb->atom_net_wm_strut_partial, XA_CARDINAL, 32,
+                    PropModeReplace,
+                    (unsigned char *)strut_partial, 12);
+    long strut[4] = { 0, 0, h_px, 0 };
+    XChangeProperty(mb->dpy, pane->win,
+                    mb->atom_net_wm_strut, XA_CARDINAL, 32,
+                    PropModeReplace,
+                    (unsigned char *)strut, 4);
+}
 
-    const MoonRockOutputScale *p = moonrock_scale_primary(&g_output_scales);
-    if (p) {
-        nx = p->x;
-        ny = p->y;
-        nw = p->width;
-        nh = p->height;
-        out_name = p->name;
-    } else if (g_output_scales.valid && g_output_scales.count > 0) {
-        // No primary flag set (shouldn't normally happen, but guard it).
-        // Prefer the first entry over the whole virtual-root span.
-        const MoonRockOutputScale *o = &g_output_scales.outputs[0];
-        nx = o->x;
-        ny = o->y;
-        nw = o->width;
-        nh = o->height;
-        out_name = o->name;
+// Spawn the X dock window for a freshly-added pane. Uses the cached
+// 32-bit ARGB visual so every pane has translucency on day one.
+// Assumes pane->screen_{x,y,w,h} and pane->output_name are already
+// populated by the reconciler.
+static void create_pane_window(MenuBar *mb, MenuBarPane *pane)
+{
+    XSetWindowAttributes attrs;
+    attrs.override_redirect = False;
+    attrs.event_mask = ExposureMask | ButtonPressMask | PointerMotionMask
+                     | LeaveWindowMask | StructureNotifyMask | KeyPressMask;
+    attrs.background_pixel = 0;
+    attrs.colormap = g_pane_colormap;
+    attrs.border_pixel = 0;
+
+    pane->win = XCreateWindow(
+        mb->dpy, mb->root,
+        pane->screen_x, pane->screen_y,
+        (unsigned int)pane->screen_w,
+        MENUBAR_HEIGHT,
+        0, g_pane_depth, InputOutput, g_pane_visual,
+        CWOverrideRedirect | CWEventMask | CWBackPixel
+            | CWColormap | CWBorderPixel,
+        &attrs);
+
+    XSetWindowBackgroundPixmap(mb->dpy, pane->win, None);
+    write_pane_properties(mb, pane, MENUBAR_HEIGHT);
+    XMapWindow(mb->dpy, pane->win);
+}
+
+// Read _COPYCATOS_MENUBAR_MODE on the root window and decode it. Anything
+// that isn't the exact byte sequence "classic" — missing atom, wrong type,
+// unknown string — maps to Modern, the default. systemcontrol (A.2.4)
+// writes this atom via XA_STRING; the define lives in menubar.h so the
+// writer and this reader can't diverge on the atom name.
+static MenuBarMode read_menubar_mode(MenuBar *mb)
+{
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *data = NULL;
+
+    int status = XGetWindowProperty(
+        mb->dpy, mb->root,
+        mb->atom_copycatos_menubar_mode,
+        0, 64, False, XA_STRING,
+        &actual_type, &actual_format,
+        &nitems, &bytes_after, &data);
+
+    MenuBarMode mode = MENUBAR_MODE_MODERN;
+    if (status == Success && actual_type == XA_STRING && data &&
+        nitems == 7 && memcmp(data, "classic", 7) == 0) {
+        mode = MENUBAR_MODE_CLASSIC;
+    }
+    if (data) XFree(data);
+    return mode;
+}
+
+// Pull one MoonRock scale-table row into a MenuBarPane. Returns true if
+// any of the four geometry fields or the output name changed, so callers
+// can skip a pointless resize / property rewrite when the row didn't
+// actually move.
+static bool populate_pane_from_row(MenuBarPane *pane,
+                                   const MoonRockOutputScale *row)
+{
+    bool changed = (pane->screen_x != row->x) ||
+                   (pane->screen_y != row->y) ||
+                   (pane->screen_w != row->width) ||
+                   (pane->screen_h != row->height) ||
+                   strncmp(pane->output_name, row->name,
+                           sizeof(pane->output_name)) != 0;
+    pane->screen_x = row->x;
+    pane->screen_y = row->y;
+    pane->screen_w = row->width;
+    pane->screen_h = row->height;
+    strncpy(pane->output_name, row->name, sizeof(pane->output_name) - 1);
+    pane->output_name[sizeof(pane->output_name) - 1] = '\0';
+    return changed;
+}
+
+// Build the desired pane set from the current mode and scale table, then
+// mutate mb->panes[] to match — preserving existing windows where the
+// output_name matches so we don't churn panes on every hotplug (reduces
+// the surface area of #76). New panes get fresh X windows; panes that
+// no longer have a matching output are destroyed.
+//
+// Contract:
+//   - Classic mode: pane_count = 1, panes[0] = primary output (or (0,0)
+//     fallback when the table is empty).
+//   - Modern mode: pane_count = scale-table row count, panes[i] matches
+//     row i (so ordering is stable with respect to MoonRock's row order
+//     and every shell component that reads the same table).
+//   - Any open dropdown is dismissed BEFORE pane_count changes or
+//     windows are destroyed. The dropdown's host pane may be going away,
+//     so dismissing first is the only sane order.
+//
+// Returns true if the pane set or any pane's geometry changed, so the
+// caller can skip apply_menubar_resize when nothing moved.
+static bool reconcile_panes_to_outputs(MenuBar *mb)
+{
+    // 1. Dismiss any live dropdown before mutating the pane set — the
+    //    host pane may be torn down in this pass.
+    if (mb->open_menu >= 0) {
+        dismiss_open_menu(mb);
     }
 
-    bool changed = (nx != pane->screen_x) || (ny != pane->screen_y) ||
-                   (nw != pane->screen_w) || (nh != pane->screen_h);
-    pane->screen_x = nx;
-    pane->screen_y = ny;
-    pane->screen_w = nw;
-    pane->screen_h = nh;
-    strncpy(pane->output_name, out_name, sizeof(pane->output_name) - 1);
-    pane->output_name[sizeof(pane->output_name) - 1] = '\0';
+    // 2. Stage the desired pane set into `next[]`, keyed by output_name
+    //    where possible so existing windows survive.
+    MenuBarPane next[MENUBAR_MAX_PANES];
+    memset(next, 0, sizeof(next));
+    for (int i = 0; i < MENUBAR_MAX_PANES; i++) next[i].hover_index = -1;
+
+    int next_count = 0;
+
+    if (mb->menubar_mode == MENUBAR_MODE_CLASSIC) {
+        // Single pane on the primary output. Falls back to (0,0) with the
+        // virtual-root width when MoonRock hasn't published a primary
+        // yet — matches the A.2.2 pre-subscription behavior so a
+        // pre-MoonRock X session still draws a bar.
+        next_count = 1;
+        const MoonRockOutputScale *p =
+            moonrock_scale_primary(&g_output_scales);
+        if (p) {
+            populate_pane_from_row(&next[0], p);
+        } else if (g_output_scales.valid && g_output_scales.count > 0) {
+            populate_pane_from_row(&next[0], &g_output_scales.outputs[0]);
+        } else {
+            next[0].screen_x = 0;
+            next[0].screen_y = 0;
+            next[0].screen_w = DisplayWidth(mb->dpy, mb->screen);
+            next[0].screen_h = DisplayHeight(mb->dpy, mb->screen);
+            next[0].output_name[0] = '\0';
+        }
+    } else {
+        // Modern: one pane per connected output, aligned with scale-
+        // table row order. If the table is empty (MoonRock not running
+        // yet), fall back to a single pane covering the virtual root so
+        // the bar is still visible — matches Classic's empty-table path.
+        if (g_output_scales.valid && g_output_scales.count > 0) {
+            next_count = g_output_scales.count;
+            if (next_count > MENUBAR_MAX_PANES)
+                next_count = MENUBAR_MAX_PANES;
+            for (int i = 0; i < next_count; i++) {
+                populate_pane_from_row(&next[i],
+                                       &g_output_scales.outputs[i]);
+            }
+        } else {
+            next_count = 1;
+            next[0].screen_x = 0;
+            next[0].screen_y = 0;
+            next[0].screen_w = DisplayWidth(mb->dpy, mb->screen);
+            next[0].screen_h = DisplayHeight(mb->dpy, mb->screen);
+            next[0].output_name[0] = '\0';
+        }
+    }
+
+    // 3. Rescue matching windows from mb->panes[] by output_name.
+    //    `claimed[]` tracks which old pane is already transplanted so we
+    //    don't steal the same window twice when two new rows somehow
+    //    share a name.
+    bool claimed[MENUBAR_MAX_PANES] = {0};
+    for (int i = 0; i < next_count; i++) {
+        if (next[i].output_name[0] == '\0') continue;
+        for (int j = 0; j < mb->pane_count; j++) {
+            if (claimed[j] || mb->panes[j].win == None) continue;
+            if (strncmp(mb->panes[j].output_name, next[i].output_name,
+                        sizeof(next[i].output_name)) == 0) {
+                next[i].win         = mb->panes[j].win;
+                next[i].hover_index = mb->panes[j].hover_index;
+                claimed[j] = true;
+                break;
+            }
+        }
+    }
+
+    // 4. Destroy any old pane window that didn't get rescued.
+    for (int j = 0; j < mb->pane_count; j++) {
+        if (!claimed[j] && mb->panes[j].win != None) {
+            XDestroyWindow(mb->dpy, mb->panes[j].win);
+            mb->panes[j].win = None;
+        }
+    }
+
+    // 5. Commit the new array and create windows for any brand-new panes.
+    bool changed = (next_count != mb->pane_count);
+    for (int i = 0; i < next_count; i++) {
+        if (!changed) {
+            if (next[i].win != mb->panes[i].win ||
+                next[i].screen_x != mb->panes[i].screen_x ||
+                next[i].screen_y != mb->panes[i].screen_y ||
+                next[i].screen_w != mb->panes[i].screen_w ||
+                next[i].screen_h != mb->panes[i].screen_h ||
+                strncmp(next[i].output_name, mb->panes[i].output_name,
+                        sizeof(next[i].output_name)) != 0) {
+                changed = true;
+            }
+        }
+        mb->panes[i] = next[i];
+    }
+    for (int i = next_count; i < MENUBAR_MAX_PANES; i++) {
+        memset(&mb->panes[i], 0, sizeof(mb->panes[i]));
+        mb->panes[i].hover_index = -1;
+    }
+    mb->pane_count = next_count;
+
+    for (int i = 0; i < mb->pane_count; i++) {
+        if (mb->panes[i].win == None && g_pane_visual) {
+            create_pane_window(mb, &mb->panes[i]);
+            changed = true;
+        }
+    }
+
+    if (changed) {
+        fprintf(stderr, "[menubar] reconcile: mode=%s panes=%d\n",
+                mb->menubar_mode == MENUBAR_MODE_CLASSIC ? "classic" : "modern",
+                mb->pane_count);
+        for (int i = 0; i < mb->pane_count; i++) {
+            fprintf(stderr, "[menubar]   pane[%d] win=0x%lx %s %dx%d+%d+%d\n",
+                    i, mb->panes[i].win,
+                    mb->panes[i].output_name[0] ? mb->panes[i].output_name : "-",
+                    mb->panes[i].screen_w, mb->panes[i].screen_h,
+                    mb->panes[i].screen_x, mb->panes[i].screen_y);
+        }
+    }
+
+    // 6. Keep focused_pane_idx inside [0, pane_count). If the old host
+    //    pane was torn down, fall back to pane 0 — the full reseed
+    //    happens below when the caller reads _MOONROCK_ACTIVE_OUTPUT.
+    if (mb->focused_pane_idx < 0 ||
+        mb->focused_pane_idx >= mb->pane_count) {
+        mb->focused_pane_idx = (mb->pane_count > 0) ? 0 : -1;
+    }
+
     return changed;
 }
 
@@ -375,6 +598,14 @@ bool menubar_init(MenuBar *mb)
     mb->atom_net_wm_strut_partial    = XInternAtom(mb->dpy, "_NET_WM_STRUT_PARTIAL", False);
     mb->atom_wm_class                = XInternAtom(mb->dpy, "WM_CLASS", False);
     mb->atom_utf8_string             = XInternAtom(mb->dpy, "UTF8_STRING", False);
+    mb->atom_copycatos_menubar_mode  = XInternAtom(mb->dpy,
+        COPYCATOS_MENUBAR_MODE_ATOM_NAME, False);
+    // Intern MoonRock's active-output + frontmost atoms so our
+    // PropertyNotify handler can compare by atom identity without a
+    // second round-trip per event. The helpers cache the interned atoms
+    // internally, so calling them once here is enough.
+    (void)moonrock_active_output_atom(mb->dpy);
+    (void)moonrock_frontmost_per_output_atom(mb->dpy);
 
     // ── Find 32-bit ARGB visual for translucency ─────────────────
     Visual *visual = NULL;
@@ -406,6 +637,12 @@ bool menubar_init(MenuBar *mb)
         colormap = DefaultColormap(mb->dpy, mb->screen);
     }
 
+    // Cache the chosen visual so reconcile_panes_to_outputs can spawn
+    // fresh pane windows on hotplug without repeating the search.
+    g_pane_visual   = visual;
+    g_pane_depth    = depth;
+    g_pane_colormap = colormap;
+
     // ── Subscribe to root window events + MoonRock scale bridge ─
     // Done BEFORE XCreateWindow so MENUBAR_HEIGHT already reflects the
     // host output's HiDPI scale when the window is born. Without this,
@@ -422,73 +659,37 @@ bool menubar_init(MenuBar *mb)
     apply_hidpi_scale_from_table();
     log_scale_table("init");
 
-    // Classic mode: single pane on the primary. A.2.3 promotes this to
-    // one pane per output when _COPYCATOS_MENUBAR_MODE is Modern.
-    mb->pane_count  = 1;
-    MenuBarPane *pane = &mb->panes[0];
+    // ── Resolve initial mode + reconcile pane set ───────────────
+    // The reconciler reads mb->menubar_mode and the cached scale table,
+    // materializes the desired pane set, and creates one dock window per
+    // pane (via create_pane_window, which uses the g_pane_* visual cache
+    // we just populated). Done BEFORE XMap so every pane is born on the
+    // right output at the right width.
+    mb->menubar_mode = read_menubar_mode(mb);
+    (void)reconcile_panes_to_outputs(mb);
 
-    // Resolve primary-output geometry from the refreshed table. Done
-    // BEFORE XCreateWindow so the window is born on the right output at
-    // the right width — avoids a visible jump from (0,0,virtual_w,22)
-    // to (primary_x, primary_y, primary_w, 22) on the first event pump.
-    (void)lookup_primary_geometry(mb);
+    // Seed focused_pane_idx from MoonRock's _MOONROCK_ACTIVE_OUTPUT. In
+    // Classic mode there's only one pane, so it collapses to 0. In
+    // Modern mode this picks the pane whose output currently hosts
+    // _NET_ACTIVE_WINDOW. -1 from the helper (no active output) falls
+    // back to pane 0 so some pane always shows undimmed menus.
+    {
+        int idx = moonrock_active_output_index(mb->dpy);
+        if (mb->menubar_mode == MENUBAR_MODE_CLASSIC) {
+            mb->focused_pane_idx = (mb->pane_count > 0) ? 0 : -1;
+        } else if (idx >= 0 && idx < mb->pane_count) {
+            mb->focused_pane_idx = idx;
+        } else {
+            mb->focused_pane_idx = (mb->pane_count > 0) ? 0 : -1;
+        }
+    }
 
-    // ── Create the menu bar window ──────────────────────────────
-    XSetWindowAttributes attrs;
-    attrs.override_redirect = False;
-    attrs.event_mask = ExposureMask | ButtonPressMask | PointerMotionMask
-                     | LeaveWindowMask | StructureNotifyMask | KeyPressMask;
-    attrs.background_pixel = 0;
-    attrs.colormap = colormap;
-    attrs.border_pixel = 0;
+    // ── Compute layout regions for every pane ───────────────────
+    for (int i = 0; i < mb->pane_count; i++) {
+        compute_pane_layout(&mb->panes[i]);
+    }
 
-    pane->win = XCreateWindow(
-        mb->dpy, mb->root,
-        pane->screen_x, pane->screen_y,
-        (unsigned int)pane->screen_w,
-        MENUBAR_HEIGHT,
-        0,
-        depth,
-        InputOutput,
-        visual,
-        CWOverrideRedirect | CWEventMask | CWBackPixel | CWColormap | CWBorderPixel,
-        &attrs
-    );
-
-    XSetWindowBackgroundPixmap(mb->dpy, pane->win, None);
-
-    // ── Set window type to DOCK ─────────────────────────────────
-    Atom dock_type = mb->atom_net_wm_window_type_dock;
-    XChangeProperty(mb->dpy, pane->win,
-                    mb->atom_net_wm_window_type, XA_ATOM,
-                    32, PropModeReplace,
-                    (unsigned char *)&dock_type, 1);
-
-    // ── Reserve screen space with struts ────────────────────────
-    // top_start_x / top_end_x narrow the "top strut" to this pane's
-    // output only; other monitors stay unreserved at their top.
-    long strut_partial[12] = {
-        0, 0, MENUBAR_HEIGHT, 0,
-        0, 0, 0, 0,
-        pane->screen_x, pane->screen_x + pane->screen_w - 1, 0, 0
-    };
-    XChangeProperty(mb->dpy, pane->win,
-                    mb->atom_net_wm_strut_partial, XA_CARDINAL,
-                    32, PropModeReplace,
-                    (unsigned char *)strut_partial, 12);
-
-    long strut[4] = { 0, 0, MENUBAR_HEIGHT, 0 };
-    XChangeProperty(mb->dpy, pane->win,
-                    mb->atom_net_wm_strut, XA_CARDINAL,
-                    32, PropModeReplace,
-                    (unsigned char *)strut, 4);
-
-    // ── Map (show) the window ───────────────────────────────────
-    XMapWindow(mb->dpy, pane->win);
     XFlush(mb->dpy);
-
-    // ── Compute layout regions ──────────────────────────────────
-    compute_pane_layout(pane);
 
     // ── Initialize subsystems ───────────────────────────────────
     render_init(mb);
@@ -506,9 +707,16 @@ bool menubar_init(MenuBar *mb)
 
     mb->running = true;
 
-    fprintf(stdout, "menubar: initialized (%d pane(s); primary %dx%d on %s)\n",
-            mb->pane_count, pane->screen_w, pane->screen_h,
-            pane->output_name[0] ? pane->output_name : "<unknown>");
+    fprintf(stdout,
+            "menubar: initialized (mode=%s, %d pane(s), focused=%d)\n",
+            mb->menubar_mode == MENUBAR_MODE_CLASSIC ? "classic" : "modern",
+            mb->pane_count, mb->focused_pane_idx);
+    for (int i = 0; i < mb->pane_count; i++) {
+        MenuBarPane *p = &mb->panes[i];
+        fprintf(stdout, "menubar:   pane[%d] %s %dx%d @ (%d,%d)\n",
+                i, p->output_name[0] ? p->output_name : "<unknown>",
+                p->screen_w, p->screen_h, p->screen_x, p->screen_y);
+    }
 
     return true;
 }
@@ -617,10 +825,13 @@ static void open_menu_at(MenuBar *mb, MenuBarPane *pane, int index)
     mb->active_pane = (int)(pane - mb->panes);
 
     if (index == 0) {
+        // apple_show_menu reads mb->active_pane to anchor the popup in
+        // root-absolute coordinates under the Apple logo of that pane.
         apple_show_menu(mb);
     } else {
         // Walk the MenuNode titles to reach the same X offset the
-        // paint path used when it laid them out.
+        // paint path used when it laid them out. `dx` is pane-local
+        // here and gets folded into root coordinates below.
         const MenuNode *root = appmenu_root_for(mb);
         int count = root ? root->n_children : 0;
 
@@ -629,7 +840,11 @@ static void open_menu_at(MenuBar *mb, MenuBarPane *pane, int index)
             const char *t = root->children[j]->label;
             if (t) dx += (int)render_measure_text(t, false) + S(20);
         }
-        appmenu_show_dropdown(mb, index - 1, dx);
+        // Dropdown windows live in virtual-root space — translate the
+        // pane-local anchor into root coords before handing it over.
+        int root_x = pane->screen_x + dx;
+        int root_y = pane->screen_y + MENUBAR_HEIGHT;
+        appmenu_show_dropdown(mb, index - 1, root_x, root_y);
     }
 
     menubar_paint(mb);
@@ -887,17 +1102,63 @@ void menubar_run(MenuBar *mb)
                 // (rightmost systray item), then fall back to menu-title
                 // hit-test. The glyph's hit rect is the full menubar
                 // height so a click anywhere in its column activates.
+                // Spotlight lives in the systray on every pane and is
+                // independent of focused_pane_idx — a click there always
+                // fires the overlay, regardless of which pane hosts it.
                 if (systray_hit_spotlight(mx, my)) {
                     fire_spotlight(mb);
                     break;
                 }
 
-                // No menu is open — check if a menu title was clicked
+                // No menu is open — check if a menu title was clicked.
                 int clicked = hit_test_menu(mb, pane, mx);
-                if (clicked >= 0) {
-                    grab_pointer(mb);
-                    open_menu_at(mb, pane, clicked);
+                if (clicked < 0) break;
+
+                // Click-to-promote: in Modern mode, a click on a
+                // non-focused pane retargets _NET_ACTIVE_WINDOW to that
+                // output's frontmost window (from
+                // _MOONROCK_FRONTMOST_PER_OUTPUT). MoonRock's
+                // wm_focus_client republishes _MOONROCK_ACTIVE_OUTPUT,
+                // our PropertyNotify handler bumps focused_pane_idx, and
+                // the user's second click lands on the now-focused pane
+                // and opens the dropdown normally. Skipped if the
+                // target pane has no frontmost (None WID) — there's
+                // nothing to promote to, so opening the dropdown would
+                // trap focus on the wrong output.
+                int pane_idx = (int)(pane - mb->panes);
+                if (pane_idx != mb->focused_pane_idx) {
+                    Window frontmost[MOONROCK_SCALE_MAX_OUTPUTS];
+                    int fcount = 0;
+                    bool have_front = moonrock_frontmost_per_output(
+                        mb->dpy, frontmost,
+                        MOONROCK_SCALE_MAX_OUTPUTS, &fcount);
+                    Window target = None;
+                    if (have_front && pane_idx < fcount) {
+                        target = frontmost[pane_idx];
+                    }
+                    if (target != None) {
+                        XEvent req = {0};
+                        req.type = ClientMessage;
+                        req.xclient.window       = target;
+                        req.xclient.message_type = mb->atom_net_active_window;
+                        req.xclient.format       = 32;
+                        req.xclient.data.l[0]    = 2;   // source = pager
+                        req.xclient.data.l[1]    = CurrentTime;
+                        req.xclient.data.l[2]    = 0;
+                        XSendEvent(mb->dpy, mb->root, False,
+                                   SubstructureRedirectMask
+                                       | SubstructureNotifyMask,
+                                   &req);
+                        XFlush(mb->dpy);
+                    }
+                    // Either way: this click was consumed as a focus
+                    // promote. No grab, no dropdown. User re-clicks to
+                    // open.
+                    break;
                 }
+
+                grab_pointer(mb);
+                open_menu_at(mb, pane, clicked);
                 break;
             }
 
@@ -919,30 +1180,91 @@ void menubar_run(MenuBar *mb)
                     appmenu_update_active(mb);
                     menubar_paint(mb);
                 } else if (ev.xproperty.atom == moonrock_scale_atom(mb->dpy)) {
-                    // MoonRock updated the per-output scale table — either
-                    // a hotplug changed the output set / primary, or the
-                    // user moved a Displays-pane slider. Refresh our cached
+                    // MoonRock updated the per-output scale table — a
+                    // hotplug, a primary switch, a per-output scale change,
+                    // or a Displays-pane rotation. Refresh the cached
                     // snapshot, fold the hosting-output scale into
-                    // menubar_scale, re-read primary geometry, and resize
-                    // if either axis changed.
+                    // menubar_scale, then run the reconciler which either
+                    // adjusts existing panes or spawns/retires pane
+                    // windows to match the new output set.
                     moonrock_scale_refresh(mb->dpy, &g_output_scales);
                     float old_hidpi = apply_hidpi_scale_from_table();
-                    bool geom_changed = lookup_primary_geometry(mb);
+                    bool geom_changed = reconcile_panes_to_outputs(mb);
                     log_scale_table("property-notify");
                     if (old_hidpi != menubar_hidpi_scale || geom_changed) {
-                        MenuBarPane *p = mb_primary_pane(mb);
                         fprintf(stderr,
                                 "[menubar] hidpi: %.2f → %.2f, "
-                                "primary: %d,%d %dx%d%s\n",
+                                "%d pane(s)%s\n",
                                 (double)old_hidpi,
                                 (double)menubar_hidpi_scale,
-                                p ? p->screen_x : 0,
-                                p ? p->screen_y : 0,
-                                p ? p->screen_w : 0,
-                                p ? p->screen_h : 0,
+                                mb->pane_count,
                                 geom_changed ? " (moved)" : "");
                         apply_menubar_resize(mb);
                     }
+                } else if (ev.xproperty.atom ==
+                           mb->atom_copycatos_menubar_mode) {
+                    // systemcontrol toggled Modern/Classic. Re-read the
+                    // atom, run the reconciler (which creates/destroys
+                    // pane windows to match), then rewrite struts and
+                    // repaint. Dropdowns are dismissed by the reconciler
+                    // before it mutates the pane set.
+                    MenuBarMode new_mode = read_menubar_mode(mb);
+                    if (new_mode != mb->menubar_mode) {
+                        fprintf(stderr, "[menubar] mode: %s → %s\n",
+                                mb->menubar_mode == MENUBAR_MODE_CLASSIC
+                                    ? "classic" : "modern",
+                                new_mode == MENUBAR_MODE_CLASSIC
+                                    ? "classic" : "modern");
+                        mb->menubar_mode = new_mode;
+                        (void)reconcile_panes_to_outputs(mb);
+                        // Reseed focused_pane_idx from MoonRock — if the
+                        // focused output's row index still resolves to a
+                        // valid pane, that stays focused; otherwise fall
+                        // back to pane 0. Avoids a flash of wrong dimming
+                        // at toggle-time before MoonRock's next republish
+                        // corrects us.
+                        {
+                            int idx = moonrock_active_output_index(mb->dpy);
+                            if (mb->menubar_mode == MENUBAR_MODE_CLASSIC) {
+                                mb->focused_pane_idx =
+                                    (mb->pane_count > 0) ? 0 : -1;
+                            } else if (idx >= 0 && idx < mb->pane_count) {
+                                mb->focused_pane_idx = idx;
+                            } else {
+                                mb->focused_pane_idx =
+                                    (mb->pane_count > 0) ? 0 : -1;
+                            }
+                        }
+                        apply_menubar_resize(mb);
+                    }
+                } else if (ev.xproperty.atom ==
+                           moonrock_active_output_atom(mb->dpy)) {
+                    // MoonRock republished the focused output. Map its
+                    // row index onto our pane index and repaint so the
+                    // focus-driven visuals (A.2.5 dimming) track.
+                    // In Classic mode only one pane exists; we pin to 0
+                    // so the dim toggle can still key off the invariant.
+                    int idx = moonrock_active_output_index(mb->dpy);
+                    int new_focus;
+                    if (mb->menubar_mode == MENUBAR_MODE_CLASSIC) {
+                        new_focus = (mb->pane_count > 0) ? 0 : -1;
+                    } else if (idx >= 0 && idx < mb->pane_count) {
+                        new_focus = idx;
+                    } else {
+                        new_focus = (mb->pane_count > 0) ? 0 : -1;
+                    }
+                    if (new_focus != mb->focused_pane_idx) {
+                        mb->focused_pane_idx = new_focus;
+                        menubar_paint(mb);
+                    }
+                } else if (ev.xproperty.atom ==
+                           moonrock_frontmost_per_output_atom(mb->dpy)) {
+                    // Frontmost-per-output changed. A.2.3a still shows a
+                    // single global app name across every pane, so this
+                    // branch is a no-op today — but subscribing keeps
+                    // the click-to-promote helper's reads fresh and
+                    // prepares the wiring for A.2.3b where every pane
+                    // draws its own output's frontmost title.
                 }
                 break;
 
