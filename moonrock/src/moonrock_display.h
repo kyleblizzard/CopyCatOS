@@ -301,6 +301,23 @@ void display_handle_hotplug(Display *dpy);
 // fallback handler that might inspect ev.type for unknown events.
 bool display_handle_event(Display *dpy, XEvent *e);
 
+// Run the deferred re-enumeration from display_handle_event(), if any
+// RandR event was seen during the last X event-queue drain.
+//
+// A single user-visible change (primary toggle, mode switch, monitor
+// plug) emits a burst of RR events — RRScreenChangeNotify plus per-
+// output/per-CRTC RRNotify subtypes. Handling each by calling
+// display_init() directly would do the full output walk N times for
+// one change. display_handle_event() now just latches a dirty flag and
+// auto-enables fresh outputs in-burst; this flush runs the single
+// heavy re-enumeration after the caller has drained the queue.
+//
+// Must run in the same main-loop iteration as the drain that produced
+// it (before compositing, so per-output geometry the renderer reads
+// is fresh). Safe to call every iteration — no-op when nothing was
+// deferred.
+void display_flush_deferred_hotplug(Display *dpy);
+
 // The XRandR event base X assigned to our display connection. Valid once
 // display_init() has been called at least once; returns -1 until then.
 // events.c uses this to detect RandR events when routing to

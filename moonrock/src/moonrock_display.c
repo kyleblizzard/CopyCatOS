@@ -914,6 +914,14 @@ bool display_init(Display *dpy, int screen)
         return false;
     }
 
+    // One trace line per re-enumeration so we can count how many times a
+    // single user-visible change drives the full output walk. A primary
+    // toggle, mode switch, or hotplug should collapse to exactly one
+    // "display_init entry" line; more than one means the coalescer in
+    // display_handle_event()/display_flush_deferred_hotplug() isn't
+    // absorbing the RR burst correctly.
+    fprintf(stderr, "[display] display_init entry\n");
+
     // Reset the output count — we're about to re-enumerate from scratch.
     output_count = 0;
 
@@ -1626,6 +1634,12 @@ int display_get_randr_event_base(void)
     return randr_event_base;
 }
 
+// Latched by display_handle_event() whenever an RR event lands, cleared
+// by display_flush_deferred_hotplug() after the single coalesced
+// re-enumeration runs. Static to this file — events.c drives the flush
+// via the public API, not by touching this flag.
+static bool hotplug_deferred = false;
+
 bool display_handle_event(Display *dpy, XEvent *e)
 {
     if (!e || randr_event_base < 0) return false;
@@ -1655,18 +1669,32 @@ bool display_handle_event(Display *dpy, XEvent *e)
             // When the user's compositor config already routed this
             // output (e.g. user ran xrandr --output ... --auto
             // manually), oce->crtc is non-None and we skip the
-            // auto-enable step — just re-enumerate below.
+            // auto-enable step — the deferred flush below still
+            // re-enumerates so outputs[] stays in sync. auto_enable
+            // runs per-event (it's cheap and only fires on genuine
+            // connect-without-crtc); re-enumeration is coalesced.
             if (oce->connection == RR_Connected && oce->crtc == None) {
                 auto_enable_output(dpy, oce->output);
             }
         }
     }
 
-    // Always re-enumerate after an RR event so MoonRock's outputs[]
-    // table, scale publication, and frame-timing metrics stay in
-    // sync with the X server's view of the world.
-    display_handle_hotplug(dpy);
+    // Defer the heavy re-enumeration. XRRSetOutputPrimary, mode switches,
+    // and plug events emit a burst of RR events in a single main-loop
+    // iteration — running display_init() per event walks all outputs,
+    // re-reads every EDID / VRR property, and re-publishes the scale
+    // table N times for one user-visible change. events.c drains the
+    // whole X queue and then calls display_flush_deferred_hotplug()
+    // once, collapsing the burst to a single enumeration.
+    hotplug_deferred = true;
     return true;
+}
+
+void display_flush_deferred_hotplug(Display *dpy)
+{
+    if (!hotplug_deferred) return;
+    hotplug_deferred = false;
+    display_handle_hotplug(dpy);
 }
 
 void display_handle_hotplug(Display *dpy)

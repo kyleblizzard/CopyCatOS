@@ -118,6 +118,15 @@ void events_run(CCWM *wm)
             }
         }
 
+        // Run the coalesced output re-enumeration exactly once per
+        // iteration, after the X queue drain has finished. A single
+        // primary toggle / mode change / hotplug emits multiple RR
+        // events in one burst; display_handle_event() latches a flag
+        // while draining and this call does the full display_init()
+        // walk once. Must run before mr_composite so the renderer
+        // sees fresh per-output geometry this same frame.
+        display_flush_deferred_hotplug(wm->dpy);
+
         // Composite all windows onto the screen. This is the MoonRock
         // compositor's main render pass — it draws every window with
         // shadows and effects via OpenGL.
