@@ -1370,7 +1370,26 @@ static void paint_pane(MenuBar *mb, MenuBarPane *pane)
     cairo_set_operator(cr, CAIRO_OPERATOR_OVER);
 
     // ── Background ──────────────────────────────────────────────
+    // Background renders at full opacity on every pane — only the
+    // bar's contents dim on non-active outputs, matching Snow Leopard's
+    // treatment of a menubar on a secondary display.
     render_background(mb, pane, cr);
+
+    // ── Active-output dimming (slice A.2.5) ─────────────────────
+    // In Modern mode with 2+ panes, the pane hosting the focused app
+    // paints its content (apple logo, app name, menus, systray) at
+    // full opacity; every other pane paints its content at 0.5 alpha.
+    // focused_pane_idx is seeded from MoonRock's _MOONROCK_ACTIVE_OUTPUT
+    // and updated on every promote click. Classic mode always has
+    // pane_count == 1 and skips dimming.
+    int pane_idx = (int)(pane - mb->panes);
+    bool dim_content =
+        mb->pane_count > 1 &&
+        mb->focused_pane_idx >= 0 &&
+        pane_idx != mb->focused_pane_idx;
+    if (dim_content) {
+        cairo_push_group(cr);
+    }
 
     // ── Apple logo (far left) ───────────────────────────────────
     apple_paint(mb, pane, cr);
@@ -1396,7 +1415,6 @@ static void paint_pane(MenuBar *mb, MenuBarPane *pane)
 
     pane->menus_x = pane->appname_x + (int)appname_w + S(16);
 
-    int pane_idx = (int)(pane - mb->panes);
     bool pane_hosts_dropdown = (mb->active_pane == pane_idx);
 
     int item_x = pane->menus_x;
@@ -1431,6 +1449,17 @@ static void paint_pane(MenuBar *mb, MenuBarPane *pane)
 
     // ── System tray (right side) ────────────────────────────────
     systray_paint(mb, pane, cr);
+
+    // ── Active-output dimming (slice A.2.5) — apply ─────────────
+    // Pop the group we pushed before apple_paint and composite it
+    // back at reduced alpha. 0.5 matches Snow Leopard's inactive-bar
+    // feel on a second display — content is clearly deprioritized
+    // without disappearing. First-click-to-promote still lands
+    // (hit tests ignore the overlay).
+    if (dim_content) {
+        cairo_pop_group_to_source(cr);
+        cairo_paint_with_alpha(cr, 0.5);
+    }
 
     // ── Clean up Cairo resources ────────────────────────────────
     cairo_destroy(cr);
