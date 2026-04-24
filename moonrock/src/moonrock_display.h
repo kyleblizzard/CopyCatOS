@@ -487,6 +487,17 @@ bool display_set_interface_scale_for_output(MROutput *output, float multiplier);
 // dedup.
 void display_set_scales_published_cb(void (*cb)(void));
 
+// Second hook slot fired at the same point as scales_published_cb —
+// specifically for subscribers that care about output geometry changes
+// (hotplug, primary swap, rotation). Struts uses this to rebuild its
+// per-output workarea table; without it the cached table goes stale
+// across plug cycles and clamp/zoom pick the wrong output.
+//
+// Separate from scales_published_cb so each subscriber owns its own
+// slot (ewmh already owns the first for companion-atom republish).
+// Pass NULL to clear.
+void display_set_geometry_changed_cb(void (*cb)(void));
+
 
 // Get the viewport rectangle for a specific output.
 //

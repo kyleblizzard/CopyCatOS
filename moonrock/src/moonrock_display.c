@@ -1036,9 +1036,18 @@ static void edid_cache_store(const char *name, const uint8_t *hash)
 // libmoonrock builds don't need a WM attached.
 static void (*scales_published_cb)(void) = NULL;
 
+// Second hook slot — fires at the same point as scales_published_cb,
+// reserved for subscribers that care about output geometry (struts).
+static void (*geometry_changed_cb)(void) = NULL;
+
 void display_set_scales_published_cb(void (*cb)(void))
 {
     scales_published_cb = cb;
+}
+
+void display_set_geometry_changed_cb(void (*cb)(void))
+{
+    geometry_changed_cb = cb;
 }
 
 static void publish_scales_to_root(void)
@@ -1104,6 +1113,9 @@ static void publish_scales_to_root(void)
     // actually changed (dedup check above returns early otherwise).
     if (scales_published_cb) {
         scales_published_cb();
+    }
+    if (geometry_changed_cb) {
+        geometry_changed_cb();
     }
 }
 

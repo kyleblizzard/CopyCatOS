@@ -86,12 +86,16 @@ void client_smart_zoom(CCWM *wm, Client *c)
         c->saved_w = c->w;
         c->saved_h = c->h;
 
-        // Get work area from struts (declared in struts.h)
-        // If struts aren't available, use full screen minus some padding
+        // Get work area from struts — zoom to the output the window
+        // is currently sitting on, not the primary. The window's
+        // midpoint picks the output, matching the same home-output
+        // rule A.2.1 uses for keyboard focus.
         int wa_x = 0, wa_y = 0, wa_w = wm->root_w, wa_h = wm->root_h;
-        // Try to get work area — extern declaration
-        extern void struts_get_workarea(CCWM *wm, int *x, int *y, int *w, int *h);
-        struts_get_workarea(wm, &wa_x, &wa_y, &wa_w, &wa_h);
+        extern void struts_get_workarea_at(CCWM *wm, int px, int py,
+                                           int *x, int *y, int *w, int *h);
+        struts_get_workarea_at(wm,
+                               c->x + c->w / 2, c->y + c->h / 2,
+                               &wa_x, &wa_y, &wa_w, &wa_h);
 
         c->x = wa_x;
         c->y = wa_y;

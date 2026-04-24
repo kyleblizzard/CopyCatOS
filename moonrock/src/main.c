@@ -75,6 +75,12 @@ int main(int argc, char *argv[])
     // Set up strut handling so dock/menubar can reserve screen edges
     struts_init(&wm);
 
+    // Wire the struts recalc into display's scales-publish event so that
+    // hotplug / primary-swap / rotation rebuild the per-output workarea
+    // table automatically. Must run AFTER struts_init so atom_net_workarea
+    // is interned before the first thunk can fire.
+    struts_register_geometry_hook(&wm);
+
     // Load Snow Leopard decoration assets
     decor_init(&wm);
 
