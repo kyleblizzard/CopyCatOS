@@ -667,6 +667,14 @@ static void on_property_notify(CCWM *wm, XEvent *e)
         return;
     }
 
+    // Reverse rotation-request atom: the Displays pane writes
+    // _MOONROCK_SET_OUTPUT_ROTATION on the root window. Same pattern.
+    if (w == wm->root && e->xproperty.state == PropertyNewValue &&
+        e->xproperty.atom == display_rotation_request_atom(wm->dpy)) {
+        display_handle_rotation_request(wm->dpy, wm->root);
+        return;
+    }
+
     Client *c = wm_find_client(wm, w);
 
     if (c && (e->xproperty.atom == wm->atom_net_wm_name ||

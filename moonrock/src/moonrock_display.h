@@ -119,6 +119,12 @@ typedef struct {
     float         default_scale;
     float         user_scale;
     float         scale;
+
+    // Current output rotation in degrees counter-clockwise from landscape
+    // (0, 90, 180, or 270). Mirrors XRandR's RR_Rotate_* but in the same
+    // units the shell bridge uses on the wire, so there is only one place
+    // (the rotation-request handler) that translates between the two.
+    int           rotation;
 } MROutput;
 
 
@@ -394,6 +400,33 @@ Atom display_primary_request_atom(Display *dpy);
 // Read, parse, dispatch, and delete the request property on `root`.
 // No-op if the property is missing or malformed.
 void display_handle_primary_request(Display *dpy, Window root);
+
+
+// ── Reverse rotation-request atom: pane → MoonRock ─────────────────────
+// The Displays pane writes "<name> <degrees>" to the root-window property
+// _MOONROCK_SET_OUTPUT_ROTATION (see moonrock_scale.h). The WM event loop
+// calls display_handle_rotation_request() from the PropertyNotify dispatch.
+// MoonRock translates the degree value to an XRandR RR_Rotate_* mask,
+// grows the virtual screen if the new rotated footprint needs more room,
+// commits via XRRSetCrtcConfig, persists the choice per EDID hash, and
+// deletes the property so a repeat write still produces a PropertyNotify.
+
+// Atom for _MOONROCK_SET_OUTPUT_ROTATION. Interned lazily on first call.
+Atom display_rotation_request_atom(Display *dpy);
+
+// Read, parse, dispatch, and delete the request property on `root`.
+// No-op if the property is missing or malformed.
+void display_handle_rotation_request(Display *dpy, Window root);
+
+
+// Persist a user-override rotation for the output's EDID and apply it
+// live via XRandR. Valid values are 0, 90, 180, 270 (degrees CCW). Updates
+// the in-memory rotation of every output sharing the same EDID hash,
+// rewrites the persistence file at
+// ~/.local/share/moonrock/display-rotations.conf, and commits the CRTC
+// change. Returns true on success, false on an unknown value, missing
+// EDID, or XRandR refusal.
+bool display_set_rotation_for_output(MROutput *output, int degrees);
 
 
 // Get the viewport rectangle for a specific output.

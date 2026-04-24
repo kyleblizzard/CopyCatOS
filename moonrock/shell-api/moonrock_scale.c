@@ -128,15 +128,17 @@ bool moonrock_scale_refresh(Display *dpy, MoonRockScaleTable *out)
         int   x = 0, y = 0, w = 0, h = 0;
         float scale = 1.0f;
         int   primary = 0;
+        int   rotation = 0;
 
         // The %63s matches MOONROCK_SCALE_NAME_MAX - 1. sscanf with a
-        // width specifier guarantees we never overflow namebuf. The
-        // trailing primary flag is optional: sscanf returns 6 or 7
-        // depending on whether the publisher emitted it. Pre-primary
-        // publishers default every entry to non-primary.
-        int got = sscanf(line, "%63s %d %d %d %d %f %d",
-                         namebuf, &x, &y, &w, &h, &scale, &primary);
-        if (got == 6 || got == 7) {
+        // width specifier guarantees we never overflow namebuf. Trailing
+        // fields are optional: sscanf returns 6, 7, or 8. Pre-primary
+        // publishers default every entry to non-primary; pre-rotation
+        // publishers default every entry to 0° (landscape).
+        int got = sscanf(line, "%63s %d %d %d %d %f %d %d",
+                         namebuf, &x, &y, &w, &h, &scale,
+                         &primary, &rotation);
+        if (got >= 6 && got <= 8) {
 
             MoonRockOutputScale *o = &out->outputs[out->count];
             strncpy(o->name, namebuf, sizeof(o->name) - 1);
@@ -148,7 +150,17 @@ bool moonrock_scale_refresh(Display *dpy, MoonRockScaleTable *out)
             // Clamp obviously-broken scales to 1.0. The publisher already
             // enforces 0.5–4.0 on its side, but defense in depth.
             o->scale   = (scale >= 0.25f && scale <= 8.0f) ? scale : 1.0f;
-            o->primary = (got == 7) && (primary != 0);
+            o->primary = (got >= 7) && (primary != 0);
+            // Only the four canonical XRandR rotations are carried in the
+            // wire format. Anything else becomes 0° so callers never have
+            // to special-case malformed input.
+            if (got == 8 &&
+                (rotation == 0 || rotation == 90 ||
+                 rotation == 180 || rotation == 270)) {
+                o->rotation = rotation;
+            } else {
+                o->rotation = 0;
+            }
             out->count++;
         }
 
@@ -256,6 +268,40 @@ bool moonrock_request_primary(Display *dpy, const char *output_name)
 
     char line[MOONROCK_SCALE_NAME_MAX + 2];
     int n = snprintf(line, sizeof(line), "%s\n", name);
+    if (n < 0 || n >= (int)sizeof(line)) return false;
+
+    XChangeProperty(dpy, DefaultRootWindow(dpy),
+                    set_atom, utf8, 8, PropModeReplace,
+                    (unsigned char *)line, n);
+    XFlush(dpy);
+    return true;
+}
+
+
+bool moonrock_request_rotation(Display *dpy, const char *output_name,
+                               int degrees)
+{
+    if (!dpy || !output_name || !*output_name) return false;
+
+    // Reject anything that isn't one of the four canonical rotations.
+    // MoonRock would reject these too, but failing fast here spares a
+    // round-trip.
+    if (degrees != 0 && degrees != 90 &&
+        degrees != 180 && degrees != 270) {
+        return false;
+    }
+
+    // Guard against separator characters that would break the line parser
+    // on the MoonRock side.
+    for (const char *p = output_name; *p; p++) {
+        if (*p == ' ' || *p == '\n') return false;
+    }
+
+    Atom set_atom = XInternAtom(dpy, MOONROCK_SET_ROTATION_ATOM_NAME, False);
+    Atom utf8    = XInternAtom(dpy, "UTF8_STRING", False);
+
+    char line[MOONROCK_SCALE_NAME_MAX + 8];
+    int n = snprintf(line, sizeof(line), "%s %d\n", output_name, degrees);
     if (n < 0 || n >= (int)sizeof(line)) return false;
 
     XChangeProperty(dpy, DefaultRootWindow(dpy),

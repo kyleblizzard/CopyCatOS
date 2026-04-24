@@ -437,6 +437,192 @@ static bool save_scale_overrides(void)
 }
 
 
+// ============================================================================
+//  Per-output rotation: EDID-keyed overrides, persistence, XRandR translation
+// ============================================================================
+//
+// Same shape as the scale-override store above, but keyed to the rotation the
+// user picked in the Displays pane. Fractional scales and rotations have
+// completely different lifetimes and values, so they each get their own file
+// to avoid one schema growing a bag of unrelated keys. When the "arrangement"
+// slice lands, it will either extend this file or get its own.
+//
+// Persistence file: ~/.local/share/moonrock/display-rotations.conf
+//
+//   # MoonRock per-display rotation overrides (EDID hash -> degrees)
+//   a1b2c3d4e5f60718=90
+//   deadbeefcafebabe=0
+//
+// Degrees are counter-clockwise from landscape, always one of {0, 90, 180,
+// 270}. XRandR carries these as bitmasks (RR_Rotate_0, RR_Rotate_90, …); we
+// convert at the handful of points that talk to XRandR, and keep degrees in
+// every persisted, published, or passed-between-modules value.
+
+#define MAX_ROTATION_OVERRIDES 64
+
+typedef struct {
+    uint8_t edid_hash[8];
+    int     degrees;          // 0, 90, 180, or 270
+} RotationOverride;
+
+static RotationOverride rotation_overrides[MAX_ROTATION_OVERRIDES];
+static int  rotation_override_count = 0;
+static bool rotation_overrides_loaded = false;
+
+
+// Translate between the compass-degree representation used everywhere
+// outside XRandR and the RR_Rotate_* mask XRandR wants. The reflect bits
+// (RR_Reflect_X / RR_Reflect_Y) are preserved across translations where we
+// can (we fetch them from the current CRTC rotation before clearing the
+// rotate bits), so turning on rotation doesn't accidentally clear a
+// user's mirror flag.
+static int rotation_mask_to_degrees(unsigned short mask)
+{
+    // Mask out reflect bits — we only care about the rotate portion.
+    unsigned short rotate = (unsigned short)(mask & (RR_Rotate_0 |
+                                                     RR_Rotate_90 |
+                                                     RR_Rotate_180 |
+                                                     RR_Rotate_270));
+    switch (rotate) {
+        case RR_Rotate_90:  return 90;
+        case RR_Rotate_180: return 180;
+        case RR_Rotate_270: return 270;
+        case RR_Rotate_0:
+        default:            return 0;
+    }
+}
+
+static unsigned short degrees_to_rotation_mask(int degrees)
+{
+    switch (degrees) {
+        case 90:  return RR_Rotate_90;
+        case 180: return RR_Rotate_180;
+        case 270: return RR_Rotate_270;
+        case 0:
+        default:  return RR_Rotate_0;
+    }
+}
+
+
+// Resolve the rotation-override file path. Mirrors scale_override_path().
+static bool rotation_override_path(char *out, size_t out_len)
+{
+    const char *xdg = getenv("XDG_DATA_HOME");
+    if (xdg && *xdg) {
+        int n = snprintf(out, out_len,
+                         "%s/moonrock/display-rotations.conf", xdg);
+        return n > 0 && (size_t)n < out_len;
+    }
+    const char *home = getenv("HOME");
+    if (!home || !*home) {
+        struct passwd *pw = getpwuid(getuid());
+        if (!pw || !pw->pw_dir) return false;
+        home = pw->pw_dir;
+    }
+    int n = snprintf(out, out_len,
+                     "%s/.local/share/moonrock/display-rotations.conf", home);
+    return n > 0 && (size_t)n < out_len;
+}
+
+// Load rotation overrides from disk. Once per process; re-entries (hotplug
+// calls display_init again) skip the disk read because the in-memory table
+// is the source of truth after startup — exactly like load_scale_overrides_once().
+static void load_rotation_overrides_once(void)
+{
+    if (rotation_overrides_loaded) return;
+    rotation_overrides_loaded = true;
+    rotation_override_count = 0;
+
+    char path[512];
+    if (!rotation_override_path(path, sizeof(path))) return;
+
+    FILE *fp = fopen(path, "r");
+    if (!fp) return;
+
+    char line[128];
+    while (fgets(line, sizeof(line), fp)
+        && rotation_override_count < MAX_ROTATION_OVERRIDES) {
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '#' || *p == '\n' || *p == '\0') continue;
+
+        // 16 hex chars, '=', integer, newline.
+        if (strlen(p) < 18 || p[16] != '=') continue;
+
+        uint8_t hash[8];
+        if (!hex_to_hash(p, hash)) continue;
+
+        int deg = atoi(p + 17);
+        if (deg != 0 && deg != 90 && deg != 180 && deg != 270) continue;
+
+        RotationOverride *o = &rotation_overrides[rotation_override_count++];
+        memcpy(o->edid_hash, hash, 8);
+        o->degrees = deg;
+    }
+    fclose(fp);
+
+    fprintf(stderr,
+            "[display] Loaded %d rotation override(s) from %s\n",
+            rotation_override_count, path);
+}
+
+// Find a persisted rotation for the given EDID hash. Returns -1 if no
+// override is set (so 0° explicitly pinned can be distinguished from "not
+// pinned at all", because 0° may still be a deliberate user choice we want
+// to enforce against a driver that boots up thinking the panel is rotated).
+static int find_override_rotation(const uint8_t edid_hash[8])
+{
+    for (int i = 0; i < rotation_override_count; i++) {
+        if (memcmp(rotation_overrides[i].edid_hash, edid_hash, 8) == 0) {
+            return rotation_overrides[i].degrees;
+        }
+    }
+    return -1;
+}
+
+// Atomic rewrite of display-rotations.conf. Mirrors save_scale_overrides().
+static bool save_rotation_overrides(void)
+{
+    char path[512];
+    if (!rotation_override_path(path, sizeof(path))) return false;
+    ensure_parent_dir(path);
+
+    char tmp[576];
+    int n = snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    if (n <= 0 || (size_t)n >= sizeof(tmp)) return false;
+
+    FILE *fp = fopen(tmp, "w");
+    if (!fp) {
+        fprintf(stderr, "[display] save rotation overrides: fopen(%s): %s\n",
+                tmp, strerror(errno));
+        return false;
+    }
+
+    fprintf(fp,
+            "# MoonRock per-display rotation overrides (EDID hash -> degrees)\n"
+            "# Written by MoonRock. Hand-edit at your own risk.\n");
+    for (int i = 0; i < rotation_override_count; i++) {
+        char hex[17];
+        hash_to_hex(rotation_overrides[i].edid_hash, hex);
+        fprintf(fp, "%s=%d\n", hex, rotation_overrides[i].degrees);
+    }
+    if (fflush(fp) != 0 || fclose(fp) != 0) {
+        fprintf(stderr, "[display] save rotation overrides: write failed\n");
+        unlink(tmp);
+        return false;
+    }
+
+    if (rename(tmp, path) != 0) {
+        fprintf(stderr,
+                "[display] save rotation overrides: rename(%s,%s): %s\n",
+                tmp, path, strerror(errno));
+        unlink(tmp);
+        return false;
+    }
+    return true;
+}
+
+
 // ── display-config.conf: primary EDID persistence ─────────────────────
 //
 // Resolve the non-scale config file path. Honors XDG_DATA_HOME, falling
@@ -702,12 +888,13 @@ static void publish_scales_to_root(void)
 
     for (int i = 0; i < output_count && pos < sizeof(buf); i++) {
         int n = snprintf(buf + pos, sizeof(buf) - pos,
-                         "%s %d %d %d %d %.3f %d\n",
+                         "%s %d %d %d %d %.3f %d %d\n",
                          outputs[i].name,
                          outputs[i].x, outputs[i].y,
                          outputs[i].width, outputs[i].height,
                          (double)outputs[i].scale,
-                         outputs[i].primary ? 1 : 0);
+                         outputs[i].primary ? 1 : 0,
+                         outputs[i].rotation);
         if (n < 0) break;
         if ((size_t)n >= sizeof(buf) - pos) {
             // Line didn't fit — stop here rather than emit a truncated
@@ -822,6 +1009,11 @@ bool display_init(Display *dpy, int screen)
     // mirror-mode planned). Same one-shot semantics as the scale loader:
     // in-memory state is the source of truth after startup.
     load_display_config_once();
+
+    // Load persisted per-display rotation overrides. Same one-shot model —
+    // the in-memory table stays authoritative after startup so a rotation
+    // set from SysPrefs can't be clobbered by a concurrent hotplug.
+    load_rotation_overrides_once();
 
     // Startup pre-pass: catch any output that's already connected but
     // has no CRTC assigned. This happens when MoonRock launches with an
@@ -975,6 +1167,11 @@ bool display_init(Display *dpy, int screen)
         out->y = ci->y;
         out->width = (int)ci->width;
         out->height = (int)ci->height;
+
+        // Pick up the CRTC's current rotation so the shell bridge and the
+        // Displays pane can show it correctly without a round-trip. Reflect
+        // bits are dropped here — they aren't part of the public contract.
+        out->rotation = rotation_mask_to_degrees(ci->rotation);
 
         // Store the XRandR IDs so we can reference this output later
         // (e.g., to set properties on it for VRR control).
@@ -1179,6 +1376,32 @@ bool display_init(Display *dpy, int screen)
                     "connected — deferring to hotplug\n",
                     hex);
         }
+    }
+
+    // Apply persisted rotation overrides. Mirrors the primary-apply block:
+    // on every display_init() entry (including hotplug re-entries), check
+    // whether each output has a persisted rotation that differs from its
+    // current CRTC rotation, and reassert it if so.
+    //
+    // display_set_rotation_for_output() itself skips the XRandR round-trip
+    // when the requested rotation already matches current state, which is
+    // what guards this loop from feedback-looping through the RandR event
+    // that XRRSetCrtcConfig synthesizes.
+    for (int i = 0; i < output_count; i++) {
+        bool has_edid = false;
+        for (int j = 0; j < 8; j++) {
+            if (outputs[i].edid_hash[j] != 0) { has_edid = true; break; }
+        }
+        if (!has_edid) continue;
+
+        int persisted = find_override_rotation(outputs[i].edid_hash);
+        if (persisted < 0) continue;
+        if (persisted == outputs[i].rotation) continue;
+
+        fprintf(stderr,
+                "[display] Restoring persisted rotation: %s → %d°\n",
+                outputs[i].name, persisted);
+        display_set_rotation_for_output(&outputs[i], persisted);
     }
 
     // Initialize the frame metrics with sensible defaults.
@@ -2060,6 +2283,277 @@ void display_handle_primary_request(Display *dpy, Window root)
 
     publish_scales_to_root();
     (void)save_display_config();
+    XDeleteProperty(dpy, root, atom);
+}
+
+
+// ============================================================================
+//  Per-output rotation — setter + reverse-request atom
+// ============================================================================
+//
+// The Displays pane writes one line to _MOONROCK_SET_OUTPUT_ROTATION:
+//
+//     <output_name> <degrees>\n        e.g. "eDP-1 90\n"
+//
+// <degrees> is 0, 90, 180, or 270 counter-clockwise. MoonRock parses the
+// line, calls display_set_rotation_for_output(), and deletes the property
+// so a repeat write of the same value still generates a PropertyNotify.
+//
+// The setter commits the XRandR change, grows the virtual screen first
+// when the rotated footprint needs more room (matches auto_enable_output),
+// persists the choice by EDID hash, and republishes the scale table.
+
+bool display_set_rotation_for_output(MROutput *output, int degrees)
+{
+    if (!output) return false;
+
+    // Only the four canonical rotations. Any other value is rejected
+    // without side-effects so a buggy caller can't corrupt the persistence
+    // file or XRandR state.
+    if (degrees != 0 && degrees != 90 &&
+        degrees != 180 && degrees != 270) {
+        fprintf(stderr,
+                "[display] Rejecting invalid rotation %d° for %s\n",
+                degrees, output->name);
+        return false;
+    }
+
+    if (!display_dpy || display_root == None) return false;
+
+    // Short-circuit when the requested rotation already matches the
+    // output's in-memory state. Guards the apply-persisted block in
+    // display_init() from re-entering itself via the RandR event that
+    // XRRSetCrtcConfig synthesizes.
+    if (output->rotation == degrees) {
+        return true;
+    }
+
+    // Fetch the authoritative screen resources so we have fresh CRTC and
+    // mode tables. Current (not probing) is fine — rotation doesn't need
+    // a fresh EDID read.
+    XRRScreenResources *res = XRRGetScreenResourcesCurrent(display_dpy,
+                                                           display_root);
+    if (!res) {
+        fprintf(stderr,
+                "[display] rotation %s: screen resources unavailable\n",
+                output->name);
+        return false;
+    }
+
+    XRRCrtcInfo *ci = XRRGetCrtcInfo(display_dpy, res,
+                                     (RRCrtc)output->crtc_id);
+    if (!ci) {
+        fprintf(stderr,
+                "[display] rotation %s: no CRTC info\n", output->name);
+        XRRFreeScreenResources(res);
+        return false;
+    }
+
+    // Pull the native mode dimensions. Current CRTC width/height already
+    // reflect the *rotated* framebuffer extent, so we need the raw mode
+    // footprint to compute the new rotated extent from scratch.
+    int mode_w = 0, mode_h = 0;
+    lookup_mode_size(res, ci->mode, &mode_w, &mode_h);
+    if (mode_w == 0 || mode_h == 0) {
+        fprintf(stderr,
+                "[display] rotation %s: selected mode has zero size\n",
+                output->name);
+        XRRFreeCrtcInfo(ci);
+        XRRFreeScreenResources(res);
+        return false;
+    }
+
+    // New rotated footprint. 90° and 270° swap width/height.
+    bool sideways = (degrees == 90 || degrees == 270);
+    int new_w = sideways ? mode_h : mode_w;
+    int new_h = sideways ? mode_w : mode_h;
+
+    // Preserve the CRTC's current reflect bits (RR_Reflect_X / _Y). They
+    // aren't in our wire format, but a user who has a mirror flag set
+    // should keep it across a rotation change.
+    unsigned short reflect = (unsigned short)(ci->rotation &
+                                              (RR_Reflect_X | RR_Reflect_Y));
+    unsigned short new_rot = (unsigned short)(
+        degrees_to_rotation_mask(degrees) | reflect);
+
+    // Compute the virtual-screen extent we need to fit every active CRTC
+    // plus the one we're about to reconfigure. Mirrors the calculation in
+    // auto_enable_output() — grow before committing so XRRSetCrtcConfig
+    // doesn't silently paint black past the edge.
+    int want_w = 0, want_h = 0;
+    for (int i = 0; i < res->ncrtc; i++) {
+        XRRCrtcInfo *other = XRRGetCrtcInfo(display_dpy, res,
+                                            res->crtcs[i]);
+        if (!other) continue;
+        if (other->noutput > 0 && other->mode != None) {
+            int r = (int)other->x + (int)other->width;
+            int b = (int)other->y + (int)other->height;
+            // Replace this CRTC's old extent with its new rotated one.
+            if (res->crtcs[i] == (RRCrtc)output->crtc_id) {
+                r = (int)other->x + new_w;
+                b = (int)other->y + new_h;
+            }
+            if (r > want_w) want_w = r;
+            if (b > want_h) want_h = b;
+        }
+        XRRFreeCrtcInfo(other);
+    }
+
+    // Grow if needed. Shrinking is avoided — want_w/want_h already cover
+    // every other active CRTC so we never undersize. Same physical-mm
+    // rescale trick auto_enable_output uses so DPI math elsewhere stays
+    // reasonable.
+    int screen_w    = DisplayWidth(display_dpy, display_screen);
+    int screen_h    = DisplayHeight(display_dpy, display_screen);
+    int screen_mm_w = DisplayWidthMM(display_dpy, display_screen);
+    int screen_mm_h = DisplayHeightMM(display_dpy, display_screen);
+    if (want_w > screen_w || want_h > screen_h) {
+        int new_screen_w = want_w > screen_w ? want_w : screen_w;
+        int new_screen_h = want_h > screen_h ? want_h : screen_h;
+        int new_mm_w = screen_w > 0
+                         ? (int)((double)screen_mm_w * new_screen_w / screen_w)
+                         : new_screen_w;
+        int new_mm_h = screen_h > 0
+                         ? (int)((double)screen_mm_h * new_screen_h / screen_h)
+                         : new_screen_h;
+        XRRSetScreenSize(display_dpy, display_root,
+                         new_screen_w, new_screen_h,
+                         new_mm_w, new_mm_h);
+    }
+
+    // Commit: same CRTC, same outputs, same mode, new rotation mask.
+    RROutput outs_buf[MAX_OUTPUTS];
+    int nout = ci->noutput;
+    if (nout > MAX_OUTPUTS) nout = MAX_OUTPUTS;
+    for (int i = 0; i < nout; i++) outs_buf[i] = ci->outputs[i];
+
+    Status st = XRRSetCrtcConfig(display_dpy, res,
+                                 (RRCrtc)output->crtc_id,
+                                 res->configTimestamp,
+                                 ci->x, ci->y,
+                                 ci->mode, new_rot,
+                                 outs_buf, nout);
+    XRRFreeCrtcInfo(ci);
+    XRRFreeScreenResources(res);
+
+    if (st != RRSetConfigSuccess) {
+        fprintf(stderr,
+                "[display] rotation %s: XRRSetCrtcConfig failed (status=%d)\n",
+                output->name, (int)st);
+        return false;
+    }
+
+    // Update the in-memory overrides table. 0° is still a real override
+    // (pins a panel that the driver boots up rotated), so we always insert
+    // — we only clear on an explicit removal path, which today doesn't
+    // exist (the pane just writes 0° explicitly).
+    bool found = false;
+    for (int i = 0; i < rotation_override_count; i++) {
+        if (memcmp(rotation_overrides[i].edid_hash,
+                   output->edid_hash, 8) == 0) {
+            rotation_overrides[i].degrees = degrees;
+            found = true;
+            break;
+        }
+    }
+    if (!found) {
+        if (rotation_override_count >= MAX_ROTATION_OVERRIDES) {
+            fprintf(stderr,
+                    "[display] Rotation override table full (%d) — "
+                    "dropping oldest\n",
+                    MAX_ROTATION_OVERRIDES);
+            for (int j = 0; j < rotation_override_count - 1; j++) {
+                rotation_overrides[j] = rotation_overrides[j + 1];
+            }
+            rotation_override_count--;
+        }
+        RotationOverride *ro = &rotation_overrides[rotation_override_count++];
+        memcpy(ro->edid_hash, output->edid_hash, 8);
+        ro->degrees = degrees;
+    }
+
+    // Propagate the new rotation + rotated dimensions to every enumerated
+    // entry sharing the same EDID (clones, same panel on different port).
+    for (int i = 0; i < output_count; i++) {
+        if (memcmp(outputs[i].edid_hash, output->edid_hash, 8) == 0) {
+            outputs[i].rotation = degrees;
+            outputs[i].width  = new_w;
+            outputs[i].height = new_h;
+        }
+    }
+
+    fprintf(stderr, "[display] Rotation: %s → %d° (applied + persisted)\n",
+            output->name, degrees);
+
+    publish_scales_to_root();
+    return save_rotation_overrides();
+}
+
+
+static Atom g_set_rotation_atom = None;
+
+Atom display_rotation_request_atom(Display *dpy)
+{
+    if (g_set_rotation_atom == None && dpy) {
+        g_set_rotation_atom = XInternAtom(dpy,
+                                          MOONROCK_SET_ROTATION_ATOM_NAME,
+                                          False);
+    }
+    return g_set_rotation_atom;
+}
+
+void display_handle_rotation_request(Display *dpy, Window root)
+{
+    if (!dpy) return;
+    Atom atom = display_rotation_request_atom(dpy);
+    if (atom == None) return;
+
+    Atom actual_type = None;
+    int  actual_format = 0;
+    unsigned long nitems = 0, bytes_after = 0;
+    unsigned char *prop = NULL;
+
+    int rc = XGetWindowProperty(dpy, root, atom,
+                                0, 256, False, AnyPropertyType,
+                                &actual_type, &actual_format,
+                                &nitems, &bytes_after, &prop);
+    if (rc != Success || !prop) {
+        if (prop) XFree(prop);
+        return;
+    }
+
+    char line[MOONROCK_SCALE_NAME_MAX + 16];
+    size_t len = (size_t)nitems;
+    if (len >= sizeof(line)) len = sizeof(line) - 1;
+    memcpy(line, prop, len);
+    line[len] = '\0';
+    XFree(prop);
+
+    char *nl = strchr(line, '\n');
+    if (nl) *nl = '\0';
+
+    char name[MOONROCK_SCALE_NAME_MAX];
+    int  degrees = 0;
+    if (sscanf(line, "%63s %d", name, &degrees) != 2) {
+        fprintf(stderr,
+                "[display] Ignoring malformed rotation request: '%s'\n",
+                line);
+        XDeleteProperty(dpy, root, atom);
+        return;
+    }
+
+    MROutput *o = find_output_by_name(name);
+    if (!o) {
+        fprintf(stderr,
+                "[display] Rotation request for unknown output '%s' — ignoring\n",
+                name);
+        XDeleteProperty(dpy, root, atom);
+        return;
+    }
+
+    fprintf(stderr, "[display] Rotation request: %s → %d°\n", name, degrees);
+    display_set_rotation_for_output(o, degrees);
+
     XDeleteProperty(dpy, root, atom);
 }
 

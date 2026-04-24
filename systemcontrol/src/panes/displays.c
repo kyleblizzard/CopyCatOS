@@ -55,6 +55,15 @@
 #define PRIMARY_GAP         6   // space between circle and label
 #define PRIMARY_HIT_PAD_Y   4   // vertical slop for hit-testing the radio
 
+// Rotation pills — right-aligned on the meta row. Four compact pills:
+// "0°", "90°", "180°", "270°". Total strip width 4*ROT_PILL_W + 3*ROT_GAP.
+#define ROT_COUNT           4
+#define ROT_PILL_W         36
+#define ROT_PILL_H         20
+#define ROT_GAP             4
+#define ROT_PILL_RADIUS     4.0
+#define ROT_PILL_Y_ADJ     (-2)   // nudge up so pills center on meta text
+
 // ── Scale choices ───────────────────────────────────────────────────────
 
 #define STEP_COUNT         11
@@ -67,6 +76,8 @@ static const float SCALE_STEPS[STEP_COUNT] = {
 
 #define MAX_ROWS  8
 
+static const int ROT_DEGREES[ROT_COUNT] = { 0, 90, 180, 270 };
+
 typedef struct {
     char  name[MOONROCK_SCALE_NAME_MAX];
     int   width, height;          // native resolution (pixels)
@@ -74,6 +85,7 @@ typedef struct {
     float current_scale;          // effective scale MoonRock is using
     int   picked_step;            // last clicked step; -1 for "match current"
     bool  is_primary;             // reflected from _MOONROCK_OUTPUT_SCALES
+    int   rotation;               // 0 / 90 / 180 / 270 — from scale table
 } DisplayRow;
 
 static DisplayRow g_rows[MAX_ROWS];
@@ -131,6 +143,7 @@ static void enumerate_outputs(Display *dpy, Window root)
                 r->current_scale = 1.0f;  // filled in by refresh_scales()
                 r->picked_step   = -1;
                 r->is_primary    = false; // filled in by refresh_scales()
+                r->rotation      = 0;     // filled in by refresh_scales()
                 XRRFreeCrtcInfo(ci);
             }
         }
@@ -153,10 +166,12 @@ static void refresh_scales(Display *dpy)
         g_rows[i].current_scale =
             moonrock_scale_for_name(&table, g_rows[i].name);
         g_rows[i].is_primary = false;
+        g_rows[i].rotation   = 0;
         if (!table.valid) continue;
         for (int j = 0; j < table.count; j++) {
             if (strcmp(table.outputs[j].name, g_rows[i].name) == 0) {
                 g_rows[i].is_primary = table.outputs[j].primary;
+                g_rows[i].rotation   = table.outputs[j].rotation;
                 break;
             }
         }
@@ -294,6 +309,77 @@ static void draw_pill_strip(cairo_t *cr, int row_index,
     (void)row_index;
 }
 
+// X of the leftmost rotation pill on the meta row — right-aligned so the
+// rightmost pill's right edge sits at PANE_RIGHT. Shared between draw and
+// hit-test so the two stay in lockstep even if the constants move.
+static double rotation_strip_x0(void)
+{
+    double strip_w = ROT_COUNT * ROT_PILL_W + (ROT_COUNT - 1) * ROT_GAP;
+    return (double)PANE_RIGHT - strip_w;
+}
+
+// Y of the rotation pill strip relative to the row's top — anchored to the
+// meta-row baseline, then nudged up a few px so the pills visually center
+// on the meta text. Kept separate from the pill's y-inside-row constant so
+// adjustments don't accidentally shift row geometry.
+static double rotation_strip_y(double row_y)
+{
+    return row_y + ROW_META_Y + ROT_PILL_Y_ADJ;
+}
+
+// Draw the 4-pill rotation strip at the right end of the meta row.
+// active_deg is the rotation from the scale table (0/90/180/270); the
+// matching pill renders filled-blue, the rest render idle-gray.
+static void draw_rotation_pills(cairo_t *cr, double x0, double y0,
+                                int active_deg, int hover_index)
+{
+    for (int i = 0; i < ROT_COUNT; i++) {
+        double x = x0 + i * (ROT_PILL_W + ROT_GAP);
+        bool is_active = (active_deg == ROT_DEGREES[i]);
+
+        // Pill fill
+        if (is_active) {
+            cairo_set_source_rgb(cr, 0.220, 0.459, 0.843);
+        } else if (i == hover_index) {
+            cairo_set_source_rgba(cr, 0.220, 0.459, 0.843, 0.18);
+        } else {
+            cairo_set_source_rgb(cr, 0.93, 0.93, 0.93);
+        }
+        rounded_rect(cr, x, y0, ROT_PILL_W, ROT_PILL_H, ROT_PILL_RADIUS);
+        cairo_fill(cr);
+
+        // Edge
+        cairo_set_source_rgb(cr, 0.75, 0.75, 0.75);
+        cairo_set_line_width(cr, 1.0);
+        rounded_rect(cr, x, y0, ROT_PILL_W, ROT_PILL_H, ROT_PILL_RADIUS);
+        cairo_stroke(cr);
+
+        // Label — "0°" / "90°" / "180°" / "270°"
+        char label[8];
+        snprintf(label, sizeof(label), "%d°", ROT_DEGREES[i]);
+
+        PangoLayout *layout = pango_cairo_create_layout(cr);
+        pango_layout_set_text(layout, label, -1);
+        PangoFontDescription *font =
+            pango_font_description_from_string("Lucida Grande 10");
+        pango_layout_set_font_description(layout, font);
+        pango_font_description_free(font);
+
+        int lw, lh;
+        pango_layout_get_pixel_size(layout, &lw, &lh);
+
+        if (is_active) {
+            cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+        } else {
+            cairo_set_source_rgb(cr, 0.20, 0.20, 0.20);
+        }
+        cairo_move_to(cr, x + (ROT_PILL_W - lw) / 2.0,
+                      y0 + (ROT_PILL_H - lh) / 2.0);
+        pango_cairo_show_layout(cr, layout);
+        g_object_unref(layout);
+    }
+}
+
 // ── Public API — paint, click, motion, release ─────────────────────────
 
 void displays_pane_paint(SysPrefsState *state)
@@ -400,10 +486,21 @@ void displays_pane_paint(SysPrefsState *state)
             pango_font_description_from_string("Lucida Grande 11");
         pango_layout_set_font_description(ml, mf);
         pango_font_description_free(mf);
+        // Clamp so meta text can't bleed into the rotation pill strip.
+        pango_layout_set_width(ml,
+            (int)((rotation_strip_x0() - PANE_LEFT - 12) * PANGO_SCALE));
+        pango_layout_set_ellipsize(ml, PANGO_ELLIPSIZE_END);
         cairo_set_source_rgb(cr, 0.45, 0.45, 0.45);
         cairo_move_to(cr, PANE_LEFT, row_y + ROW_META_Y);
         pango_cairo_show_layout(cr, ml);
         g_object_unref(ml);
+
+        // Rotation pills — right-aligned on the meta row.
+        draw_rotation_pills(cr,
+                            rotation_strip_x0(),
+                            rotation_strip_y(row_y),
+                            r->rotation,
+                            -1);
 
         // Pills
         int active = (r->picked_step >= 0)
@@ -441,6 +538,37 @@ static bool hit_test(int x, int y, int *row_out, int *step_out)
     return false;
 }
 
+// Hit-test for the rotation pills on the meta row. Returns true on hit and
+// fills *row_out + *rot_index_out (0..3 mapping to 0°/90°/180°/270°).
+static bool hit_test_rotation(int x, int y, int *row_out, int *rot_index_out)
+{
+    double row_y = ROW_TOP_MARGIN + 20;
+    const double x0 = rotation_strip_x0();
+
+    for (int i = 0; i < g_row_count; i++) {
+        double py = rotation_strip_y(row_y);
+        if (y >= py && y <= py + ROT_PILL_H &&
+            x >= x0 && x <= PANE_RIGHT) {
+            // Quantize to one of the 4 pills. Clicks that fall in the
+            // ROT_GAP strips between pills round to the nearer pill by
+            // construction (integer division).
+            int step = (int)((x - x0) / (ROT_PILL_W + ROT_GAP));
+            if (step < 0) step = 0;
+            if (step >= ROT_COUNT) step = ROT_COUNT - 1;
+            // Check we're actually inside the pill rectangle (not in a
+            // gap between pills) — treat gap-clicks as "no hit" so we
+            // don't accidentally rotate from a stray click.
+            double pill_x = x0 + step * (ROT_PILL_W + ROT_GAP);
+            if (x < pill_x || x > pill_x + ROT_PILL_W) return false;
+            *row_out = i;
+            *rot_index_out = step;
+            return true;
+        }
+        row_y += ROW_HEIGHT + ROW_V_GAP;
+    }
+    return false;
+}
+
 // Hit-test for the primary radio on the title row. Matches the full
 // 128px control block (circle + label) so clicks feel forgiving. Returns
 // the row index on hit, -1 otherwise.
@@ -464,6 +592,32 @@ static int hit_test_primary(int x, int y)
 
 bool displays_pane_click(SysPrefsState *state, int x, int y)
 {
+    // Rotation pills — their strip sits on the meta row above the scale
+    // strip, so they're checked first so a click on the 0°/90°/180°/270°
+    // pill isn't shadowed by the primary radio or scale strip below.
+    int rrow = -1, rstep = -1;
+    if (hit_test_rotation(x, y, &rrow, &rstep)) {
+        DisplayRow *r = &g_rows[rrow];
+        int degrees = ROT_DEGREES[rstep];
+        if (r->rotation == degrees) {
+            // No-op — don't spam MoonRock for a same-value click.
+            return false;
+        }
+        fprintf(stderr,
+                "[sysprefs:displays] Requesting %s → %d°\n",
+                r->name, degrees);
+        if (!moonrock_request_rotation(state->dpy, r->name, degrees)) {
+            fprintf(stderr,
+                    "[sysprefs:displays] moonrock_request_rotation() failed — "
+                    "request dropped\n");
+            return false;
+        }
+        // Optimistic local flip — MoonRock will re-publish the scale
+        // table with the new rotation; next pane entry will confirm.
+        r->rotation = degrees;
+        return true;
+    }
+
     // Primary radio takes priority — it sits on the title row, well
     // separated from the pill strip, but check it first for clarity.
     int prow = hit_test_primary(x, y);

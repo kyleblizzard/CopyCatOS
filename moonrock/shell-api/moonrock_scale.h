@@ -15,15 +15,19 @@
 //     Atom:   _MOONROCK_OUTPUT_SCALES           (type: UTF8_STRING, format 8)
 //     Format: one line per connected output, newline-terminated:
 //
-//         <output_name> <x> <y> <width> <height> <scale> <primary>
+//         <output_name> <x> <y> <width> <height> <scale> <primary> <rotation>
 //
 //     <primary> is an optional trailing integer: 1 if this is the XRandR
 //     primary output, 0 otherwise. Parsers that pre-date this field treat
 //     lines with 6 tokens as before (primary = false for every entry).
 //
+//     <rotation> is a further optional integer: 0, 90, 180, or 270 degrees
+//     counter-clockwise from landscape. Parsers that pre-date this field
+//     accept lines of 6 or 7 tokens and default rotation to 0.
+//
 //     Example:
-//         eDP-1 0 0 1920 1200 1.500 1
-//         HDMI-1 1920 0 1920 1080 1.000 0
+//         eDP-1 0 0 1920 1200 1.500 1 0
+//         HDMI-1 1920 0 1920 1080 1.000 0 0
 //
 // The property is rewritten whenever the connected-output set changes
 // (hotplug) or whenever the user changes a scale through SysPrefs (which in
@@ -80,6 +84,20 @@
 // better than SET_OUTPUT_PRIMARY.
 #define MOONROCK_SET_PRIMARY_ATOM_NAME "_MOONROCK_SET_PRIMARY_OUTPUT"
 
+// Reverse-direction atom for rotating an output. The Displays pane writes
+// one line:
+//
+//     <output_name> <degrees>\n    e.g. "eDP-1 90\n"
+//
+// on this atom (UTF8_STRING, format 8). <degrees> is 0, 90, 180, or 270
+// (counter-clockwise). MoonRock maps it to the corresponding XRandR
+// RR_Rotate_* constant, commits via XRRSetCrtcConfig (growing the virtual
+// screen first if the rotated footprint needs more room), persists the
+// choice per EDID hash, and deletes the property so a repeat write of
+// the same value still generates a PropertyNotify. Any unknown value is
+// rejected without side-effects.
+#define MOONROCK_SET_ROTATION_ATOM_NAME "_MOONROCK_SET_OUTPUT_ROTATION"
+
 // Cap on how many outputs we parse into a single table. Matches
 // MAX_OUTPUTS on the publisher side so we never drop a legitimate entry.
 #define MOONROCK_SCALE_MAX_OUTPUTS 16
@@ -97,6 +115,7 @@ typedef struct {
     int   width, height;        // pixel size
     float scale;                // effective scale (≥ 0.5, ≤ 4.0 in practice)
     bool  primary;              // true if this is the XRandR primary output
+    int   rotation;             // 0, 90, 180, or 270 degrees counter-clockwise
 } MoonRockOutputScale;
 
 // Full parsed table. `count` may be zero if the property is missing (e.g.
@@ -181,5 +200,22 @@ bool moonrock_request_scale(Display *dpy, const char *output_name, float scale);
 // its side; watch the `primary` field in the next PropertyNotify scale
 // table to confirm).
 bool moonrock_request_primary(Display *dpy, const char *output_name);
+
+
+// ── Requester — systemcontrol Displays pane → MoonRock ──────────────────
+// Writes _MOONROCK_SET_OUTPUT_ROTATION on the root window so MoonRock
+// applies a user-initiated rotation. Persisted per EDID hash so the same
+// physical monitor stays rotated the same way next login.
+//
+//   output_name — the same name MoonRock publishes in the scale table
+//                 (e.g. "eDP-1"). Case-sensitive exact match.
+//   degrees     — 0, 90, 180, or 270 (counter-clockwise). Any other
+//                 value is rejected client-side.
+//
+// Returns true on a successful X write. MoonRock may still reject the
+// change (unknown output, XRandR refusal); check the next PropertyNotify
+// scale table for the applied rotation to confirm.
+bool moonrock_request_rotation(Display *dpy, const char *output_name,
+                               int degrees);
 
 #endif // MOONROCK_SCALE_H
