@@ -94,31 +94,47 @@ typedef struct {
     // per-output using this scale. Fractional scales (1.25, 1.5, 1.75,
     // …) are first-class — no integer rounding anywhere.
     //
-    // edid_hash   — 64-bit FNV-1a hash of the raw EDID blob. Stable
-    //               across reboots and cable swaps. The persistence
-    //               file keys per-output overrides on this hash, so the
-    //               same monitor gets the same scale when plugged back
-    //               in, regardless of which port it lands on.
-    // mm_width/mm_height — physical panel size in millimeters, as
-    //               reported by the EDID (X server parses this into
-    //               XRROutputInfo->mm_width / mm_height). Combined with
-    //               pixel resolution, gives PPI.
-    // default_scale — picked from PPI bands during enumeration. The
-    //               fallback the system chooses when the user hasn't
-    //               set anything for this particular monitor.
-    // user_scale — user's persisted override for this EDID hash, or
-    //               0.0 if no override exists. Set from the Displays
-    //               pane in SysPrefs (later slice) and written out via
-    //               display_set_scale_for_output().
-    // scale      — the effective scale to use right now (user_scale if
-    //               non-zero, otherwise default_scale). This is the
-    //               value window_create replies, backing-scale queries,
-    //               and chrome rendering all consult.
+    // Two orthogonal axes combine into a single `scale` value:
+    //
+    //   1. Backing (density). Picked from EDID PPI bands — what pixel
+    //      density this panel needs to look right. `default_scale`
+    //      holds the auto-pick; `user_scale` holds a persisted override
+    //      the user set in SysPrefs → Displays → Scale.
+    //
+    //   2. Interface multiplier (UI zoom). Independent knob — at any
+    //      backing, the user can nudge the whole UI larger or smaller.
+    //      `default_multiplier` is 1.0 for every output; `user_multiplier`
+    //      holds a persisted override set via the Interface Scale slider.
+    //
+    // The effective `scale` everyone reads is:
+    //
+    //     backing     = user_scale      > 0.0 ? user_scale      : default_scale
+    //     multiplier  = user_multiplier > 0.0 ? user_multiplier  : default_multiplier
+    //     scale       = backing × multiplier
+    //
+    // Every consumer (chrome rendering, window backing scale, the scale
+    // bridge publish) reads `scale` directly — it's the final effective
+    // factor. Keeping backing and multiplier separate is purely so the
+    // Displays pane can show / edit the two knobs independently; MoonRock
+    // folds them at assign time so nothing downstream multiplies twice.
+    //
+    // edid_hash — 64-bit FNV-1a hash of the raw EDID blob. Stable across
+    //             reboots and cable swaps. The persistence files key
+    //             per-output overrides on this hash, so the same monitor
+    //             gets the same scale + multiplier when plugged back in
+    //             regardless of which port it lands on.
+    // mm_width/mm_height — physical panel size in millimeters, reported
+    //             by the EDID. Combined with pixel resolution, gives PPI.
     uint8_t       edid_hash[8];
     int           mm_width, mm_height;
     float         default_scale;
     float         user_scale;
-    float         scale;
+    float         default_multiplier;  // always 1.0 today; future-proofed
+                                       // in case we ever auto-pick an
+                                       // Interface Scale for a known panel
+                                       // (e.g. Legion Go S built-in).
+    float         user_multiplier;     // 0.0 when no override is set.
+    float         scale;               // effective = backing × multiplier
 
     // Current output rotation in degrees counter-clockwise from landscape
     // (0, 90, 180, or 270). Mirrors XRandR's RR_Rotate_* but in the same
@@ -427,6 +443,34 @@ void display_handle_rotation_request(Display *dpy, Window root);
 // change. Returns true on success, false on an unknown value, missing
 // EDID, or XRandR refusal.
 bool display_set_rotation_for_output(MROutput *output, int degrees);
+
+
+// ── Reverse Interface-Scale atom: pane → MoonRock ──────────────────────
+// The Displays pane writes "<name> <multiplier>" to the root-window
+// property _MOONROCK_SET_OUTPUT_INTERFACE_SCALE (see moonrock_scale.h).
+// The WM event loop calls display_handle_interface_scale_request() from
+// the PropertyNotify dispatch. MoonRock clamps to 0.5–4.0, persists the
+// choice per EDID hash to display-multipliers.conf, recomputes the
+// effective scale (backing × multiplier), rewrites _MOONROCK_OUTPUT_SCALES
+// so every shell component re-lays out live, and deletes the property so
+// a repeat write of the same value still produces a PropertyNotify. A
+// multiplier of 0.0 clears the persisted override (reverts to default).
+
+// Atom for _MOONROCK_SET_OUTPUT_INTERFACE_SCALE. Interned lazily.
+Atom display_interface_scale_request_atom(Display *dpy);
+
+// Read, parse, dispatch, and delete the request property on `root`.
+// No-op if the property is missing or malformed.
+void display_handle_interface_scale_request(Display *dpy, Window root);
+
+// Persist a user-override Interface Scale multiplier for the output's
+// EDID and apply it live. Valid range: 0.5 – 4.0. A multiplier of 0.0
+// clears the override and reverts to the default (today always 1.0).
+// Updates in-memory state for every output sharing the same EDID hash,
+// rewrites ~/.local/share/moonrock/display-multipliers.conf, and
+// republishes the scale table so live subscribers see the new effective
+// scale via PropertyNotify. Returns true on success.
+bool display_set_interface_scale_for_output(MROutput *output, float multiplier);
 
 
 // Get the viewport rectangle for a specific output.

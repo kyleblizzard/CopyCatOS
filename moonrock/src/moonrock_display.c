@@ -623,6 +623,156 @@ static bool save_rotation_overrides(void)
 }
 
 
+// ============================================================================
+//  Per-output Interface Scale multiplier: EDID-keyed overrides, persistence
+// ============================================================================
+//
+// Independent knob on top of the EDID-derived backing scale. The user picks
+// a number between 0.5× and 4.0× in SysPrefs → Displays → Interface Scale.
+// MoonRock persists it per EDID hash and folds it into the effective scale:
+//
+//     effective = backing × multiplier
+//
+// Same file-per-dimension pattern as scale and rotation overrides — keeps
+// each schema tight and independent so we can evolve them without one
+// config file growing a bag of unrelated keys.
+//
+// Persistence file: ~/.local/share/moonrock/display-multipliers.conf
+//
+//   # MoonRock per-display Interface Scale multiplier (EDID hash -> multiplier)
+//   a1b2c3d4e5f60718=1.5
+//   deadbeefcafebabe=1.0
+
+#define MAX_MULTIPLIER_OVERRIDES 64
+
+typedef struct {
+    uint8_t edid_hash[8];
+    float   multiplier;     // user-chosen (0.5 – 4.0)
+} MultiplierOverride;
+
+static MultiplierOverride multiplier_overrides[MAX_MULTIPLIER_OVERRIDES];
+static int  multiplier_override_count = 0;
+static bool multiplier_overrides_loaded = false;
+
+
+// Resolve the multiplier-override file path. Mirrors scale_override_path().
+static bool multiplier_override_path(char *out, size_t out_len)
+{
+    const char *xdg = getenv("XDG_DATA_HOME");
+    if (xdg && *xdg) {
+        int n = snprintf(out, out_len,
+                         "%s/moonrock/display-multipliers.conf", xdg);
+        return n > 0 && (size_t)n < out_len;
+    }
+    const char *home = getenv("HOME");
+    if (!home || !*home) {
+        struct passwd *pw = getpwuid(getuid());
+        if (!pw || !pw->pw_dir) return false;
+        home = pw->pw_dir;
+    }
+    int n = snprintf(out, out_len,
+                     "%s/.local/share/moonrock/display-multipliers.conf", home);
+    return n > 0 && (size_t)n < out_len;
+}
+
+// Load multiplier overrides from disk. Once per process — hotplug re-entries
+// don't re-read, same rationale as load_scale_overrides_once().
+static void load_multiplier_overrides_once(void)
+{
+    if (multiplier_overrides_loaded) return;
+    multiplier_overrides_loaded = true;
+    multiplier_override_count = 0;
+
+    char path[512];
+    if (!multiplier_override_path(path, sizeof(path))) return;
+
+    FILE *fp = fopen(path, "r");
+    if (!fp) return;
+
+    char line[128];
+    while (fgets(line, sizeof(line), fp)
+        && multiplier_override_count < MAX_MULTIPLIER_OVERRIDES) {
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '#' || *p == '\n' || *p == '\0') continue;
+
+        // 16 hex chars, '=', float, newline.
+        if (strlen(p) < 18 || p[16] != '=') continue;
+
+        uint8_t hash[8];
+        if (!hex_to_hash(p, hash)) continue;
+
+        float val = strtof(p + 17, NULL);
+        if (val < 0.5f || val > 4.0f) continue; // Reject nonsense.
+
+        MultiplierOverride *o =
+            &multiplier_overrides[multiplier_override_count++];
+        memcpy(o->edid_hash, hash, 8);
+        o->multiplier = val;
+    }
+    fclose(fp);
+    fprintf(stderr,
+            "[display] Loaded %d multiplier override(s) from %s\n",
+            multiplier_override_count, path);
+}
+
+// Find a persisted multiplier for the given EDID hash. Returns 0.0 if no
+// override is set.
+static float find_override_multiplier(const uint8_t edid_hash[8])
+{
+    for (int i = 0; i < multiplier_override_count; i++) {
+        if (memcmp(multiplier_overrides[i].edid_hash, edid_hash, 8) == 0) {
+            return multiplier_overrides[i].multiplier;
+        }
+    }
+    return 0.0f;
+}
+
+// Atomic rewrite of display-multipliers.conf. Mirrors save_scale_overrides().
+static bool save_multiplier_overrides(void)
+{
+    char path[512];
+    if (!multiplier_override_path(path, sizeof(path))) return false;
+    ensure_parent_dir(path);
+
+    char tmp[576];
+    int n = snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    if (n <= 0 || (size_t)n >= sizeof(tmp)) return false;
+
+    FILE *fp = fopen(tmp, "w");
+    if (!fp) {
+        fprintf(stderr,
+                "[display] save multiplier overrides: fopen(%s): %s\n",
+                tmp, strerror(errno));
+        return false;
+    }
+
+    fprintf(fp,
+            "# MoonRock per-display Interface Scale multiplier (EDID hash -> multiplier)\n"
+            "# Written by MoonRock. Hand-edit at your own risk.\n");
+    for (int i = 0; i < multiplier_override_count; i++) {
+        char hex[17];
+        hash_to_hex(multiplier_overrides[i].edid_hash, hex);
+        fprintf(fp, "%s=%.3f\n", hex, (double)multiplier_overrides[i].multiplier);
+    }
+    if (fflush(fp) != 0 || fclose(fp) != 0) {
+        fprintf(stderr,
+                "[display] save multiplier overrides: write failed\n");
+        unlink(tmp);
+        return false;
+    }
+
+    if (rename(tmp, path) != 0) {
+        fprintf(stderr,
+                "[display] save multiplier overrides: rename(%s,%s): %s\n",
+                tmp, path, strerror(errno));
+        unlink(tmp);
+        return false;
+    }
+    return true;
+}
+
+
 // ── display-config.conf: primary EDID persistence ─────────────────────
 //
 // Resolve the non-scale config file path. Honors XDG_DATA_HOME, falling
@@ -861,12 +1011,16 @@ static void edid_cache_store(const char *name, const uint8_t *hash)
 // under the atom _MOONROCK_OUTPUT_SCALES. Every connected output emits
 // one newline-terminated line:
 //
-//     <name> <x> <y> <width> <height> <scale> <primary>
+//     <name> <x> <y> <width> <height> <effective_scale> <primary> <rotation> <multiplier>
 //
+// <effective_scale> is the final factor every shell component renders at —
+// backing × multiplier, folded here so subscribers never multiply twice.
 // <primary> is 1 for the XRandR primary output, 0 otherwise. Shell
 // components (menubar, dock, desktop) anchor their layout to the primary
 // entry rather than the virtual root, which spans multiple displays
-// after hotplug.
+// after hotplug. <rotation> carries 0 / 90 / 180 / 270. <multiplier> is
+// the user-chosen Interface Scale; purely informational (the pane reads
+// it to show the slider), never used by render paths.
 //
 // Xlib converts a root-property write into a PropertyNotify event on every
 // client that has PropertyChangeMask selected on the root window, so
@@ -887,14 +1041,19 @@ static void publish_scales_to_root(void)
     size_t pos = 0;
 
     for (int i = 0; i < output_count && pos < sizeof(buf); i++) {
+        float mult = (outputs[i].user_multiplier > 0.0f)
+                        ? outputs[i].user_multiplier
+                        : outputs[i].default_multiplier;
+        if (mult <= 0.0f) mult = 1.0f;
         int n = snprintf(buf + pos, sizeof(buf) - pos,
-                         "%s %d %d %d %d %.3f %d %d\n",
+                         "%s %d %d %d %d %.3f %d %d %.3f\n",
                          outputs[i].name,
                          outputs[i].x, outputs[i].y,
                          outputs[i].width, outputs[i].height,
                          (double)outputs[i].scale,
                          outputs[i].primary ? 1 : 0,
-                         outputs[i].rotation);
+                         outputs[i].rotation,
+                         (double)mult);
         if (n < 0) break;
         if ((size_t)n >= sizeof(buf) - pos) {
             // Line didn't fit — stop here rather than emit a truncated
@@ -1014,6 +1173,12 @@ bool display_init(Display *dpy, int screen)
     // the in-memory table stays authoritative after startup so a rotation
     // set from SysPrefs can't be clobbered by a concurrent hotplug.
     load_rotation_overrides_once();
+
+    // Load persisted per-display Interface Scale multiplier overrides.
+    // Same one-shot loader shape; the effective `scale` for each output
+    // is backing × multiplier, both resolved during the output walk
+    // further down.
+    load_multiplier_overrides_once();
 
     // Startup pre-pass A — undock: tear down any CRTC that is still
     // driving a now-disconnected output. RandR does NOT auto-disable a
@@ -1421,25 +1586,44 @@ bool display_init(Display *dpy, int screen)
 
         // ── Scale selection ──
         //
-        // default_scale: picked from PPI bands.
-        // user_scale:    persisted override if one exists for this EDID.
-        // scale:         the effective value (user_scale if non-zero,
-        //                otherwise default_scale).
+        // Two independent knobs fold into one effective scale:
+        //
+        //   backing    = user_scale     > 0 ? user_scale     : default_scale
+        //   multiplier = user_multiplier> 0 ? user_multiplier: default_multiplier
+        //   scale      = backing × multiplier
+        //
+        // Backing is EDID-derived (PPI band) with optional user override.
+        // Multiplier is the Interface Scale slider in SysPrefs → Displays —
+        // defaults to 1.0 for every output (we deliberately ship neutral
+        // and let the user dial a Legion panel up to 1.5× or 2.0× after
+        // eyeballing; auto-guessing here risks a dock/undock regression).
         out->default_scale = default_scale_from_ppi(
             out->width, out->height, out->mm_width, out->mm_height);
         out->user_scale = have_hash
                             ? find_override_scale(out->edid_hash)
                             : 0.0f;
-        out->scale = (out->user_scale > 0.0f)
-                        ? out->user_scale
-                        : out->default_scale;
+        out->default_multiplier = 1.0f;
+        out->user_multiplier = have_hash
+                                ? find_override_multiplier(out->edid_hash)
+                                : 0.0f;
+        float backing = (out->user_scale > 0.0f)
+                            ? out->user_scale
+                            : out->default_scale;
+        float mult = (out->user_multiplier > 0.0f)
+                        ? out->user_multiplier
+                        : out->default_multiplier;
+        if (mult <= 0.0f) mult = 1.0f;
+        out->scale = backing * mult;
 
         fprintf(stderr,
                 "[display] Output %d: %s — %dx%d @ %dHz (pos %d,%d) "
-                "scale=%.2f%s%s%s\n",
+                "scale=%.2f (backing=%.2f%s × mult=%.2f%s)%s%s\n",
                 output_count, out->name, out->width, out->height,
                 out->refresh_hz, out->x, out->y, (double)out->scale,
+                (double)backing,
                 out->user_scale > 0.0f ? " [user]" : " [default]",
+                (double)mult,
+                out->user_multiplier > 0.0f ? " [user]" : " [default]",
                 out->primary ? " [primary]" : "",
                 out->vrr_capable ? " [VRR]" : "");
 
@@ -2179,13 +2363,20 @@ bool display_set_scale_for_output(MROutput *output, float scale)
 
     // Propagate the change to every currently-enumerated output sharing
     // the same EDID (same physical monitor on a different port, mirrored
-    // clones, etc.).
+    // clones, etc.). Effective scale is backing × multiplier so we fold
+    // both knobs when recomputing — the user changed backing, but the
+    // multiplier hasn't changed and still counts.
     for (int i = 0; i < output_count; i++) {
         if (memcmp(outputs[i].edid_hash, output->edid_hash, 8) == 0) {
             outputs[i].user_scale = clear ? 0.0f : scale;
-            outputs[i].scale = (outputs[i].user_scale > 0.0f)
-                                 ? outputs[i].user_scale
-                                 : outputs[i].default_scale;
+            float backing = (outputs[i].user_scale > 0.0f)
+                                ? outputs[i].user_scale
+                                : outputs[i].default_scale;
+            float mult = (outputs[i].user_multiplier > 0.0f)
+                            ? outputs[i].user_multiplier
+                            : outputs[i].default_multiplier;
+            if (mult <= 0.0f) mult = 1.0f;
+            outputs[i].scale = backing * mult;
         }
     }
 
@@ -2194,6 +2385,175 @@ bool display_set_scale_for_output(MROutput *output, float scale)
     publish_scales_to_root();
 
     return save_scale_overrides();
+}
+
+
+// ============================================================================
+//  Per-output Interface Scale multiplier — setter + reverse-request atom
+// ============================================================================
+//
+// The Displays pane writes one line to _MOONROCK_SET_OUTPUT_INTERFACE_SCALE:
+//
+//     <output_name> <multiplier>\n     e.g. "eDP-1 2.000\n"
+//
+// <multiplier> is a float in 0.5 – 4.0. 0.0 clears the persisted override.
+// MoonRock folds the new multiplier into effective_scale on every output
+// sharing this EDID, rewrites _MOONROCK_OUTPUT_SCALES so shell components
+// re-lay out live, and deletes the property so a repeat write of the same
+// value still generates a PropertyNotify.
+
+// Forward decl — the name-match helper is defined further down with the
+// primary-request handler, but this block calls it first.
+static MROutput *find_output_by_name(const char *name);
+
+bool display_set_interface_scale_for_output(MROutput *output, float multiplier)
+{
+    if (!output) return false;
+
+    // Zero (or negative) clears the override and reverts to the default.
+    // Reject out-of-range to keep the persistence file sane.
+    bool clear = (multiplier <= 0.0f);
+    if (!clear && (multiplier < 0.5f || multiplier > 4.0f)) {
+        fprintf(stderr,
+                "[display] Rejecting out-of-range Interface Scale %.3f for %s\n",
+                (double)multiplier, output->name);
+        return false;
+    }
+
+    // Guard against outputs with no EDID — can't persist for reconnects.
+    bool has_edid = false;
+    for (int i = 0; i < 8; i++) {
+        if (output->edid_hash[i] != 0) { has_edid = true; break; }
+    }
+    if (!has_edid) {
+        fprintf(stderr,
+                "[display] Interface Scale set for '%s' rejected: no EDID hash\n",
+                output->name);
+        return false;
+    }
+
+    // Update the in-memory overrides table — same FIFO eviction as
+    // save_scale_overrides() so a user cycling a lot of monitors never
+    // permanently jams the table.
+    bool found = false;
+    for (int i = 0; i < multiplier_override_count; i++) {
+        if (memcmp(multiplier_overrides[i].edid_hash,
+                   output->edid_hash, 8) == 0) {
+            if (clear) {
+                for (int j = i; j < multiplier_override_count - 1; j++) {
+                    multiplier_overrides[j] = multiplier_overrides[j + 1];
+                }
+                multiplier_override_count--;
+            } else {
+                multiplier_overrides[i].multiplier = multiplier;
+            }
+            found = true;
+            break;
+        }
+    }
+    if (!found && !clear) {
+        if (multiplier_override_count >= MAX_MULTIPLIER_OVERRIDES) {
+            fprintf(stderr,
+                    "[display] Multiplier override table full (%d) — "
+                    "dropping oldest\n",
+                    MAX_MULTIPLIER_OVERRIDES);
+            for (int j = 0; j < multiplier_override_count - 1; j++) {
+                multiplier_overrides[j] = multiplier_overrides[j + 1];
+            }
+            multiplier_override_count--;
+        }
+        MultiplierOverride *o =
+            &multiplier_overrides[multiplier_override_count++];
+        memcpy(o->edid_hash, output->edid_hash, 8);
+        o->multiplier = multiplier;
+    }
+
+    // Propagate to every enumerated output sharing the same EDID, and
+    // recompute their effective scale.
+    for (int i = 0; i < output_count; i++) {
+        if (memcmp(outputs[i].edid_hash, output->edid_hash, 8) == 0) {
+            outputs[i].user_multiplier = clear ? 0.0f : multiplier;
+            float backing = (outputs[i].user_scale > 0.0f)
+                                ? outputs[i].user_scale
+                                : outputs[i].default_scale;
+            float mult = (outputs[i].user_multiplier > 0.0f)
+                            ? outputs[i].user_multiplier
+                            : outputs[i].default_multiplier;
+            if (mult <= 0.0f) mult = 1.0f;
+            outputs[i].scale = backing * mult;
+        }
+    }
+
+    publish_scales_to_root();
+    return save_multiplier_overrides();
+}
+
+
+static Atom g_set_interface_scale_atom = None;
+
+Atom display_interface_scale_request_atom(Display *dpy)
+{
+    if (g_set_interface_scale_atom == None && dpy) {
+        g_set_interface_scale_atom = XInternAtom(
+            dpy, MOONROCK_SET_INTERFACE_SCALE_ATOM_NAME, False);
+    }
+    return g_set_interface_scale_atom;
+}
+
+void display_handle_interface_scale_request(Display *dpy, Window root)
+{
+    if (!dpy) return;
+    Atom atom = display_interface_scale_request_atom(dpy);
+    if (atom == None) return;
+
+    Atom actual_type = None;
+    int  actual_format = 0;
+    unsigned long nitems = 0, bytes_after = 0;
+    unsigned char *prop = NULL;
+
+    int rc = XGetWindowProperty(dpy, root, atom,
+                                0, 256, False, AnyPropertyType,
+                                &actual_type, &actual_format,
+                                &nitems, &bytes_after, &prop);
+    if (rc != Success || !prop) {
+        if (prop) XFree(prop);
+        return;
+    }
+
+    char line[MOONROCK_SCALE_NAME_MAX + 16];
+    size_t len = (size_t)nitems;
+    if (len >= sizeof(line)) len = sizeof(line) - 1;
+    memcpy(line, prop, len);
+    line[len] = '\0';
+    XFree(prop);
+
+    char *nl = strchr(line, '\n');
+    if (nl) *nl = '\0';
+
+    char   name[MOONROCK_SCALE_NAME_MAX];
+    double multiplier = 0.0;
+    if (sscanf(line, "%63s %lf", name, &multiplier) != 2) {
+        fprintf(stderr,
+                "[display] Ignoring malformed Interface Scale request: '%s'\n",
+                line);
+        XDeleteProperty(dpy, root, atom);
+        return;
+    }
+
+    MROutput *o = find_output_by_name(name);
+    if (!o) {
+        fprintf(stderr,
+                "[display] Interface Scale request for unknown output "
+                "'%s' — ignoring\n", name);
+        XDeleteProperty(dpy, root, atom);
+        return;
+    }
+
+    fprintf(stderr, "[display] Interface Scale request: %s → %.3f×\n",
+            name, multiplier);
+    display_set_interface_scale_for_output(o, (float)multiplier);
+
+    XDeleteProperty(dpy, root, atom);
 }
 
 

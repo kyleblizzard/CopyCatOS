@@ -15,7 +15,18 @@
 //     Atom:   _MOONROCK_OUTPUT_SCALES           (type: UTF8_STRING, format 8)
 //     Format: one line per connected output, newline-terminated:
 //
-//         <output_name> <x> <y> <width> <height> <scale> <primary> <rotation>
+//         <output_name> <x> <y> <width> <height> <effective_scale> <primary> <rotation> <multiplier>
+//
+//     <effective_scale> is the *final* scale every shell component should
+//     render at. It already folds in the user-chosen Interface Scale
+//     multiplier, so subscribers never multiply again — they just read the
+//     field. Formally:
+//
+//         effective_scale = backing_scale × interface_multiplier
+//
+//     where <backing_scale> is MoonRock's EDID-derived density choice and
+//     <interface_multiplier> is the per-output Interface Scale slider value
+//     (SysPrefs → Displays).
 //
 //     <primary> is an optional trailing integer: 1 if this is the XRandR
 //     primary output, 0 otherwise. Parsers that pre-date this field treat
@@ -25,9 +36,16 @@
 //     counter-clockwise from landscape. Parsers that pre-date this field
 //     accept lines of 6 or 7 tokens and default rotation to 0.
 //
+//     <multiplier> is the further-optional user-chosen Interface Scale
+//     multiplier, carried so UI (systemcontrol's Displays pane) can show
+//     the slider position without a second round-trip. Subscribers that
+//     only render never need this field — it's already folded into
+//     <effective_scale>. Parsers that pre-date this field accept lines of
+//     6, 7, or 8 tokens and default multiplier to 1.0.
+//
 //     Example:
-//         eDP-1 0 0 1920 1200 1.500 1 0
-//         HDMI-1 1920 0 1920 1080 1.000 0 0
+//         eDP-1 0 0 1920 1200 3.000 1 0 2.000
+//         HDMI-1 1920 0 1920 1080 1.000 0 0 1.000
 //
 // The property is rewritten whenever the connected-output set changes
 // (hotplug) or whenever the user changes a scale through SysPrefs (which in
@@ -98,6 +116,25 @@
 // rejected without side-effects.
 #define MOONROCK_SET_ROTATION_ATOM_NAME "_MOONROCK_SET_OUTPUT_ROTATION"
 
+// Reverse-direction atom for the per-output Interface Scale multiplier.
+// systemcontrol's Displays pane writes one line:
+//
+//     <output_name> <multiplier>\n   e.g. "eDP-1 2.000\n"
+//
+// on this atom (UTF8_STRING, format 8). <multiplier> is a float in
+// 0.5 – 4.0 (matches the HiDPI invariant). 0.0 clears the user override
+// and reverts to the EDID-keyed default (1.0 on externals, an
+// auto-chosen 1.5–2.0 on the Legion Go S built-in panel).
+//
+// MoonRock persists the chosen multiplier per EDID hash in
+// ~/.local/share/moonrock/display-config.conf alongside the backing
+// scale, primary, and rotation overrides. On receipt it recomputes
+// effective_scale = backing × multiplier and rewrites
+// _MOONROCK_OUTPUT_SCALES so every shell component re-lays out live
+// via PropertyNotify. The set-atom is then deleted so a repeat write
+// of the same value still generates a PropertyNotify.
+#define MOONROCK_SET_INTERFACE_SCALE_ATOM_NAME "_MOONROCK_SET_OUTPUT_INTERFACE_SCALE"
+
 // Cap on how many outputs we parse into a single table. Matches
 // MAX_OUTPUTS on the publisher side so we never drop a legitimate entry.
 #define MOONROCK_SCALE_MAX_OUTPUTS 16
@@ -113,9 +150,13 @@ typedef struct {
     char  name[MOONROCK_SCALE_NAME_MAX];
     int   x, y;                 // top-left in virtual-screen pixels
     int   width, height;        // pixel size
-    float scale;                // effective scale (≥ 0.5, ≤ 4.0 in practice)
+    float scale;                // effective scale = backing × multiplier
+                                // (what every shell component renders at)
     bool  primary;              // true if this is the XRandR primary output
     int   rotation;             // 0, 90, 180, or 270 degrees counter-clockwise
+    float multiplier;           // user-chosen Interface Scale (0.5 – 4.0);
+                                // 1.0 when no override is set. Folded into
+                                // `scale`; present so UI can show the slider.
 } MoonRockOutputScale;
 
 // Full parsed table. `count` may be zero if the property is missing (e.g.
@@ -217,5 +258,28 @@ bool moonrock_request_primary(Display *dpy, const char *output_name);
 // scale table for the applied rotation to confirm.
 bool moonrock_request_rotation(Display *dpy, const char *output_name,
                                int degrees);
+
+
+// ── Requester — systemcontrol Displays pane → MoonRock ──────────────────
+// Writes _MOONROCK_SET_OUTPUT_INTERFACE_SCALE on the root window so
+// MoonRock applies the user-chosen Interface Scale multiplier for an
+// output. MoonRock persists the choice per EDID hash (so the same
+// physical monitor keeps its Interface Scale across logouts and cable
+// swaps), recomputes the effective scale, and rewrites the scale table
+// so every shell component re-lays out live.
+//
+//   output_name — the same name MoonRock publishes in the scale table
+//                 (e.g. "eDP-1"). Case-sensitive exact match.
+//   multiplier  — 0.5 – 4.0, matching the HiDPI invariant. Pass 0.0 to
+//                 clear the user override and fall back to MoonRock's
+//                 EDID-keyed default (1.0 on externals; an auto-chosen
+//                 1.5 – 2.0 on the Legion Go S built-in panel).
+//
+// Returns true on a successful X write. MoonRock clamps out-of-range
+// values on its side; check the next PropertyNotify scale table for
+// the multiplier actually applied.
+bool moonrock_request_interface_scale(Display *dpy,
+                                      const char *output_name,
+                                      float multiplier);
 
 #endif // MOONROCK_SCALE_H

@@ -675,6 +675,17 @@ static void on_property_notify(CCWM *wm, XEvent *e)
         return;
     }
 
+    // Reverse Interface-Scale atom: the Displays pane writes
+    // _MOONROCK_SET_OUTPUT_INTERFACE_SCALE on the root window. Folds into
+    // the effective scale = backing × multiplier model — MoonRock
+    // republishes the scale table so every shell component re-lays out
+    // live through the normal PropertyNotify path.
+    if (w == wm->root && e->xproperty.state == PropertyNewValue &&
+        e->xproperty.atom == display_interface_scale_request_atom(wm->dpy)) {
+        display_handle_interface_scale_request(wm->dpy, wm->root);
+        return;
+    }
+
     Client *c = wm_find_client(wm, w);
 
     if (c && (e->xproperty.atom == wm->atom_net_wm_name ||
