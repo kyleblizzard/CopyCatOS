@@ -69,6 +69,9 @@ void registry_init(SysPrefsState *state)
     add_pane(state, "appearance",         "Appearance",             "personal", "appearance");
     add_pane(state, "desktop-screensaver","Desktop &\nScreen Saver","personal", "desktop-screensaver");
     add_pane(state, "dock",              "Dock",                    "personal", "dock");
+    // CopyCatOS-specific: multi-display shell toggles (menu bars + Spaces).
+    // Reuses the Dock icon until a dedicated asset lands. See task #69.
+    add_pane(state, "desktop-dock",      "Desktop &\nDock",         "personal", "dock");
     add_pane(state, "expose-spaces",     "Exposé &\nSpaces",       "personal", "expose-spaces");
     add_pane(state, "language-text",     "Language &\nText",       "personal", "language-text");
     add_pane(state, "security",          "Security",                "personal", "security");

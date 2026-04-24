@@ -14,6 +14,7 @@
 
 #include "sysprefs.h"
 #include "registry.h"
+#include "shellconf.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -107,6 +108,16 @@ int main(int argc, char *argv[])
 
     fprintf(stderr, "[systemcontrol] Registered %d panes in %d categories\n",
             state.pane_count, state.category_count);
+
+    // Rehydrate shell-wide toggles on every launch. This ensures a fresh
+    // X session picks up the saved menu-bar / Spaces modes even before the
+    // user opens the Desktop & Dock pane — the atoms are the single source
+    // of truth at runtime, shell.conf is the single source of truth on disk.
+    {
+        ShellConf shell = {0};
+        shellconf_load(&shell);
+        shellconf_publish_atoms(state.dpy, state.root, &shell);
+    }
 
     // If --pane was specified, open directly to that pane instead of the grid.
     // We search by pane ID (e.g. "mouse", "controller", "dock").
