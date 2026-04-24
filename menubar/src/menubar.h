@@ -60,13 +60,14 @@ typedef enum {
 // points-to-physical-pixels factor.
 extern int menubar_height;
 
-// Per-output HiDPI scale published by MoonRock on _MOONROCK_OUTPUT_SCALES
-// for the bar's hosting output. 1.0 when MoonRock isn't running (the
-// menubar still draws, just without hidpi awareness).
-//
-// TODO A.2.3: this is global today because every pane shares the same
-// scale in Classic mode. Modern mode needs per-pane scale so a 1.0×
-// external and a 1.5× Legion panel can each host a correctly-sized bar.
+// Per-output HiDPI scale for the menu bar at the global level. In Classic
+// mode this is the primary output's scale (the bar's only host). In Modern
+// mode this tracks the primary output as a paint-context default; the
+// active pane's scale is loaded into this global on entry to any
+// pane-scoped routine (paint_pane, hit_test_menu, dropdown event
+// dispatch, ...) and restored on exit. The S() / SF() macros read the
+// global, which keeps the macro API unchanged while letting each pane
+// resolve to its own host output's scale.
 extern float menubar_hidpi_scale;
 
 // Combined points-to-physical-pixels scale:
@@ -141,6 +142,22 @@ typedef struct {
     // (pointer differs — dropdown dismiss required) from an in-place
     // property patch (pointer unchanged — repaint only).
     const void     *last_seen_legacy_root;
+
+    // Per-pane HiDPI scale, sourced from the same MoonRock scale-table
+    // row that populated screen_x/screen_y/etc. Modern mode lets a 1.0×
+    // external and a 1.5× Legion panel each host a correctly-sized bar.
+    // Classic mode collapses every pane to the primary output's scale —
+    // the single bar still gets the right value through this field.
+    float           hidpi_scale;
+
+    // Combined points-to-physical-pixels factor for THIS pane:
+    //   pane->scale = (menubar_height / 22.0) * pane->hidpi_scale
+    // Mirrors the global menubar_scale formula but per-pane. Loaded into
+    // menubar_scale on entry to every pane-scoped routine; the S()/SF()
+    // macros still read the global, so all existing call sites resolve
+    // at the active pane's correct scale without churning the macro
+    // signatures.
+    double          scale;
 } MenuBarPane;
 
 // Core state for the entire menu bar.

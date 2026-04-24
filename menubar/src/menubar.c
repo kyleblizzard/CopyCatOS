@@ -80,6 +80,45 @@ static void recompute_menubar_scale(void)
         ((double)menubar_height / 22.0) * (double)menubar_hidpi_scale;
 }
 
+// Recompute pane->scale from menubar_height and pane->hidpi_scale. Mirrors
+// recompute_menubar_scale() but per-pane. Called whenever the user's
+// height preference changes or a pane's hidpi_scale is updated.
+static void recompute_pane_scale(MenuBarPane *pane)
+{
+    pane->scale =
+        ((double)menubar_height / 22.0) * (double)pane->hidpi_scale;
+}
+
+// Save+set the scale globals so S() / SF() resolve at `pane`'s scale until
+// the matching leave_pane_scale call. Every pane-scoped routine — paint,
+// resize, layout compute, hit-test, dropdown event dispatch — wraps its
+// body with this pair so the macro reads stay correct even though two
+// panes can run at different scales (1.0× external + 1.5× Legion panel).
+//
+// The returned struct carries the previous globals so leave can restore
+// them — supports nested wraps, though nothing in the bar wraps deeper
+// than one level today.
+typedef struct {
+    float  hidpi;
+    double scale;
+} PaneScaleSaved;
+
+static PaneScaleSaved enter_pane_scale(const MenuBarPane *pane)
+{
+    PaneScaleSaved saved = { menubar_hidpi_scale, menubar_scale };
+    if (pane && pane->hidpi_scale > 0.0f) {
+        menubar_hidpi_scale = pane->hidpi_scale;
+        menubar_scale       = pane->scale;
+    }
+    return saved;
+}
+
+static void leave_pane_scale(PaneScaleSaved saved)
+{
+    menubar_hidpi_scale = saved.hidpi;
+    menubar_scale       = saved.scale;
+}
+
 // Pull the hosting-output scale from the cached MoonRock table, write it
 // into menubar_hidpi_scale, and recompute menubar_scale. Returns the
 // previous hidpi value so callers can detect change.
@@ -247,10 +286,12 @@ static void write_pane_properties(MenuBar *mb, MenuBarPane *pane, int h_px)
 
 // Spawn the X dock window for a freshly-added pane. Uses the cached
 // 32-bit ARGB visual so every pane has translucency on day one.
-// Assumes pane->screen_{x,y,w,h} and pane->output_name are already
-// populated by the reconciler.
+// Assumes pane->screen_{x,y,w,h}, pane->output_name and pane->scale are
+// already populated by the reconciler.
 static void create_pane_window(MenuBar *mb, MenuBarPane *pane)
 {
+    PaneScaleSaved _saved_scale = enter_pane_scale(pane);
+
     XSetWindowAttributes attrs;
     attrs.override_redirect = False;
     attrs.event_mask = ExposureMask | ButtonPressMask | PointerMotionMask
@@ -259,19 +300,23 @@ static void create_pane_window(MenuBar *mb, MenuBarPane *pane)
     attrs.colormap = g_pane_colormap;
     attrs.border_pixel = 0;
 
+    int h_px = MENUBAR_HEIGHT;
+
     pane->win = XCreateWindow(
         mb->dpy, mb->root,
         pane->screen_x, pane->screen_y,
         (unsigned int)pane->screen_w,
-        MENUBAR_HEIGHT,
+        h_px,
         0, g_pane_depth, InputOutput, g_pane_visual,
         CWOverrideRedirect | CWEventMask | CWBackPixel
             | CWColormap | CWBorderPixel,
         &attrs);
 
     XSetWindowBackgroundPixmap(mb->dpy, pane->win, None);
-    write_pane_properties(mb, pane, MENUBAR_HEIGHT);
+    write_pane_properties(mb, pane, h_px);
     XMapWindow(mb->dpy, pane->win);
+
+    leave_pane_scale(_saved_scale);
 }
 
 // Read _COPYCATOS_MENUBAR_MODE on the root window and decode it. Anything
@@ -303,22 +348,26 @@ static MenuBarMode read_menubar_mode(MenuBar *mb)
 }
 
 // Pull one MoonRock scale-table row into a MenuBarPane. Returns true if
-// any of the four geometry fields or the output name changed, so callers
-// can skip a pointless resize / property rewrite when the row didn't
-// actually move.
+// any geometry field, the output name, or the per-pane scale changed,
+// so callers can skip a pointless resize / property rewrite when the
+// row didn't actually move.
 static bool populate_pane_from_row(MenuBarPane *pane,
                                    const MoonRockOutputScale *row)
 {
+    float row_scale = (row->scale > 0.0f) ? row->scale : 1.0f;
     bool changed = (pane->screen_x != row->x) ||
                    (pane->screen_y != row->y) ||
                    (pane->screen_w != row->width) ||
                    (pane->screen_h != row->height) ||
+                   pane->hidpi_scale != row_scale ||
                    strncmp(pane->output_name, row->name,
                            sizeof(pane->output_name)) != 0;
-    pane->screen_x = row->x;
-    pane->screen_y = row->y;
-    pane->screen_w = row->width;
-    pane->screen_h = row->height;
+    pane->screen_x    = row->x;
+    pane->screen_y    = row->y;
+    pane->screen_w    = row->width;
+    pane->screen_h    = row->height;
+    pane->hidpi_scale = row_scale;
+    recompute_pane_scale(pane);
     strncpy(pane->output_name, row->name, sizeof(pane->output_name) - 1);
     pane->output_name[sizeof(pane->output_name) - 1] = '\0';
     return changed;
@@ -376,6 +425,12 @@ static bool reconcile_panes_to_outputs(MenuBar *mb)
             next[0].screen_w = DisplayWidth(mb->dpy, mb->screen);
             next[0].screen_h = DisplayHeight(mb->dpy, mb->screen);
             next[0].output_name[0] = '\0';
+            // No MoonRock table yet — inherit the global hidpi scale so
+            // the pane wrap macros resolve at the same value the macros
+            // would read with no wrap. Avoids a silent zero-scale pane
+            // that paints at 0 px tall.
+            next[0].hidpi_scale = menubar_hidpi_scale;
+            recompute_pane_scale(&next[0]);
         }
     } else {
         // Modern: one pane per connected output, aligned with scale-
@@ -397,6 +452,8 @@ static bool reconcile_panes_to_outputs(MenuBar *mb)
             next[0].screen_w = DisplayWidth(mb->dpy, mb->screen);
             next[0].screen_h = DisplayHeight(mb->dpy, mb->screen);
             next[0].output_name[0] = '\0';
+            next[0].hidpi_scale = menubar_hidpi_scale;
+            recompute_pane_scale(&next[0]);
         }
     }
 
@@ -451,11 +508,16 @@ static bool reconcile_panes_to_outputs(MenuBar *mb)
     bool changed = (next_count != mb->pane_count);
     for (int i = 0; i < next_count; i++) {
         if (!changed) {
+            // Float `!=` is safe here: both sides are bit-identical copies
+            // of the same MoonRock scale-table entry, never the result of
+            // arithmetic. If a future change introduces arithmetic on this
+            // field (e.g. a layout fudge), switch to an epsilon compare.
             if (next[i].win != mb->panes[i].win ||
                 next[i].screen_x != mb->panes[i].screen_x ||
                 next[i].screen_y != mb->panes[i].screen_y ||
                 next[i].screen_w != mb->panes[i].screen_w ||
                 next[i].screen_h != mb->panes[i].screen_h ||
+                next[i].hidpi_scale != mb->panes[i].hidpi_scale ||
                 strncmp(next[i].output_name, mb->panes[i].output_name,
                         sizeof(next[i].output_name)) != 0) {
                 changed = true;
@@ -519,6 +581,8 @@ static bool reconcile_panes_to_outputs(MenuBar *mb)
 // tracks the current menubar_scale.
 static void compute_pane_layout(MenuBarPane *pane)
 {
+    PaneScaleSaved _saved_scale = enter_pane_scale(pane);
+
     pane->apple_x   = 0;
     pane->apple_w   = S(50);
     pane->appname_x = S(58);
@@ -526,20 +590,31 @@ static void compute_pane_layout(MenuBarPane *pane)
     // menus_x is written every paint (depends on live app-name width),
     // but seed it so hit_test_menu before the first paint doesn't trip.
     pane->menus_x   = 0;
+
+    leave_pane_scale(_saved_scale);
 }
 
-// Apply the current menubar_scale to every live pane: resize the dock
-// window, rewrite its struts, recompute scale-dependent layout regions,
-// reload any cached scale-sized assets (Apple logo), and repaint.
-// Called after either a SIGHUP-driven height change or a MoonRock-driven
-// HiDPI change. The strut writes are per-pane — each pane reserves only
-// its own output's top edge.
+// Apply each pane's scale to its dock window: resize, rewrite struts,
+// recompute scale-dependent layout regions, reload cached scale-sized
+// assets (Apple logo), and repaint. Called after either a SIGHUP-driven
+// height change, a MoonRock-driven scale-table refresh, or a
+// Modern/Classic mode toggle. The strut writes are per-pane — each pane
+// reserves only its own output's top edge.
+//
+// Modern mode lets two panes have different scales; the wrap inside the
+// per-pane loop loads each pane's scale into the globals before
+// MENUBAR_HEIGHT is read, so the bar is sized correctly per output.
 static void apply_menubar_resize(MenuBar *mb)
 {
-    int h_px = MENUBAR_HEIGHT;  // S(22) — physical pixels on host output
-
     for (int i = 0; i < mb->pane_count; i++) {
         MenuBarPane *pane = &mb->panes[i];
+
+        PaneScaleSaved _saved_scale = enter_pane_scale(pane);
+
+        // S(22) — physical pixels on THIS pane's host output. Read inside
+        // the wrap so a 1.5× pane and a 1.0× pane each get their own
+        // correct height.
+        int h_px = MENUBAR_HEIGHT;
 
         // Move+resize together so the window tracks primary-output changes
         // (hotplug reassigning primary, EDID-override rerunning) without a
@@ -564,14 +639,22 @@ static void apply_menubar_resize(MenuBar *mb)
                         mb->atom_net_wm_strut, XA_CARDINAL, 32,
                         PropModeReplace, (unsigned char *)strut, 4);
 
-        // Recompute point-scaled layout anchors.
+        // Recompute point-scaled layout anchors. compute_pane_layout
+        // wraps internally for safety — nested wraps balance correctly,
+        // and one extra save/restore per pane is cheap.
         compute_pane_layout(pane);
 
         // Apple logo is pre-rasterized in apple_init; rebuild at the new
         // scale for this pane. Other submodules (render, systray) draw
         // their scale-dependent content per-frame so they don't need a
-        // reload.
+        // reload. NOTE: apple's logo cache is global today, so the LAST
+        // pane wins the cache. A future slice gives apple a per-pane
+        // cache; until then, two panes at different scales will share
+        // the last-painted scale's logo. The bar's geometry, text, and
+        // dropdowns are already per-pane correct.
         apple_reload(mb, pane);
+
+        leave_pane_scale(_saved_scale);
     }
 
     menubar_paint(mb);
@@ -782,6 +865,16 @@ static void ungrab_pointer(MenuBar *mb)
 
 static void dismiss_open_menu(MenuBar *mb)
 {
+    // Run the dismiss under the active pane's scale so any S() / SF()
+    // reads inside apple_dismiss / appmenu_dismiss (today: pure window
+    // teardown, no scale reads, but the wrap is cheap insurance against
+    // future paint-during-dismiss work).
+    MenuBarPane *active = (mb->active_pane >= 0 &&
+                           mb->active_pane < mb->pane_count)
+                          ? &mb->panes[mb->active_pane]
+                          : NULL;
+    PaneScaleSaved _saved_scale = enter_pane_scale(active);
+
     if (mb->open_menu == 0) {
         apple_dismiss(mb);
     } else if (mb->open_menu > 0) {
@@ -790,6 +883,23 @@ static void dismiss_open_menu(MenuBar *mb)
     mb->open_menu   = -1;
     mb->active_pane = -1;
     ungrab_pointer(mb);
+
+    leave_pane_scale(_saved_scale);
+}
+
+// Helper for the event loop: load the active dropdown's pane scale into
+// the globals so handlers reading S() / SF() (apple/appmenu dropdown
+// paint, hit-test, submenu spawn, ...) resolve at the scale the dropdown
+// was opened under. Returns the saved globals; caller must
+// leave_pane_scale on every exit. NULL active pane is allowed and
+// results in a no-op enter that still balances correctly on leave.
+static PaneScaleSaved enter_active_dropdown_scale(MenuBar *mb)
+{
+    MenuBarPane *active = (mb->active_pane >= 0 &&
+                           mb->active_pane < mb->pane_count)
+                          ? &mb->panes[mb->active_pane]
+                          : NULL;
+    return enter_pane_scale(active);
 }
 
 // ── Helper: figure out which menu title was clicked ─────────────────
@@ -798,9 +908,14 @@ static void dismiss_open_menu(MenuBar *mb)
 
 static int hit_test_menu(MenuBar *mb, MenuBarPane *pane, int mx)
 {
+    PaneScaleSaved _saved_scale = enter_pane_scale(pane);
+
+    int result = -1;
+
     // Check Apple logo region
     if (mx >= pane->apple_x && mx < pane->apple_x + pane->apple_w) {
-        return 0;
+        result = 0;
+        goto done;
     }
 
     // Check each menu title region. Walk the MenuNode tree — the root's
@@ -818,12 +933,15 @@ static int hit_test_menu(MenuBar *mb, MenuBarPane *pane, int mx)
         double w = render_measure_text(title, false);
         int item_w = (int)w + S(20);
         if (mx >= item_x && mx < item_x + item_w) {
-            return i + 1;
+            result = i + 1;
+            goto done;
         }
         item_x += item_w;
     }
 
-    return -1;
+done:
+    leave_pane_scale(_saved_scale);
+    return result;
 }
 
 // ── Helper: fire Ctrl+Space to toggle the searchsystem overlay ─────
@@ -862,6 +980,8 @@ static void open_menu_at(MenuBar *mb, MenuBarPane *pane, int index)
     mb->open_menu   = index;
     mb->active_pane = (int)(pane - mb->panes);
 
+    PaneScaleSaved _saved_scale = enter_pane_scale(pane);
+
     if (index == 0) {
         // apple_show_menu reads mb->active_pane to anchor the popup in
         // root-absolute coordinates under the Apple logo of that pane.
@@ -885,6 +1005,8 @@ static void open_menu_at(MenuBar *mb, MenuBarPane *pane, int index)
         appmenu_show_dropdown(mb, index - 1, root_x, root_y);
     }
 
+    leave_pane_scale(_saved_scale);
+
     menubar_paint(mb);
 }
 
@@ -903,9 +1025,17 @@ void menubar_run(MenuBar *mb)
             XNextEvent(mb->dpy, &ev);
 
             // ── Route events to the dropdown if it's open ───────
+            // Dropdown handlers read S() / SF() for row layout, hit-test,
+            // and submenu spawn — load the host pane's scale into the
+            // globals so a 1.5× dropdown doesn't get mis-measured against
+            // a 1.0× active pane (or vice versa).
             if (mb->open_menu > 0) {
                 bool should_dismiss = false;
-                if (appmenu_handle_dropdown_event(mb, &ev, &should_dismiss)) {
+                PaneScaleSaved _saved = enter_active_dropdown_scale(mb);
+                bool consumed =
+                    appmenu_handle_dropdown_event(mb, &ev, &should_dismiss);
+                leave_pane_scale(_saved);
+                if (consumed) {
                     if (should_dismiss) {
                         dismiss_open_menu(mb);
                         menubar_paint(mb);
@@ -954,6 +1084,12 @@ void menubar_run(MenuBar *mb)
                     my = ev.xmotion.y;
                 }
 
+                // Wrap the rest of the case in the resolved pane's scale
+                // so MENUBAR_HEIGHT, hit_test_menu, and any S() / SF()
+                // forwarded into apple_/appmenu_ dropdown handlers all
+                // measure against the host output's effective scale.
+                PaneScaleSaved _saved_scale = enter_pane_scale(pane);
+
                 // Mouse below the bar — might be in the dropdown popup.
                 // Route hover events to the active dropdown for highlight.
                 if (my < 0 || my >= MENUBAR_HEIGHT) {
@@ -995,6 +1131,7 @@ void menubar_run(MenuBar *mb)
                                        PointerMotionMask, &synth);
                         }
                     }
+                    leave_pane_scale(_saved_scale);
                     break;
                 }
 
@@ -1025,6 +1162,7 @@ void menubar_run(MenuBar *mb)
 
                     paint_pane(mb, pane);
                 }
+                leave_pane_scale(_saved_scale);
                 break;
             }
 
@@ -1054,6 +1192,14 @@ void menubar_run(MenuBar *mb)
                     mx = ev.xbutton.x;
                     my = ev.xbutton.y;
                 }
+
+                // Wrap the rest of the case in the resolved pane's scale
+                // so MENUBAR_HEIGHT, hit_test_menu, and any S() / SF() in
+                // forwarded apple_/appmenu_ click handlers all measure
+                // against the host output's effective scale. NULL pane
+                // (open_menu set, click off every output) is fine —
+                // enter_pane_scale handles it as a no-op save.
+                PaneScaleSaved _saved_scale = enter_pane_scale(pane);
 
                 if (mb->open_menu >= 0) {
                     // A menu is currently open.
@@ -1133,6 +1279,7 @@ void menubar_run(MenuBar *mb)
                             menubar_paint(mb);
                         }
                     }
+                    leave_pane_scale(_saved_scale);
                     break;
                 }
 
@@ -1145,12 +1292,16 @@ void menubar_run(MenuBar *mb)
                 // fires the overlay, regardless of which pane hosts it.
                 if (systray_hit_spotlight(mx, my)) {
                     fire_spotlight(mb);
+                    leave_pane_scale(_saved_scale);
                     break;
                 }
 
                 // No menu is open — check if a menu title was clicked.
                 int clicked = hit_test_menu(mb, pane, mx);
-                if (clicked < 0) break;
+                if (clicked < 0) {
+                    leave_pane_scale(_saved_scale);
+                    break;
+                }
 
                 // Click-to-promote: in Modern mode, a click on a
                 // non-focused pane retargets _NET_ACTIVE_WINDOW to that
@@ -1192,11 +1343,13 @@ void menubar_run(MenuBar *mb)
                     // Either way: this click was consumed as a focus
                     // promote. No grab, no dropdown. User re-clicks to
                     // open.
+                    leave_pane_scale(_saved_scale);
                     break;
                 }
 
                 grab_pointer(mb);
                 open_menu_at(mb, pane, clicked);
+                leave_pane_scale(_saved_scale);
                 break;
             }
 
@@ -1320,10 +1473,18 @@ void menubar_run(MenuBar *mb)
                     // closes just that one level (macOS parity). Only
                     // Escape from the top-level dropdown tears the
                     // whole stack down.
-                    if (mb->open_menu > 0 &&
-                        appmenu_pop_submenu_level(mb)) {
-                        // submenu popped; top-level stays open
-                    } else {
+                    //
+                    // appmenu_pop_submenu_level inspects the submenu
+                    // stack — sized in S()/SF() against the active
+                    // pane's scale — so wrap with that pane's scale
+                    // before forwarding. dismiss_open_menu already
+                    // wraps itself; menubar_paint iterates panes and
+                    // wraps each one independently.
+                    PaneScaleSaved _saved = enter_active_dropdown_scale(mb);
+                    bool popped = (mb->open_menu > 0 &&
+                                   appmenu_pop_submenu_level(mb));
+                    leave_pane_scale(_saved);
+                    if (!popped) {
                         dismiss_open_menu(mb);
                         menubar_paint(mb);
                     }
@@ -1358,6 +1519,13 @@ void menubar_run(MenuBar *mb)
             if (menubar_height != old_height) {
                 fprintf(stderr, "[menubar] Resizing: %d → %d points\n",
                         old_height, menubar_height);
+                // recompute_pane_scale uses the global menubar_height,
+                // so refresh every pane's scale field before
+                // apply_menubar_resize wraps each pane and reads
+                // MENUBAR_HEIGHT from the (now-stale) per-pane scale.
+                for (int i = 0; i < mb->pane_count; i++) {
+                    recompute_pane_scale(&mb->panes[i]);
+                }
                 apply_menubar_resize(mb);
             } else {
                 // Height unchanged — nothing to rebuild, but still
@@ -1400,6 +1568,12 @@ void menubar_run(MenuBar *mb)
 // inside its Cairo surface is zero-based.
 static void paint_pane(MenuBar *mb, MenuBarPane *pane)
 {
+    // Load this pane's HiDPI scale into the globals so every S() / SF()
+    // read inside the paint path (and inside apple_paint, render_*,
+    // systray_paint called from here) resolves at the host output's
+    // scale. Restored at function exit.
+    PaneScaleSaved _saved_scale = enter_pane_scale(pane);
+
     XWindowAttributes wa;
     XGetWindowAttributes(mb->dpy, pane->win, &wa);
     cairo_surface_t *surface = cairo_xlib_surface_create(
@@ -1513,6 +1687,8 @@ static void paint_pane(MenuBar *mb, MenuBarPane *pane)
     cairo_destroy(cr);
     cairo_surface_destroy(surface);
     XFlush(mb->dpy);
+
+    leave_pane_scale(_saved_scale);
 }
 
 void menubar_paint(MenuBar *mb)
