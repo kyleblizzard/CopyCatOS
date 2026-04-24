@@ -929,14 +929,13 @@ void menubar_paint(MenuBar *mb)
     apple_paint(mb, cr);
 
     // ── Bold app name ───────────────────────────────────────────
-    // Vertically center text, then nudge up one point. Real Snow Leopard
-    // has slightly more padding below the glyphs than above (measured
-    // 5:6 ratio in menu.png — "Finder" ink y=5..15 in a 22px bar). A
-    // symmetric center at 1.0× looks fine, but at 1.75× the gap under
-    // the text collapses to ~4px; the -S(1) nudge restores the bottom
-    // padding so the bar reads correctly at any scale. With height≥22
-    // guaranteed by config, text_y stays ≥ 0 so no floor clamp is needed.
-    int text_y = (MENUBAR_HEIGHT - S(16)) / 2 - S(1);
+    // Vertically center text against the layout's ACTUAL pixel height
+    // (ascent + descent including leading), not a hardcoded S(16). At
+    // 13pt Lucida Grande, Pango reports ~17-18px per line at 1.0× — a
+    // hardcoded 16 under-estimates, which at 1.75× scale compounds
+    // and pushes the text against the top edge of the bar. One y for
+    // every 13pt item on the bar so menus + app name share a baseline.
+    int text_y = render_text_center_y(mb->active_app, true);
 
     double appname_w = render_text(cr, mb->active_app,
                                    mb->appname_x, text_y,

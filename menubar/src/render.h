@@ -44,6 +44,14 @@ double render_text(cairo_t *cr, const char *text, double x, double y,
 // Used during layout to figure out where each menu item should go.
 double render_measure_text(const char *text, bool bold);
 
+// Compute the y coordinate that vertically centers `text` inside the
+// current menubar height (MENUBAR_HEIGHT). Uses Pango's actual layout
+// pixel height rather than a hardcoded font-size constant — the latter
+// drifts at non-integer scales (1.25×, 1.5×, 1.75×) and pushes text off
+// the bar's horizontal midline. `text` is only sampled for its height;
+// the caller renders whatever string at the returned y.
+int render_text_center_y(const char *text, bool bold);
+
 // Draw a semi-transparent rounded rectangle over a hovered menu item.
 // This provides the subtle highlight effect when the mouse is over a menu title.
 void render_hover_highlight(cairo_t *cr, int x, int y, int w, int h);

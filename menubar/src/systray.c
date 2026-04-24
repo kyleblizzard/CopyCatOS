@@ -305,9 +305,10 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
 
     double clock_w = render_measure_text(clock_buf, false);
     cursor -= (int)clock_w;
-    // Vertically center the clock text in the menubar
-    int clock_y = (MENUBAR_HEIGHT - S(16)) / 2;
-    if (clock_y < S(2)) clock_y = S(2);
+    // Center on the actual measured line height, not a hardcoded font-size
+    // constant. At fractional scales the constant under-estimates Pango's
+    // real layout height and pushes the text off the bar's midline.
+    int clock_y = render_text_center_y(clock_buf, false);
     render_text(cr, clock_buf, cursor, clock_y, false, 0.1, 0.1, 0.1);
 
     cursor -= S(12); // Gap
@@ -328,13 +329,14 @@ int systray_paint(MenuBar *mb, cairo_t *cr, int right_edge)
 
         int batt_text_w, batt_text_h;
         pango_layout_get_pixel_size(layout, &batt_text_w, &batt_text_h);
-        (void)batt_text_h;
 
         cursor -= batt_text_w;
         cairo_set_source_rgb(cr, 0.1, 0.1, 0.1);
-        // Vertically center battery text
-        int batt_y = (MENUBAR_HEIGHT - S(16)) / 2;
-        if (batt_y < S(2)) batt_y = S(2);
+        // Center on the real 11pt layout height rather than guessing — the
+        // battery string uses a smaller size than the rest of the bar, so
+        // the centered-y here is independent from the clock's.
+        int batt_y = (MENUBAR_HEIGHT - batt_text_h) / 2;
+        if (batt_y < 0) batt_y = 0;
         cairo_move_to(cr, cursor, batt_y);
         pango_cairo_show_layout(cr, layout);
         g_object_unref(layout);

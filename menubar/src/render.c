@@ -190,6 +190,30 @@ double render_measure_text(const char *text, bool bold)
     return (double)width;
 }
 
+int render_text_center_y(const char *text, bool bold)
+{
+    // Ask Pango what the real layout height is for this text at the
+    // current scale, then split the leftover vertical space evenly.
+    // Using the measured height keeps the baseline on the bar's midline
+    // at non-integer scales (1.25×, 1.5×, 1.75×) where a hardcoded
+    // font-size constant would drift and push text toward the top edge.
+    cairo_surface_t *tmp = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 1, 1);
+    cairo_t *cr = cairo_create(tmp);
+
+    PangoLayout *layout = create_text_layout(cr, text, bold);
+
+    int width, height;
+    pango_layout_get_pixel_size(layout, &width, &height);
+
+    g_object_unref(layout);
+    cairo_destroy(cr);
+    cairo_surface_destroy(tmp);
+
+    int y = (MENUBAR_HEIGHT - height) / 2;
+    if (y < 0) y = 0;
+    return y;
+}
+
 // ── Hover Highlight ─────────────────────────────────────────────────
 
 // Helper: draw a rounded rectangle path. This is used for both hover
