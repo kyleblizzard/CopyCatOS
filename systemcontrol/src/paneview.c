@@ -5,13 +5,15 @@
 // ============================================================================
 //
 // Dispatches to the appropriate pane renderer based on pane ID.
-// Functional panes (Dock, Appearance) have their own implementations.
-// All other panes show the stub "not yet available" view.
+// Functional panes — Dock, Appearance, Displays, Controller, Energy Saver,
+// About MoonBase — each have their own implementation file. Everything
+// else falls through to the stub "not yet available" view.
 // ============================================================================
 
 #include "paneview.h"
 #include "panes/stub.h"
 #include "panes/dock.h"
+#include "panes/appearance.h"
 #include "panes/controller.h"
 #include "panes/power.h"
 #include "panes/about.h"
@@ -31,10 +33,10 @@ void paneview_paint(SysPrefsState *state)
     const char *id = state->panes[state->current_pane].id;
 
     // Dispatch to functional pane implementations
-    if (strcmp(id, "dock") == 0 || strcmp(id, "appearance") == 0) {
-        // Both Dock and Appearance settings are in the Dock pane
-        // (dock size + menubar height are the core display controls)
+    if (strcmp(id, "dock") == 0) {
         dock_pane_paint(state);
+    } else if (strcmp(id, "appearance") == 0) {
+        appearance_pane_paint(state);
     } else if (strcmp(id, "displays") == 0) {
         displays_pane_paint(state);
     } else if (strcmp(id, "mouse") == 0 || strcmp(id, "controller") == 0) {
@@ -63,8 +65,10 @@ bool paneview_handle_click(SysPrefsState *state, int x, int y)
 
     const char *id = state->panes[state->current_pane].id;
 
-    if (strcmp(id, "dock") == 0 || strcmp(id, "appearance") == 0) {
+    if (strcmp(id, "dock") == 0) {
         return dock_pane_click(state, x, y);
+    } else if (strcmp(id, "appearance") == 0) {
+        return appearance_pane_click(state, x, y);
     } else if (strcmp(id, "displays") == 0) {
         return displays_pane_click(state, x, y);
     } else if (strcmp(id, "mouse") == 0 || strcmp(id, "controller") == 0) {
@@ -87,8 +91,10 @@ bool paneview_handle_motion(SysPrefsState *state, int x, int y)
 
     const char *id = state->panes[state->current_pane].id;
 
-    if (strcmp(id, "dock") == 0 || strcmp(id, "appearance") == 0) {
+    if (strcmp(id, "dock") == 0) {
         return dock_pane_motion(state, x, y);
+    } else if (strcmp(id, "appearance") == 0) {
+        return appearance_pane_motion(state, x, y);
     } else if (strcmp(id, "displays") == 0) {
         return displays_pane_motion(state, x, y);
     } else if (strcmp(id, "mouse") == 0 || strcmp(id, "controller") == 0) {
@@ -111,8 +117,10 @@ void paneview_handle_release(SysPrefsState *state)
 
     const char *id = state->panes[state->current_pane].id;
 
-    if (strcmp(id, "dock") == 0 || strcmp(id, "appearance") == 0) {
+    if (strcmp(id, "dock") == 0) {
         dock_pane_release(state);
+    } else if (strcmp(id, "appearance") == 0) {
+        appearance_pane_release(state);
     } else if (strcmp(id, "displays") == 0) {
         displays_pane_release(state);
     } else if (strcmp(id, "mouse") == 0 || strcmp(id, "controller") == 0) {
