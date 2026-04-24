@@ -5,8 +5,10 @@
 // Three responsibilities:
 //
 // 1. ACTIVE WINDOW TRACKING
-//    Read _NET_ACTIVE_WINDOW off the root, resolve WM_CLASS into a
-//    display name, write both back to mb->active_app / ->active_class.
+//    Per pane: read _MOONROCK_FRONTMOST_PER_OUTPUT (with
+//    _NET_ACTIVE_WINDOW as fallback) and resolve WM_CLASS into a
+//    display name, written back to pane->active_app /
+//    pane->active_class.
 //
 // 2. MENU MODEL
 //    Native fallback: five built-in MenuNode trees, one per app class
@@ -46,6 +48,7 @@
 #include "appmenu_bridge.h"
 #include "dbusmenu_client.h"
 #include "menu_model.h"
+#include "moonrock_scale.h"
 #include "render.h"
 
 // ── Font scaling helper (mirrors the one in render.c) ──────────────
@@ -363,37 +366,57 @@ static const MenuNode *builtin_root_for_class(const char *app_class)
 }
 
 // ── Legacy lifecycle ────────────────────────────────────────────────
-// When the active window is registered on the AppMenu.Registrar bus,
-// spin up a DbusMenuClient pointed at that endpoint. Its imported
-// MenuNode tree replaces the built-in fallback for the active app.
-
-// Last tree pointer we handed out. Used in the change callback to
-// detect a full layout refetch (pointer differs) vs an in-place prop
-// patch (pointer unchanged) — only the former invalidates open
-// dropdown MenuNode pointers, so only the former forces a dismiss.
-static const MenuNode *last_seen_legacy_root;
+// When a pane's frontmost window is registered on the AppMenu.Registrar
+// bus, spin up a DbusMenuClient pointed at that endpoint. Its imported
+// MenuNode tree replaces the built-in fallback for that pane only —
+// each pane manages its own client so two registered apps on two
+// outputs each get an independent imported menu tree.
 
 static void dismiss_all_dropdowns(MenuBar *mb);
+
+// Find the pane that owns a particular DbusMenuClient. Used by the
+// change callback (the only client→pane rewind we need; a linear walk
+// over MENUBAR_MAX_PANES is negligible compared to the GDBus dispatch
+// that just fired).
+static MenuBarPane *pane_for_client(MenuBar *mb, DbusMenuClient *client)
+{
+    if (!mb || !client) return NULL;
+    for (int i = 0; i < mb->pane_count; i++) {
+        if (mb->panes[i].legacy_client == client) return &mb->panes[i];
+    }
+    return NULL;
+}
 
 static void on_legacy_client_changed(DbusMenuClient *client, void *user_data)
 {
     MenuBar *mb = user_data;
-    mb->legacy_is_loading = false;
+    MenuBarPane *pane = pane_for_client(mb, client);
+    if (!pane) {
+        // Client was already torn down on the pane that owned it; the
+        // change callback fired one last time before GDBus dropped its
+        // ref. Nothing meaningful to repaint.
+        return;
+    }
+    pane->legacy_is_loading = false;
 
     const MenuNode *root = dbusmenu_client_root(client);
-    bool tree_replaced = (root != last_seen_legacy_root);
-    last_seen_legacy_root = root;
+    bool tree_replaced = (root != pane->last_seen_legacy_root);
+    pane->last_seen_legacy_root = root;
 
     if (tree_replaced) {
-        // A LayoutUpdated fully replaced the tree. Any open dropdown
-        // is now holding pointers into freed MenuNodes. Dismiss the
-        // whole stack; user can reopen against the fresh tree.
-        dismiss_all_dropdowns(mb);
+        // A LayoutUpdated fully replaced this pane's tree. If any
+        // dropdown is open and it was anchored to this pane, it's now
+        // holding pointers into freed MenuNodes — dismiss the stack so
+        // the user can reopen against the fresh tree.
+        if (mb->active_pane >= 0 && mb->active_pane < mb->pane_count &&
+            &mb->panes[mb->active_pane] == pane) {
+            dismiss_all_dropdowns(mb);
+        }
     }
     menubar_paint(mb);
 }
 
-static void update_legacy_client(MenuBar *mb, Window active)
+static void update_legacy_client(MenuBar *mb, MenuBarPane *pane, Window active)
 {
     const char *service = NULL;
     const char *path    = NULL;
@@ -401,38 +424,46 @@ static void update_legacy_client(MenuBar *mb, Window active)
         (active != None) &&
         appmenu_bridge_lookup((uint32_t)active, &service, &path);
 
-    // Same window as last time — nothing to rebuild. (Bridge lookup
-    // returning the same (service, path) is implied — the registry is
-    // keyed by wid, so wid equality is sufficient.)
-    if (has_registration && active == mb->legacy_wid && mb->legacy_client) {
+    // Same window as last time on this pane — nothing to rebuild. The
+    // registry is keyed by wid, so wid equality implies (service, path)
+    // equality.
+    if (has_registration && active == pane->legacy_wid && pane->legacy_client) {
         return;
     }
 
-    // Tear down whatever we had.
-    if (mb->legacy_client) {
-        dbusmenu_client_free(mb->legacy_client);
-        mb->legacy_client       = NULL;
-        mb->legacy_wid          = None;
-        mb->legacy_is_loading   = false;
-        last_seen_legacy_root   = NULL;
-        dismiss_all_dropdowns(mb);
+    // Tear down whatever this pane had. Dropdown dismiss only fires
+    // when the dropdown was anchored to this pane — otherwise we'd
+    // close another pane's open menu just because focus moved on a
+    // different output.
+    if (pane->legacy_client) {
+        dbusmenu_client_free(pane->legacy_client);
+        pane->legacy_client         = NULL;
+        pane->legacy_wid            = None;
+        pane->legacy_is_loading     = false;
+        pane->last_seen_legacy_root = NULL;
+        if (mb->active_pane >= 0 && mb->active_pane < mb->pane_count &&
+            &mb->panes[mb->active_pane] == pane) {
+            dismiss_all_dropdowns(mb);
+        }
     }
 
     if (has_registration) {
-        mb->legacy_client = dbusmenu_client_new(
+        pane->legacy_client = dbusmenu_client_new(
             service, path, on_legacy_client_changed, mb);
-        mb->legacy_wid          = active;
-        mb->legacy_is_loading   = (mb->legacy_client != NULL);
-        last_seen_legacy_root   = NULL;
+        pane->legacy_wid            = active;
+        pane->legacy_is_loading     = (pane->legacy_client != NULL);
+        pane->last_seen_legacy_root = NULL;
     }
 }
 
 // ── Menu source resolution ──────────────────────────────────────────
 
-const MenuNode *appmenu_root_for(MenuBar *mb)
+const MenuNode *appmenu_root_for(MenuBar *mb, MenuBarPane *pane)
 {
-    if (mb->legacy_client) {
-        const MenuNode *root = dbusmenu_client_root(mb->legacy_client);
+    (void)mb;
+    if (!pane) return NULL;
+    if (pane->legacy_client) {
+        const MenuNode *root = dbusmenu_client_root(pane->legacy_client);
         // First-paint gap: a DbusMenuClient was spun up but GetLayout
         // hasn't replied yet. Show the app name with no menu titles —
         // rather than flashing a stale built-in set that's about to be
@@ -440,7 +471,29 @@ const MenuNode *appmenu_root_for(MenuBar *mb)
         if (!root || root->n_children == 0) return NULL;
         return root;
     }
-    return builtin_root_for_class(mb->active_class);
+    return builtin_root_for_class(pane->active_class);
+}
+
+// Active-pane shortcut for code paths anchored to mb->active_pane (the
+// pane that spawned an open dropdown). Returns the same root the paint
+// path would draw for that pane, or NULL when no pane is active.
+static const MenuNode *appmenu_root_for_active(MenuBar *mb)
+{
+    if (!mb || mb->active_pane < 0 || mb->active_pane >= mb->pane_count) {
+        return NULL;
+    }
+    return appmenu_root_for(mb, &mb->panes[mb->active_pane]);
+}
+
+// Active-pane shortcut for legacy_client lookups (dispatch + about-to-
+// show). The dropdown is anchored to mb->active_pane, so legacy actions
+// fired from inside a popup belong to that pane's client.
+static DbusMenuClient *active_legacy_client(MenuBar *mb)
+{
+    if (!mb || mb->active_pane < 0 || mb->active_pane >= mb->pane_count) {
+        return NULL;
+    }
+    return mb->panes[mb->active_pane].legacy_client;
 }
 
 // ── Accelerator glyph conversion ────────────────────────────────────
@@ -887,8 +940,9 @@ static void spawn_submenu(MenuBar *mb, int parent_level, int item_idx)
     // submenu opens. Qt AppMenu lazy-populates on this call; if we
     // skip it, large submenus (File → Recent) come up empty on first
     // open and populate on the next.
-    if (mb->legacy_client && item->action_kind == MENU_ACTION_LEGACY) {
-        dbusmenu_client_about_to_show(mb->legacy_client, item->legacy_id);
+    DbusMenuClient *active_client = active_legacy_client(mb);
+    if (active_client && item->action_kind == MENU_ACTION_LEGACY) {
+        dbusmenu_client_about_to_show(active_client, item->legacy_id);
     }
 
     // Close any child level above parent_level.
@@ -992,9 +1046,12 @@ static void dispatch_menu_item(MenuBar *mb, const MenuNode *node)
     if (!node->enabled) return;
 
     // Two branches: legacy items fire dbusmenu Event; everything else
-    // falls through to the built-in label-based dispatch.
-    if (node->action_kind == MENU_ACTION_LEGACY && mb->legacy_client) {
-        dbusmenu_client_activate(mb->legacy_client, node->legacy_id);
+    // falls through to the built-in label-based dispatch. The dropdown
+    // is anchored to mb->active_pane, so the legacy_client we route
+    // the activation through is that pane's.
+    DbusMenuClient *active_client = active_legacy_client(mb);
+    if (node->action_kind == MENU_ACTION_LEGACY && active_client) {
+        dbusmenu_client_activate(active_client, node->legacy_id);
         return;
     }
     dispatch_native_by_label(mb, node->label);
@@ -1002,41 +1059,37 @@ static void dispatch_menu_item(MenuBar *mb, const MenuNode *node)
 
 // ── Active window tracking ──────────────────────────────────────────
 
-void appmenu_update_active(MenuBar *mb)
+// Apply the Finder/dolphin fallback to a pane. Used whenever a pane has
+// no real frontmost window (None entry in _MOONROCK_FRONTMOST_PER_OUTPUT,
+// missing WM_CLASS, etc.) — the pane keeps showing the Finder menus
+// rather than going blank, matching Snow Leopard's "no app focused"
+// state.
+static void apply_finder_default(MenuBar *mb, MenuBarPane *pane, Window active)
 {
+    strncpy(pane->active_app, "Finder", sizeof(pane->active_app) - 1);
+    pane->active_app[sizeof(pane->active_app) - 1] = '\0';
+    strncpy(pane->active_class, "dolphin", sizeof(pane->active_class) - 1);
+    pane->active_class[sizeof(pane->active_class) - 1] = '\0';
+    update_legacy_client(mb, pane, active);
+}
+
+// Resolve `active` into pane->active_app / pane->active_class and
+// reconcile pane->legacy_client. The work mirrors the pre-slice global
+// version: read WM_CLASS, lower-case it, look up the display name via
+// app_names[], otherwise capitalize the class.
+static void update_pane_from_wid(MenuBar *mb, MenuBarPane *pane, Window active)
+{
+    if (active == None || active == 0) {
+        apply_finder_default(mb, pane, None);
+        return;
+    }
+
     Atom actual_type;
     int actual_format;
     unsigned long nitems, bytes_after;
     unsigned char *data = NULL;
 
     int status = XGetWindowProperty(
-        mb->dpy, mb->root,
-        mb->atom_net_active_window,
-        0, 1, False, XA_WINDOW,
-        &actual_type, &actual_format,
-        &nitems, &bytes_after, &data);
-
-    if (status != Success || nitems == 0 || !data) {
-        if (data) XFree(data);
-        strncpy(mb->active_app, "Finder", sizeof(mb->active_app) - 1);
-        strncpy(mb->active_class, "dolphin", sizeof(mb->active_class) - 1);
-        update_legacy_client(mb, None);
-        return;
-    }
-
-    Window active = *(Window *)data;
-    XFree(data);
-
-    if (active == None || active == 0) {
-        strncpy(mb->active_app, "Finder", sizeof(mb->active_app) - 1);
-        strncpy(mb->active_class, "dolphin", sizeof(mb->active_class) - 1);
-        update_legacy_client(mb, None);
-        return;
-    }
-
-    // Read WM_CLASS: two NUL-terminated strings, "instance\0class\0".
-    data = NULL;
-    status = XGetWindowProperty(
         mb->dpy, active,
         mb->atom_wm_class,
         0, 256, False, XA_STRING,
@@ -1045,9 +1098,7 @@ void appmenu_update_active(MenuBar *mb)
 
     if (status != Success || nitems == 0 || !data) {
         if (data) XFree(data);
-        strncpy(mb->active_app, "Finder", sizeof(mb->active_app) - 1);
-        strncpy(mb->active_class, "dolphin", sizeof(mb->active_class) - 1);
-        update_legacy_client(mb, active);
+        apply_finder_default(mb, pane, active);
         return;
     }
 
@@ -1064,7 +1115,8 @@ void appmenu_update_active(MenuBar *mb)
     for (int i = 0; lower_class[i]; i++) {
         lower_class[i] = (char)tolower((unsigned char)lower_class[i]);
     }
-    strncpy(mb->active_class, lower_class, sizeof(mb->active_class) - 1);
+    strncpy(pane->active_class, lower_class, sizeof(pane->active_class) - 1);
+    pane->active_class[sizeof(pane->active_class) - 1] = '\0';
 
     const char *display_name = NULL;
     for (int i = 0; app_names[i].wm_class != NULL; i++) {
@@ -1075,20 +1127,78 @@ void appmenu_update_active(MenuBar *mb)
     }
 
     if (display_name) {
-        strncpy(mb->active_app, display_name, sizeof(mb->active_app) - 1);
+        strncpy(pane->active_app, display_name, sizeof(pane->active_app) - 1);
     } else {
-        strncpy(mb->active_app, lower_class, sizeof(mb->active_app) - 1);
-        if (mb->active_app[0]) {
-            mb->active_app[0] = (char)toupper((unsigned char)mb->active_app[0]);
+        strncpy(pane->active_app, lower_class, sizeof(pane->active_app) - 1);
+        if (pane->active_app[0]) {
+            pane->active_app[0] =
+                (char)toupper((unsigned char)pane->active_app[0]);
         }
     }
+    pane->active_app[sizeof(pane->active_app) - 1] = '\0';
 
     XFree(data);
 
-    // Reconcile the DbusMenuClient with the new active window. This is
-    // the seam between 18-A's registrar and 18-B's client — we cross
-    // it once per focus change.
-    update_legacy_client(mb, active);
+    update_legacy_client(mb, pane, active);
+}
+
+// Read _NET_ACTIVE_WINDOW off the root. Returns None if the property is
+// missing or empty — same fallback path the pre-slice code used to hit
+// when no window held focus.
+static Window read_net_active_window(MenuBar *mb)
+{
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *data = NULL;
+
+    int status = XGetWindowProperty(
+        mb->dpy, mb->root,
+        mb->atom_net_active_window,
+        0, 1, False, XA_WINDOW,
+        &actual_type, &actual_format,
+        &nitems, &bytes_after, &data);
+
+    if (status != Success || nitems == 0 || !data) {
+        if (data) XFree(data);
+        return None;
+    }
+    Window w = *(Window *)data;
+    XFree(data);
+    return w;
+}
+
+void appmenu_update_all_panes(MenuBar *mb)
+{
+    if (!mb || mb->pane_count == 0) return;
+
+    // Per-pane source: _MOONROCK_FRONTMOST_PER_OUTPUT, indexed by the
+    // pane's row. MoonRock publishes one WID per connected output; rows
+    // align 1:1 with our reconciler's pane order, so panes[i] reads
+    // frontmost[i]. None / 0 entries fall through to the Finder default
+    // — those are outputs with no managed window living on them.
+    Window frontmost[MOONROCK_SCALE_MAX_OUTPUTS];
+    int fcount = 0;
+    bool have_front = moonrock_frontmost_per_output(
+        mb->dpy, frontmost, MOONROCK_SCALE_MAX_OUTPUTS, &fcount);
+
+    if (have_front && fcount > 0) {
+        for (int i = 0; i < mb->pane_count; i++) {
+            Window w = (i < fcount) ? frontmost[i] : None;
+            update_pane_from_wid(mb, &mb->panes[i], w);
+        }
+        return;
+    }
+
+    // Fallback: MoonRock isn't running, or it hasn't published the
+    // frontmost array yet. Broadcast _NET_ACTIVE_WINDOW to every pane
+    // — single-display sessions and the pre-MoonRock startup window
+    // both land here. Keeps the bar populated until the per-output
+    // source comes back online.
+    Window active = read_net_active_window(mb);
+    for (int i = 0; i < mb->pane_count; i++) {
+        update_pane_from_wid(mb, &mb->panes[i], active);
+    }
 }
 
 // ── Public API: lifecycle / access ─────────────────────────────────
@@ -1104,7 +1214,25 @@ void appmenu_init(MenuBar *mb)
         stack[i].spawned_child_at = -1;
     }
     depth = 0;
-    last_seen_legacy_root = NULL;
+}
+
+void appmenu_pane_destroyed(MenuBar *mb, MenuBarPane *pane)
+{
+    if (!mb || !pane) return;
+    if (pane->legacy_client) {
+        // Dismiss any dropdown anchored to this pane before freeing
+        // the client — open MenuNode pointers would otherwise dangle
+        // into freed memory until the next user click.
+        if (mb->active_pane >= 0 && mb->active_pane < mb->pane_count &&
+            &mb->panes[mb->active_pane] == pane) {
+            dismiss_all_dropdowns(mb);
+        }
+        dbusmenu_client_free(pane->legacy_client);
+    }
+    pane->legacy_client         = NULL;
+    pane->legacy_wid            = None;
+    pane->legacy_is_loading     = false;
+    pane->last_seen_legacy_root = NULL;
 }
 
 Window appmenu_get_dropdown_win(void)
@@ -1142,16 +1270,20 @@ void appmenu_show_dropdown(MenuBar *mb, int menu_index,
 {
     dismiss_all_dropdowns(mb);
 
-    const MenuNode *root = appmenu_root_for(mb);
+    // Anchor the dropdown to the pane that just opened it — open_menu_at
+    // sets mb->active_pane immediately before this call, so pull the
+    // root through that pane (its legacy_client or its built-in tree).
+    const MenuNode *root = appmenu_root_for_active(mb);
     if (!root || menu_index < 0 || menu_index >= root->n_children) return;
 
     const MenuNode *menu = root->children[menu_index];
     if (!menu || menu->n_children == 0) return;
 
     // Ask the server for a pre-show refresh — same reason as
-    // submenu spawn.
-    if (mb->legacy_client && menu->action_kind == MENU_ACTION_LEGACY) {
-        dbusmenu_client_about_to_show(mb->legacy_client, menu->legacy_id);
+    // submenu spawn. Routed through the active pane's client.
+    DbusMenuClient *active_client = active_legacy_client(mb);
+    if (active_client && menu->action_kind == MENU_ACTION_LEGACY) {
+        dbusmenu_client_about_to_show(active_client, menu->legacy_id);
     }
 
     push_level(mb, menu, root_x, root_y);
@@ -1277,11 +1409,17 @@ void appmenu_cleanup(MenuBar *mb)
 {
     dismiss_all_dropdowns(mb);
 
-    if (mb && mb->legacy_client) {
-        dbusmenu_client_free(mb->legacy_client);
-        mb->legacy_client       = NULL;
-        mb->legacy_wid          = None;
-        mb->legacy_is_loading   = false;
+    if (mb) {
+        for (int i = 0; i < mb->pane_count; i++) {
+            MenuBarPane *p = &mb->panes[i];
+            if (p->legacy_client) {
+                dbusmenu_client_free(p->legacy_client);
+            }
+            p->legacy_client         = NULL;
+            p->legacy_wid            = None;
+            p->legacy_is_loading     = false;
+            p->last_seen_legacy_root = NULL;
+        }
     }
 
     menu_node_free(builtin_default_root);   builtin_default_root   = NULL;
@@ -1289,5 +1427,4 @@ void appmenu_cleanup(MenuBar *mb)
     menu_node_free(builtin_terminal_root);  builtin_terminal_root  = NULL;
     menu_node_free(builtin_browser_root);   builtin_browser_root   = NULL;
     menu_node_free(builtin_sysprefs_root);  builtin_sysprefs_root  = NULL;
-    last_seen_legacy_root = NULL;
 }

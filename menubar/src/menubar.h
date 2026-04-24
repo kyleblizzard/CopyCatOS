@@ -118,6 +118,29 @@ typedef struct {
     // "DP-2"). Used in A.2.3 for _COPYCATOS_MENUBAR_MODE subscription
     // and for logging. Empty string in Classic mode.
     char   output_name[32];
+
+    // Per-pane app tracking (A.2.3 deferred — slice 78). Each pane shows
+    // the frontmost window of its own host output. Sourced from
+    // _MOONROCK_FRONTMOST_PER_OUTPUT (indexed by pane row) when MoonRock
+    // is running; falls back to _NET_ACTIVE_WINDOW broadcast to all panes
+    // in Classic mode or when the frontmost array is empty.
+    char active_app[128];    // Human-readable name of the active app on this pane
+    char active_class[128];  // Raw WM_CLASS string for the pane's active window
+
+    // Legacy Mode DBusMenu client for this pane's active window. When
+    // the pane's frontmost is registered with the AppMenu.Registrar
+    // (GTK3 / Qt5 / Qt6-appmenu), we spin up a DbusMenuClient pointed
+    // at its endpoint — independent per pane so two Qt apps on two
+    // outputs each get their own imported menu tree.
+    DbusMenuClient *legacy_client;
+    Window          legacy_wid;
+    bool            legacy_is_loading;
+
+    // Tracks the MenuNode root last seen from this pane's legacy_client,
+    // so the change callback can distinguish a full tree replacement
+    // (pointer differs — dropdown dismiss required) from an in-place
+    // property patch (pointer unchanged — repaint only).
+    const void     *last_seen_legacy_root;
 } MenuBarPane;
 
 // Core state for the entire menu bar.
@@ -164,29 +187,6 @@ typedef struct {
     // exists. Stays valid across reconciler runs — reseeded when the host
     // pane's output disappears.
     int         focused_pane_idx;
-
-    // Application tracking state. Tracks the frontmost window globally;
-    // every pane shows the same app name and menus in Modern mode.
-    char active_app[128];    // Human-readable name of the active app (e.g. "Finder")
-    char active_class[128];  // Raw WM_CLASS string (e.g. "dolphin")
-
-    // Legacy Mode DBusMenu import (slice 18-C).
-    //
-    // When the active window's wid is registered with the AppMenu registrar
-    // (GTK3, Qt5, Qt6 with the appmenu module), we build a DbusMenuClient
-    // pointed at the app's dbusmenu endpoint. `legacy_client` is non-NULL
-    // for the lifetime of that registration — replaced when focus changes
-    // to another registered window, freed when focus moves to a window
-    // without a registration or to a native MoonBase app.
-    //
-    // `legacy_wid` tracks which window the current client is pointed at so
-    // we can skip rebuild churn when focus bounces between two windows of
-    // the same app (same wid → same client). `legacy_is_loading` is true
-    // between client creation and the first GetLayout reply — the bar
-    // shows the app name only during that ~200–400ms window.
-    DbusMenuClient *legacy_client;
-    Window          legacy_wid;
-    bool            legacy_is_loading;
 
     // X11 atoms — pre-interned for performance.
     // Atoms are unique identifiers for property names in X11. We look them

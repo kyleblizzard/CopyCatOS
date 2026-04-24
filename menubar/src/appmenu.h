@@ -4,9 +4,10 @@
 //
 // This module does three jobs:
 //
-//   1. Tracks which application is currently active by reading
-//      _NET_ACTIVE_WINDOW from the root and resolving WM_CLASS into a
-//      human-readable name (mb->active_app / mb->active_class).
+//   1. Tracks which application is currently active per pane by
+//      reading _MOONROCK_FRONTMOST_PER_OUTPUT (with _NET_ACTIVE_WINDOW
+//      as fallback) and resolving WM_CLASS into a human-readable name
+//      (pane->active_app / pane->active_class).
 //
 //   2. Owns a small set of built-in MenuNode trees for the apps we
 //      know by class — Finder, Terminal, browser, sysprefs, and a
@@ -32,25 +33,34 @@
 // trees — freed in appmenu_cleanup.
 void appmenu_init(MenuBar *mb);
 
-// Read _NET_ACTIVE_WINDOW, resolve WM_CLASS → display name, and
-// reconcile mb->legacy_client against the new active window's
-// AppMenu.Registrar registration (create / replace / tear down as
-// needed).
-void appmenu_update_active(MenuBar *mb);
+// Refresh per-pane app tracking. For every pane, resolve the frontmost
+// window of its host output (from _MOONROCK_FRONTMOST_PER_OUTPUT, indexed
+// by pane row), look up WM_CLASS, write into pane->active_app/class, and
+// reconcile pane->legacy_client against that window's AppMenu.Registrar
+// registration. When MoonRock isn't running or the array is empty, every
+// pane falls back to _NET_ACTIVE_WINDOW so the bar stays useful in
+// single-display test sessions.
+void appmenu_update_all_panes(MenuBar *mb);
 
-// The MenuNode the bar should render right now for the active app.
+// The MenuNode the given pane should render right now. Pane-scoped so
+// two outputs hosting two different apps each draw their own menus.
 //
-//   - Live DbusMenuClient + data arrived  → returns the imported root
-//   - Live DbusMenuClient + first-paint gap → returns NULL (bar shows
-//                                              app name only until the
-//                                              first GetLayout lands)
-//   - No DbusMenuClient (native app)      → returns built-in fallback
-//                                              by mb->active_class
+//   - Pane has live DbusMenuClient + data arrived → imported root
+//   - Pane has live DbusMenuClient + first-paint gap → NULL (pane
+//     shows the app name only until the first GetLayout lands)
+//   - No DbusMenuClient on this pane (native app) → built-in fallback
+//     by pane->active_class
 //
-// The returned root's children are the top-level menu titles. Their
-// children are the dropdown items. Pointer is invalidated whenever
-// the DbusMenuClient refetches; callers don't cache across events.
-const MenuNode *appmenu_root_for(MenuBar *mb);
+// The returned root's children are the top-level menu titles. Pointer
+// is invalidated whenever this pane's DbusMenuClient refetches; callers
+// don't cache across events.
+const MenuNode *appmenu_root_for(MenuBar *mb, MenuBarPane *pane);
+
+// Tear down a pane's app-tracking state before its dock window is
+// destroyed. Frees pane->legacy_client and clears the cached layout
+// pointer. Called by the reconciler for any pane that didn't survive
+// a hotplug or mode toggle.
+void appmenu_pane_destroyed(MenuBar *mb, MenuBarPane *pane);
 
 // Show a dropdown menu below a specific top-level menu title. Coordinates
 // are root-absolute — the caller translates the pane-local x of the menu

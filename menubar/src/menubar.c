@@ -403,7 +403,9 @@ static bool reconcile_panes_to_outputs(MenuBar *mb)
     // 3. Rescue matching windows from mb->panes[] by output_name.
     //    `claimed[]` tracks which old pane is already transplanted so we
     //    don't steal the same window twice when two new rows somehow
-    //    share a name.
+    //    share a name. Per-pane app-tracking state (active_app/class +
+    //    legacy_*) rides along so an output that survives the reconcile
+    //    keeps its current menus instead of flashing back to Finder.
     bool claimed[MENUBAR_MAX_PANES] = {0};
     for (int i = 0; i < next_count; i++) {
         if (next[i].output_name[0] == '\0') continue;
@@ -413,15 +415,33 @@ static bool reconcile_panes_to_outputs(MenuBar *mb)
                         sizeof(next[i].output_name)) == 0) {
                 next[i].win         = mb->panes[j].win;
                 next[i].hover_index = mb->panes[j].hover_index;
+                memcpy(next[i].active_app, mb->panes[j].active_app,
+                       sizeof(next[i].active_app));
+                memcpy(next[i].active_class, mb->panes[j].active_class,
+                       sizeof(next[i].active_class));
+                next[i].legacy_client         = mb->panes[j].legacy_client;
+                next[i].legacy_wid            = mb->panes[j].legacy_wid;
+                next[i].legacy_is_loading     = mb->panes[j].legacy_is_loading;
+                next[i].last_seen_legacy_root =
+                    mb->panes[j].last_seen_legacy_root;
+                // Null the old slot's client refs so the destroy pass
+                // below doesn't free a client we just handed off.
+                mb->panes[j].legacy_client         = NULL;
+                mb->panes[j].legacy_wid            = None;
+                mb->panes[j].legacy_is_loading     = false;
+                mb->panes[j].last_seen_legacy_root = NULL;
                 claimed[j] = true;
                 break;
             }
         }
     }
 
-    // 4. Destroy any old pane window that didn't get rescued.
+    // 4. Destroy any old pane window that didn't get rescued. Each
+    //    teardown frees the pane's legacy_client first so a registered
+    //    app on a disappearing output doesn't leak its DbusMenuClient.
     for (int j = 0; j < mb->pane_count; j++) {
         if (!claimed[j] && mb->panes[j].win != None) {
+            appmenu_pane_destroyed(mb, &mb->panes[j]);
             XDestroyWindow(mb->dpy, mb->panes[j].win);
             mb->panes[j].win = None;
         }
@@ -453,6 +473,19 @@ static bool reconcile_panes_to_outputs(MenuBar *mb)
         if (mb->panes[i].win == None && g_pane_visual) {
             create_pane_window(mb, &mb->panes[i]);
             changed = true;
+        }
+        // Seed Finder defaults on any pane whose active_app didn't
+        // ride along on the rescue path (brand-new pane, or a name-
+        // changed output that fell out of the claim loop). The next
+        // appmenu_update_all_panes pass will overwrite this with the
+        // pane's real frontmost; this just prevents an empty-string
+        // app name from painting in the window between reconcile and
+        // the property fan-out.
+        if (mb->panes[i].active_app[0] == '\0') {
+            strncpy(mb->panes[i].active_app, "Finder",
+                    sizeof(mb->panes[i].active_app) - 1);
+            strncpy(mb->panes[i].active_class, "dolphin",
+                    sizeof(mb->panes[i].active_class) - 1);
         }
     }
 
@@ -701,9 +734,14 @@ bool menubar_init(MenuBar *mb)
     // warning and a nil bridge; menubar still runs.
     (void)appmenu_bridge_init(mb);
 
-    // ── Set initial state ───────────────────────────────────────
-    strncpy(mb->active_app, "Finder", sizeof(mb->active_app) - 1);
-    strncpy(mb->active_class, "dolphin", sizeof(mb->active_class) - 1);
+    // ── Set initial per-pane app state ───────────────────────────
+    // Reconciler already seeded each pane's active_app/active_class to
+    // the Finder default on creation. Now resolve the real frontmost
+    // app per pane from _MOONROCK_FRONTMOST_PER_OUTPUT (or
+    // _NET_ACTIVE_WINDOW when MoonRock isn't running) so the bar paints
+    // correct app names on first frame instead of flashing "Finder" for
+    // every pane.
+    appmenu_update_all_panes(mb);
 
     mb->running = true;
 
@@ -770,7 +808,7 @@ static int hit_test_menu(MenuBar *mb, MenuBarPane *pane, int mx)
     // during the first-paint gap for a legacy-menu app (see
     // appmenu_root_for's contract); no menu titles to hit-test in that
     // window.
-    const MenuNode *root = appmenu_root_for(mb);
+    const MenuNode *root = appmenu_root_for(mb, pane);
     int menu_count = root ? root->n_children : 0;
 
     int item_x = pane->menus_x;
@@ -832,7 +870,7 @@ static void open_menu_at(MenuBar *mb, MenuBarPane *pane, int index)
         // Walk the MenuNode titles to reach the same X offset the
         // paint path used when it laid them out. `dx` is pane-local
         // here and gets folded into root coordinates below.
-        const MenuNode *root = appmenu_root_for(mb);
+        const MenuNode *root = appmenu_root_for(mb, pane);
         int count = root ? root->n_children : 0;
 
         int dx = pane->menus_x;
@@ -1177,7 +1215,7 @@ void menubar_run(MenuBar *mb)
                     if (mb->open_menu >= 0) {
                         dismiss_open_menu(mb);
                     }
-                    appmenu_update_active(mb);
+                    appmenu_update_all_panes(mb);
                     menubar_paint(mb);
                 } else if (ev.xproperty.atom == moonrock_scale_atom(mb->dpy)) {
                     // MoonRock updated the per-output scale table — a
@@ -1200,6 +1238,10 @@ void menubar_run(MenuBar *mb)
                                 mb->pane_count,
                                 geom_changed ? " (moved)" : "");
                         apply_menubar_resize(mb);
+                    }
+                    if (geom_changed) {
+                        appmenu_update_all_panes(mb);
+                        menubar_paint(mb);
                     }
                 } else if (ev.xproperty.atom ==
                            mb->atom_copycatos_menubar_mode) {
@@ -1236,6 +1278,8 @@ void menubar_run(MenuBar *mb)
                             }
                         }
                         apply_menubar_resize(mb);
+                        appmenu_update_all_panes(mb);
+                        menubar_paint(mb);
                     }
                 } else if (ev.xproperty.atom ==
                            moonrock_active_output_atom(mb->dpy)) {
@@ -1259,12 +1303,13 @@ void menubar_run(MenuBar *mb)
                     }
                 } else if (ev.xproperty.atom ==
                            moonrock_frontmost_per_output_atom(mb->dpy)) {
-                    // Frontmost-per-output changed. A.2.3a still shows a
-                    // single global app name across every pane, so this
-                    // branch is a no-op today — but subscribing keeps
-                    // the click-to-promote helper's reads fresh and
-                    // prepares the wiring for A.2.3b where every pane
-                    // draws its own output's frontmost title.
+                    // MoonRock republished the per-output frontmost
+                    // window list. Each pane reads its own row and
+                    // updates active_app/class + reconciles its
+                    // legacy_client; repaint follows so the new app
+                    // names land on screen this round-trip.
+                    appmenu_update_all_panes(mb);
+                    menubar_paint(mb);
                 }
                 break;
 
@@ -1401,16 +1446,19 @@ static void paint_pane(MenuBar *mb, MenuBarPane *pane)
     // hardcoded 16 under-estimates, which at 1.75× scale compounds
     // and pushes the text against the top edge of the bar. One y for
     // every 13pt item on the bar so menus + app name share a baseline.
-    int text_y = render_text_center_y(mb->active_app, true);
+    int text_y = render_text_center_y(pane->active_app, true);
 
-    double appname_w = render_text(cr, mb->active_app,
+    double appname_w = render_text(cr, pane->active_app,
                                    pane->appname_x, text_y,
                                    true, 0.1, 0.1, 0.1);
 
     // ── Menu titles ─────────────────────────────────────────────
-    // Walk the active app's MenuNode root. NULL root = legacy app in
-    // first-paint gap; paint nothing but the app name.
-    const MenuNode *root = appmenu_root_for(mb);
+    // Walk this pane's MenuNode root. Each pane shows the menus for its
+    // own host output's frontmost window — sourced from
+    // _MOONROCK_FRONTMOST_PER_OUTPUT in appmenu_update_all_panes. NULL
+    // root = legacy app in first-paint gap; paint nothing but the app
+    // name.
+    const MenuNode *root = appmenu_root_for(mb, pane);
     int menu_count = root ? root->n_children : 0;
 
     pane->menus_x = pane->appname_x + (int)appname_w + S(16);
