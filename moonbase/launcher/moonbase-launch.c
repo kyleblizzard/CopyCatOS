@@ -853,6 +853,84 @@ int main(int argc, char **argv) {
         if (push_rc < 0) goto oom;
     }
 
+    // Legacy Mode menu-export bootstrap: hand the inner toolkit the env
+    // vars that make it export its menu tree on the session bus through
+    // com.canonical.AppMenu.Registrar. The chrome stub (or, in a full
+    // CopyCatOS session, the menubar daemon) owns the registrar and
+    // imports the menus over DBusMenu. Without these, Qt/GTK draw their
+    // own menu inside the client window — which is exactly the duplicate
+    // chrome the global menu bar exists to avoid.
+    //
+    // Qt5 uses the standalone `appmenu-qt5` platformtheme plugin
+    // (package: appmenu-qt5). Qt6 dropped support for that plugin; the
+    // KDE Plasma 6 platform theme (`kde`, package: plasma-integration /
+    // plasma6-integration) inherited DBusMenu export and is the path Qt6
+    // apps take. Both speak the Canonical com.canonical.AppMenu.Registrar
+    // protocol our bridge owns. The GTK_MODULES value matches the
+    // appmenu-gtk-module shipped on Nobara via vala-panel-appmenu-gtk-module
+    // (and the older Canonical appmenu-gtk-module package on Ubuntu);
+    // the Unity name (unity-gtk-module) is intentionally not used so the
+    // bridge contract is one stable module name across distros.
+    //
+    // Native bundles get neither — they speak MoonBase IPC for menus,
+    // not DBusMenu, so loading appmenu modules would just add noise.
+    if (bundle.info.wrap_toolkit == MB_INFO_APPC_WRAP_QT5) {
+        if (argv_push(&bw, "--setenv") < 0) goto oom;
+        if (argv_push(&bw, "QT_QPA_PLATFORMTHEME") < 0) goto oom;
+        if (argv_push(&bw, "appmenu-qt5") < 0) goto oom;
+    } else if (bundle.info.wrap_toolkit == MB_INFO_APPC_WRAP_QT6) {
+        if (argv_push(&bw, "--setenv") < 0) goto oom;
+        if (argv_push(&bw, "QT_QPA_PLATFORMTHEME") < 0) goto oom;
+        if (argv_push(&bw, "kde") < 0) goto oom;
+    } else if (bundle.info.wrap_toolkit == MB_INFO_APPC_WRAP_GTK3 ||
+               bundle.info.wrap_toolkit == MB_INFO_APPC_WRAP_GTK4) {
+        if (argv_push(&bw, "--setenv") < 0) goto oom;
+        if (argv_push(&bw, "GTK_MODULES") < 0) goto oom;
+        if (argv_push(&bw, "appmenu-gtk-module") < 0) goto oom;
+    }
+
+    // Legacy Mode X11 passthrough. native.profile uses --clearenv and a
+    // /tmp tmpfs, which strips DISPLAY/XAUTHORITY and hides the X server
+    // socket dir from the sandbox. A toolkit-wrapped (Qt/GTK) bundle has
+    // no choice but to talk X11 — it has no MoonBase IPC path — so we
+    // re-bind the socket dir and re-export the two env vars here. Native
+    // MoonBase bundles deliberately do not get DISPLAY: they render
+    // through libmoonbase and the moonbase.sock IPC, and granting raw
+    // X11 access would weaken sandbox privacy with no upside.
+    //
+    // XAUTHORITY may live anywhere — usually $XDG_RUNTIME_DIR/xauth_xxx
+    // (already covered by the runtime-dir bind above) but on some distros
+    // it's ~/.Xauthority, which native.profile's --tmpfs $HOME blanks.
+    // Bind unconditionally on whatever path the env var points to so the
+    // location doesn't matter. The chrome stub itself runs OUTSIDE the
+    // sandbox, so this block has no effect on it.
+    if (bundle.info.wrap_toolkit != MB_INFO_APPC_WRAP_NATIVE) {
+        struct stat x11_st;
+        if (stat("/tmp/.X11-unix", &x11_st) == 0 && S_ISDIR(x11_st.st_mode)) {
+            if (argv_push(&bw, "--ro-bind") < 0) goto oom;
+            if (argv_push(&bw, "/tmp/.X11-unix") < 0) goto oom;
+            if (argv_push(&bw, "/tmp/.X11-unix") < 0) goto oom;
+        }
+        const char *display = getenv("DISPLAY");
+        if (display && *display) {
+            if (argv_push(&bw, "--setenv") < 0) goto oom;
+            if (argv_push(&bw, "DISPLAY") < 0) goto oom;
+            if (argv_push(&bw, display) < 0) goto oom;
+        }
+        const char *xauth = getenv("XAUTHORITY");
+        if (xauth && *xauth) {
+            struct stat xa_st;
+            if (stat(xauth, &xa_st) == 0 && S_ISREG(xa_st.st_mode)) {
+                if (argv_push(&bw, "--ro-bind") < 0) goto oom;
+                if (argv_push(&bw, xauth) < 0) goto oom;
+                if (argv_push(&bw, xauth) < 0) goto oom;
+                if (argv_push(&bw, "--setenv") < 0) goto oom;
+                if (argv_push(&bw, "XAUTHORITY") < 0) goto oom;
+                if (argv_push(&bw, xauth) < 0) goto oom;
+            }
+        }
+    }
+
     // 7. Inner exec + user args.
     //
     // Legacy Mode toolkit hint ([wrap].toolkit in Info.appc):

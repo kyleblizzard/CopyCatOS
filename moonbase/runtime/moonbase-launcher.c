@@ -25,6 +25,10 @@
 
 #include "menubar_render.h"
 
+#include "appmenu_bridge.h"
+#include "dbusmenu_client.h"
+#include "menu_model.h"
+
 #include "bundle/appimg.h"
 #include "bundle/bundle.h"
 
@@ -811,6 +815,102 @@ static bool xdg_register(const char *bundle_path,
 static volatile sig_atomic_t chrome_stub_should_exit = 0;
 static void chrome_stub_sigterm(int sig) { (void)sig; chrome_stub_should_exit = 1; }
 
+// 19.D-β-2b — DBusMenu menu import for the chrome stub.
+//
+// The bundle's Qt/GTK appmenu module exports its menu tree on the session
+// bus. The chrome stub claims com.canonical.AppMenu.Registrar via
+// appmenu_bridge_init(), maps wid → (service, path) on RegisterWindow,
+// then binds a DbusMenuClient that pulls the tree as a MenuNode and
+// pushes refetches through on_changed.
+//
+// items[] borrows MenuNode->label pointers. Bridge dispatch, on_changed,
+// rebuild_items and paint all run in the same select+dispatch iteration,
+// so labels stay valid between rebuild and paint without a copy. Rebuild
+// runs only when on_changed has flipped legacy_dirty true.
+//
+// Lookup retries each loop iteration until it succeeds or times out —
+// RegisterWindow normally arrives before bundle discovery, but slow Qt/GTK
+// platform-theme load can race past it. After ~5s without a hit we stop
+// retrying and stay on the bold-app-name fallback. KDE / nil-state hosts
+// also land here unconditionally (the bridge returns false when KWin owns
+// the registrar name).
+
+#define CHROME_STUB_MAX_ITEMS    32
+#define CHROME_STUB_LOOKUP_SECS   5
+
+typedef struct {
+    menubar_render_item_t   items[CHROME_STUB_MAX_ITEMS];
+    size_t                  n_items;
+    bool                    legacy_dirty;
+    DbusMenuClient         *dbusmenu;
+    const char             *display_name;
+} chrome_stub_state_t;
+
+static void chrome_stub_on_menu_changed(DbusMenuClient *client,
+                                        void *user_data) {
+    (void)client;
+    chrome_stub_state_t *s = (chrome_stub_state_t *)user_data;
+    s->legacy_dirty = true;
+}
+
+// Repopulate items[] from the bound DbusMenuClient's MenuNode root, or
+// fall back to bundle name only if no root has arrived yet. items[0] is
+// always the bold app name slot (Snow Leopard convention); items[1..]
+// are top-level menu titles taken from the legacy tree.
+static void chrome_stub_rebuild_items(chrome_stub_state_t *s) {
+    s->items[0].title            = s->display_name;
+    s->items[0].is_app_name_bold = true;
+    s->items[0].x                = 0;
+    s->items[0].width            = 0;
+    s->n_items = 1;
+
+    if (!s->dbusmenu) return;
+    const MenuNode *root = dbusmenu_client_root(s->dbusmenu);
+    if (!root) return;
+
+    for (int i = 0; i < root->n_children &&
+                    s->n_items < CHROME_STUB_MAX_ITEMS; ++i) {
+        const MenuNode *c = root->children[i];
+        if (!c || !c->visible || c->type == MENU_ITEM_SEPARATOR ||
+            !c->label) continue;
+        s->items[s->n_items].title            = c->label;
+        s->items[s->n_items].is_app_name_bold = false;
+        s->items[s->n_items].x                = 0;
+        s->items[s->n_items].width            = 0;
+        s->n_items++;
+    }
+}
+
+// select(x_fd ∪ glib_fds) — drives both the X connection and the GLib
+// main context that owns appmenu_bridge + DbusMenuClient. Without this
+// the chrome stub would block in XNextEvent and miss every D-Bus reply:
+// the registrar name would never finish acquiring, RegisterWindow would
+// queue indefinitely, and DBusMenu refetches would never land.
+//
+// Returns when X has events ready, glib dispatched at least one source,
+// or `timeout_ms` elapses. Caller drains XPending and rebuilds items[]
+// in response to legacy_dirty before painting.
+static int chrome_stub_select(int x_fd, int timeout_ms) {
+    fd_set rfds;
+    FD_ZERO(&rfds);
+    FD_SET(x_fd, &rfds);
+    int max_fd = x_fd;
+
+    appmenu_bridge_prepare_select(&rfds, &max_fd, &timeout_ms);
+
+    struct timeval tv;
+    struct timeval *ptv = NULL;
+    if (timeout_ms >= 0) {
+        tv.tv_sec  = timeout_ms / 1000;
+        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        ptv = &tv;
+    }
+    int n = select(max_fd + 1, &rfds, NULL, NULL, ptv);
+
+    appmenu_bridge_dispatch(&rfds);
+    return n;
+}
+
 // True iff w's WM_CLASS instance (XClassHint.res_name) equals bundle_id.
 // The instance is what argv-name overrides set; the class is the toolkit's
 // natural name. Match instance only — Qt sets `instance=bundle_id, class=kate`
@@ -905,11 +1005,10 @@ static Window wait_for_bundle_window(Display *dpy, Window root,
         }
         // 1s slice keeps SIGTERM and the overall timeout reactive
         // without busy-looping when no events are pending.
-        fd_set rfds;
-        FD_ZERO(&rfds);
-        FD_SET(x_fd, &rfds);
-        struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
-        (void)select(x_fd + 1, &rfds, NULL, NULL, &tv);
+        // chrome_stub_select also pumps the GLib main context so
+        // appmenu_bridge can complete name acquisition and process any
+        // RegisterWindow calls that race ahead of bundle window mapping.
+        (void)chrome_stub_select(x_fd, 1000);
         if (time(NULL) - start > timeout_sec) break;
     }
     XSelectInput(dpy, root, NoEventMask);
@@ -975,16 +1074,31 @@ static int run_chrome_stub(const char *bundle_path,
     Window root = RootWindow(dpy, screen);
     Visual *vis = DefaultVisual(dpy, screen);
 
+    // Claim com.canonical.AppMenu.Registrar before the bundle's Qt/GTK
+    // appmenu module fires its first RegisterWindow. The async name
+    // acquisition completes inside chrome_stub_select pumps that follow.
+    // Init failure (no session bus, introspection broken) is non-fatal —
+    // chrome falls back to the bold-app-name layout.
+    bool bridge_up = appmenu_bridge_init();
+    if (!bridge_up) {
+        fprintf(stderr,
+                "[chrome-stub %d] appmenu bridge init failed — "
+                "no DBusMenu import this session\n", getpid());
+    }
+
     // Discovery — wait for the bundle's first top-level to appear in
     // _NET_CLIENT_LIST with WM_CLASS instance matching bundle_id. 30s
     // budget covers cold starts; on a warm system the bundle arrives
-    // in ~1s.
+    // in ~1s. wait_for_bundle_window's select pumps the GLib main
+    // context so RegisterWindow dispatches even while we're blocked
+    // on the WM publishing the new client.
     Window bundle_win = wait_for_bundle_window(dpy, root, m->bundle_id, 30);
     if (!bundle_win) {
         fprintf(stderr,
                 "[chrome-stub %d] bundle window for '%s' did not appear "
                 "within 30s — exiting (no chrome to draw)\n",
                 getpid(), m->bundle_id);
+        if (bridge_up) appmenu_bridge_shutdown();
         XCloseDisplay(dpy);
         return 0;
     }
@@ -997,6 +1111,7 @@ static int run_chrome_stub(const char *bundle_path,
         fprintf(stderr,
                 "[chrome-stub %d] XGetWindowAttributes failed; exiting\n",
                 getpid());
+        if (bridge_up) appmenu_bridge_shutdown();
         XCloseDisplay(dpy);
         return 1;
     }
@@ -1066,91 +1181,127 @@ static int run_chrome_stub(const char *bundle_path,
 
     menubar_render_init();
 
-    // Stub menu items — bundle name (bold) plus the standard Aqua row.
-    // Real items arrive from the bundle via DBusMenu (Qt/GTK Legacy
-    // Mode) in 19.D-β-2; until then a fixed set lets us see the
-    // layout end-to-end.
-    menubar_render_item_t items[] = {
-        { .title = m->display_name, .is_app_name_bold = true  },
-        { .title = "File",          .is_app_name_bold = false },
-        { .title = "Edit",          .is_app_name_bold = false },
-        { .title = "View",          .is_app_name_bold = false },
-        { .title = "Window",        .is_app_name_bold = false },
-        { .title = "Help",          .is_app_name_bold = false },
-    };
-    const size_t n_items = sizeof items / sizeof items[0];
+    // Menu state — items[] starts with the bold bundle name only.
+    // DBusMenu refetches replace items[1..] in chrome_stub_rebuild_items
+    // when on_changed flips legacy_dirty. Until the bridge binds (or
+    // forever, on KDE / nil-state hosts) the stub paints the bundle
+    // name slot only, no fake File/Edit/View row.
+    chrome_stub_state_t state = {0};
+    state.display_name = m->display_name;
+    chrome_stub_rebuild_items(&state);
 
     int cur_w = chrome_w;
     int cur_h = chrome_h;
     int cur_title_h = title_h_px;
     int cur_menu_h  = menu_h_px;
 
+    int x_fd = ConnectionNumber(dpy);
+    time_t lookup_start = time(NULL);
+    bool need_paint = true; // first paint after map
+
     while (!chrome_stub_should_exit) {
-        XEvent ev;
-        XNextEvent(dpy, &ev);
-
-        // Bundle lifecycle. When the bundle window vanishes, so does
-        // any reason for chrome to exist.
-        if (ev.xany.window == bundle_win &&
-            (ev.type == UnmapNotify || ev.type == DestroyNotify)) {
-            chrome_stub_should_exit = 1;
-            continue;
-        }
-
-        // _NET_ACTIVE_WINDOW change → re-raise chrome above bundle.
-        if (ev.type == PropertyNotify &&
-            ev.xany.window == root &&
-            ev.xproperty.atom == net_active_win) {
-            Atom t; int f;
-            unsigned long n = 0, ba = 0;
-            unsigned char *d = NULL;
-            if (XGetWindowProperty(dpy, root, net_active_win, 0, 1, False,
-                                   XA_WINDOW, &t, &f, &n, &ba, &d) == Success
-                && d && n == 1 && *(Window *)d == bundle_win) {
-                XRaiseWindow(dpy, chrome_win);
+        // Lazy bind to the bundle's DBusMenu service. RegisterWindow
+        // usually arrives before bundle discovery, but Qt/GTK platform-
+        // theme load can race; retry each tick until we hit or time out.
+        // After CHROME_STUB_LOOKUP_SECS we accept the bold-name layout.
+        if (bridge_up && !state.dbusmenu &&
+            (time(NULL) - lookup_start) <= CHROME_STUB_LOOKUP_SECS) {
+            const char *service = NULL;
+            const char *path    = NULL;
+            if (appmenu_bridge_lookup((uint32_t)bundle_win,
+                                      &service, &path)) {
+                fprintf(stderr,
+                        "[chrome-stub %d] DBusMenu bind wid=0x%lx "
+                        "service=%s path=%s\n",
+                        getpid(), bundle_win, service, path);
+                state.dbusmenu = dbusmenu_client_new(
+                    service, path,
+                    chrome_stub_on_menu_changed, &state);
+                // Initial GetLayout is async — on_changed will fire
+                // when the tree arrives and rebuild_items will run on
+                // the next iteration.
             }
-            if (d) XFree(d);
-            continue;
         }
 
-        // Any ConfigureNotify — bundle (KWin synthetic), bundle's frame
-        // (substructure on root), or chrome itself — re-checks the
-        // bundle's true root-coords and re-pegs chrome. The work is
-        // tiny (one round-trip translate); doing it for every reconfigure
-        // is simpler than dispatching by window field and matches both
-        // delivery paths cleanly.
-        if (ev.type == ConfigureNotify) {
-            XWindowAttributes a;
-            int rx = 0, ry = 0;
-            if (!XGetWindowAttributes(dpy, bundle_win, &a)) {
+        // 250ms wake budget keeps the lookup retry responsive without
+        // burning CPU. Larger budgets are fine — X events and glib
+        // sources both wake select() the moment they need attention.
+        (void)chrome_stub_select(x_fd, 250);
+
+        // Drain X events. Geometry changes flip need_paint; lifecycle
+        // exits the loop. _NET_ACTIVE_WINDOW raises chrome but doesn't
+        // need a repaint by itself.
+        while (XPending(dpy) > 0 && !chrome_stub_should_exit) {
+            XEvent ev;
+            XNextEvent(dpy, &ev);
+
+            if (ev.xany.window == bundle_win &&
+                (ev.type == UnmapNotify || ev.type == DestroyNotify)) {
                 chrome_stub_should_exit = 1;
+                break;
+            }
+
+            if (ev.type == PropertyNotify &&
+                ev.xany.window == root &&
+                ev.xproperty.atom == net_active_win) {
+                Atom t; int f;
+                unsigned long n = 0, ba = 0;
+                unsigned char *d = NULL;
+                if (XGetWindowProperty(dpy, root, net_active_win, 0, 1,
+                                       False, XA_WINDOW, &t, &f, &n,
+                                       &ba, &d) == Success
+                    && d && n == 1 && *(Window *)d == bundle_win) {
+                    XRaiseWindow(dpy, chrome_win);
+                }
+                if (d) XFree(d);
                 continue;
             }
-            if (!translate_window_to_root(dpy, bundle_win, &rx, &ry)) {
+
+            if (ev.type == ConfigureNotify) {
+                XWindowAttributes a;
+                int rx = 0, ry = 0;
+                if (!XGetWindowAttributes(dpy, bundle_win, &a)) {
+                    chrome_stub_should_exit = 1;
+                    break;
+                }
+                if (!translate_window_to_root(dpy, bundle_win,
+                                              &rx, &ry)) {
+                    continue;
+                }
+                int nw = a.width;
+                if (nw != chrome_w || rx != bundle_root_x ||
+                    ry != bundle_root_y) {
+                    bundle_root_x = rx;
+                    bundle_root_y = ry;
+                    chrome_w      = nw;
+                    XMoveResizeWindow(dpy, chrome_win,
+                                      rx, ry - chrome_h,
+                                      nw, chrome_h);
+                    XRaiseWindow(dpy, chrome_win);
+                    cur_w       = nw;
+                    cur_h       = chrome_h;
+                    cur_title_h = title_h_px;
+                    cur_menu_h  = menu_h_px;
+                    cairo_xlib_surface_set_size(surf, cur_w, cur_h);
+                    need_paint  = true;
+                }
                 continue;
             }
-            int nw = a.width;
-            if (nw != chrome_w || rx != bundle_root_x ||
-                ry != bundle_root_y) {
-                bundle_root_x = rx;
-                bundle_root_y = ry;
-                chrome_w      = nw;
-                XMoveResizeWindow(dpy, chrome_win,
-                                  rx, ry - chrome_h,
-                                  nw, chrome_h);
-                XRaiseWindow(dpy, chrome_win);
-                cur_w       = nw;
-                cur_h       = chrome_h;
-                cur_title_h = title_h_px;
-                cur_menu_h  = menu_h_px;
-                cairo_xlib_surface_set_size(surf, cur_w, cur_h);
-                // Fall through to repaint.
-            } else {
+
+            if (ev.type == Expose) {
+                need_paint = true;
                 continue;
             }
-        } else if (ev.type != Expose) {
-            continue;
         }
+
+        if (state.legacy_dirty) {
+            chrome_stub_rebuild_items(&state);
+            state.legacy_dirty = false;
+            need_paint = true;
+        }
+
+        if (!need_paint || chrome_stub_should_exit) continue;
+        need_paint = false;
 
         cairo_save(cr);
         menubar_render_paint_title_bar(cr, cur_w, cur_title_h,
@@ -1160,9 +1311,10 @@ static int run_chrome_stub(const char *bundle_path,
 
         cairo_save(cr);
         cairo_translate(cr, 0, cur_title_h);
-        menubar_render_layout_menus(items, n_items, /*origin_x=*/76, scale);
+        menubar_render_layout_menus(state.items, state.n_items,
+                                    /*origin_x=*/76, scale);
         menubar_render_paint_menu_bar(cr, cur_w, cur_menu_h,
-                                      items, n_items,
+                                      state.items, state.n_items,
                                       /*hover_index=*/-1,
                                       theme, scale);
         cairo_restore(cr);
@@ -1171,6 +1323,8 @@ static int run_chrome_stub(const char *bundle_path,
         XFlush(dpy);
     }
 
+    if (state.dbusmenu) dbusmenu_client_free(state.dbusmenu);
+    if (bridge_up)      appmenu_bridge_shutdown();
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
     menubar_render_cleanup();

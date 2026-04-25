@@ -167,9 +167,7 @@ static void on_name_lost(GDBusConnection *conn,
 
 // ── Public API ──────────────────────────────────────────────────────
 
-bool appmenu_bridge_init(MenuBar *mb) {
-    (void)mb;
-
+bool appmenu_bridge_init(void) {
     GError *err = NULL;
     bus_conn = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
     if (!bus_conn) {
@@ -294,9 +292,7 @@ bool appmenu_bridge_lookup(uint32_t wid,
     return true;
 }
 
-void appmenu_bridge_shutdown(MenuBar *mb) {
-    (void)mb;
-
+void appmenu_bridge_shutdown(void) {
     if (owner_id != 0) {
         g_bus_unown_name(owner_id);
         owner_id = 0;

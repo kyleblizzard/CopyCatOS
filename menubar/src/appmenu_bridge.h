@@ -28,8 +28,6 @@
 #include <stdint.h>
 #include <sys/select.h>
 
-#include "menubar.h"
-
 // Claim `com.canonical.AppMenu.Registrar` on the session bus and start
 // handling registrar method calls. Returns true if bridge state was
 // set up. Returns true even if another owner already has the name —
@@ -37,7 +35,11 @@
 // where lookups always fail; this is by design so a KDE dev machine
 // (kwin owns the name) doesn't block menubar startup. Returns false
 // only on hard errors (cannot connect to session bus, out of memory).
-bool appmenu_bridge_init(MenuBar *mb);
+//
+// Module-local state means there's only one bridge per process — the
+// menubar daemon and the foreign-distro chrome stub each call this
+// from their own process; they never coexist in the same address space.
+bool appmenu_bridge_init(void);
 
 // Fold the GLib main context's file descriptors into an existing
 // select fd_set. Must be called each iteration, before select(). Grows
@@ -66,6 +68,6 @@ bool appmenu_bridge_lookup(uint32_t wid,
 
 // Release the name, tear down the registrar, free the WID table.
 // Safe to call from a signal-triggered shutdown path.
-void appmenu_bridge_shutdown(MenuBar *mb);
+void appmenu_bridge_shutdown(void);
 
 #endif // CC_MENUBAR_APPMENU_BRIDGE_H

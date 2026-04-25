@@ -389,20 +389,35 @@ moonbase_launch = executable(
 # consumers, no shared library overhead. moonrock/shell-api/moonrock_scale.c
 # isn't pulled in because the chrome stub reads its host scale from the
 # X output directly (no MoonRock atom subscription on a foreign distro).
+#
+# Slice 19.D-β-2b: also link the menubar daemon's three Legacy-Mode
+# helpers — menu_model.c (allocators), dbusmenu_client.c (DBusMenu
+# proxy), appmenu_bridge.c (com.canonical.AppMenu.Registrar). The
+# chrome stub claims the registrar and imports a Qt/GTK bundle's menu
+# tree exactly the same way the daemon does inside a CopyCatOS session,
+# so reusing the daemon's code is the single-source-of-truth choice.
+# These three TUs reference no menubar globals (verified at slice time)
+# so they link cleanly into the launcher without the daemon runtime.
 
 x11_dep        = dependency('x11')
 cairo_xlib_dep = dependency('cairo-xlib')
+gio_dep        = dependency('gio-2.0')
 
 moonbase_launcher = executable(
   'moonbase-launcher',
   'runtime/moonbase-launcher.c',
   '../menubar/render/menubar_render.c',
+  '../menubar/src/menu_model.c',
+  '../menubar/src/dbusmenu_client.c',
+  '../menubar/src/appmenu_bridge.c',
   include_directories: include_directories(
     'include',
     'src',
     '../menubar/render',
+    '../menubar/src',
   ),
-  dependencies: [cairo_dep, cairo_xlib_dep, pangocairo_dep, libpng_dep, x11_dep],
+  dependencies: [cairo_dep, cairo_xlib_dep, pangocairo_dep, libpng_dep,
+                 x11_dep, gio_dep],
   link_with: libmoonbase,
   install: true,
   install_rpath: get_option('prefix') / mb_framework_versions / 'Current',

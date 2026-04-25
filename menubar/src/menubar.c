@@ -815,7 +815,7 @@ bool menubar_init(MenuBar *mb)
     // DBusMenu / AppMenu.Registrar bridge (slice 18-A). Non-fatal on
     // failure: a KDE dev box where kwin already owns the name gets a
     // warning and a nil bridge; menubar still runs.
-    (void)appmenu_bridge_init(mb);
+    (void)appmenu_bridge_init();
 
     // ── Set initial per-pane app state ───────────────────────────
     // Reconciler already seeded each pane's active_app/active_class to
@@ -1737,7 +1737,7 @@ void menubar_paint(MenuBar *mb)
 
 void menubar_shutdown(MenuBar *mb)
 {
-    appmenu_bridge_shutdown(mb);
+    appmenu_bridge_shutdown();
     systray_cleanup();
     appmenu_cleanup(mb);
     apple_cleanup();
