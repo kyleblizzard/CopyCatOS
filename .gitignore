@@ -59,6 +59,7 @@ AGENTS.md
 memory/
 tasks/
 changelogforkyle.txt
+devblogforkyle.txt
 
 # ── Grok bundles (never ships) ──────────────────────────────────────
 # Local-only dumps of CLAUDE.md files and source code for external

@@ -390,6 +390,9 @@ moonbase_launch = executable(
 # isn't pulled in because the chrome stub reads its host scale from the
 # X output directly (no MoonRock atom subscription on a foreign distro).
 
+x11_dep        = dependency('x11')
+cairo_xlib_dep = dependency('cairo-xlib')
+
 moonbase_launcher = executable(
   'moonbase-launcher',
   'runtime/moonbase-launcher.c',
@@ -399,7 +402,7 @@ moonbase_launcher = executable(
     'src',
     '../menubar/render',
   ),
-  dependencies: [cairo_dep, pangocairo_dep, libpng_dep],
+  dependencies: [cairo_dep, cairo_xlib_dep, pangocairo_dep, libpng_dep, x11_dep],
   link_with: libmoonbase,
   install: true,
   install_rpath: get_option('prefix') / mb_framework_versions / 'Current',

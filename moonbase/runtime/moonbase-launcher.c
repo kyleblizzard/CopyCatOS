@@ -28,6 +28,8 @@
 #include "bundle/appimg.h"
 #include "bundle/bundle.h"
 
+#include <cairo/cairo-xlib.h>
+#include <cairo/cairo.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -42,6 +44,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <X11/Xatom.h>
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
 
 // ----------------------------------------------------------------------------
 // Manifest + config — minimal launcher-tier shape
@@ -770,26 +775,164 @@ static bool xdg_register(const char *bundle_path,
 // Teardown: the stub installs PR_SET_PDEATHSIG so it gets SIGTERM the
 // instant its parent (which becomes moonbase-launch → bwrap → bundle
 // binary after the parent's execvp) exits. No orphaned chrome windows.
+//
+// 19.D-α scope (this slice):
+//   * Open X display, create a standalone top-level chrome window of
+//     fixed size at scale 1.0. The host WM places it; we don't reach
+//     for the bundle's window yet.
+//   * Paint title bar + menu bar via menubar_render with the resolved
+//     theme. Repaint on Expose, ConfigureNotify resize, and theme atom
+//     changes (the latter is a no-op until 19.F-γ-2 lands a live probe).
+//   * Exit cleanly on SIGTERM (PR_SET_PDEATHSIG) or WM close.
+//
+// 19.D-β follow-ups (NOT here):
+//   * IPC handoff to the bundle: discover the bundle's top-level
+//     window via _NET_WM_PID + _NET_CLIENT_LIST (or, better, a
+//     MoonBase IPC handshake the bundle initiates), then position
+//     and re-parent or shape this chrome window above its content.
+//   * Pointer + key event routing to the bundle.
+//   * XRandR scale probe so chrome paints pixel-correct on HiDPI hosts
+//     instead of the current scale = 1.0 baseline.
+
+// Atomic flag flipped by SIGTERM — the X event loop polls it each
+// iteration and exits cleanly, freeing X + Cairo before _exit.
+static volatile sig_atomic_t chrome_stub_should_exit = 0;
+static void chrome_stub_sigterm(int sig) { (void)sig; chrome_stub_should_exit = 1; }
+
 static int run_chrome_stub(const char *bundle_path,
                            const LauncherManifest *m,
                            menubar_render_theme_t theme) {
-    (void)bundle_path; (void)m; (void)theme;
+    (void)bundle_path;
     prctl(PR_SET_PDEATHSIG, SIGTERM);
-    // TODO(19.D):
-    //   1. XOpenDisplay; create a top-level chrome window above the
-    //      app's content surface (or, more likely, a full window the
-    //      app draws into starting at content_origin — exact handoff
-    //      to be decided when 19.D lands).
-    //   2. Cairo XlibSurface + main event loop (Expose, ConfigureNotify,
-    //      ButtonPress / Motion for menu hover and click).
-    //   3. Paint via menubar_render_paint_title_bar +
-    //      menubar_render_paint_menu_bar with the resolved theme.
-    //   4. Route pointer/keyboard events to the bundle process via the
-    //      MoonBase IPC contract that the full daemon already speaks.
-    //   5. Set up two-tier bwrap sandbox? — NO. Sandbox setup lives in
-    //      moonbase-launch. The stub is unsandboxed because it owns X
-    //      chrome on the host. Anything privileged stays in the bundle
-    //      child, which moonbase-launch wraps in bwrap.
+    fprintf(stderr, "[chrome-stub %d] start; bundle=%s theme=%d\n",
+            getpid(), m->bundle_id, theme);
+    fflush(stderr);
+
+    struct sigaction sa = {0};
+    sa.sa_handler = chrome_stub_sigterm;
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGINT,  &sa, NULL);
+
+    Display *dpy = XOpenDisplay(NULL);
+    if (!dpy) {
+        fprintf(stderr, "[chrome-stub %d] XOpenDisplay failed\n", getpid());
+        return 1;
+    }
+    int screen = DefaultScreen(dpy);
+    Window root = RootWindow(dpy, screen);
+    Visual *vis = DefaultVisual(dpy, screen);
+
+    // 19.D-α uses a fixed scale. 19.D-β will read the X output's PPI via
+    // XRandR. The Aqua chrome's logical size (44 pts = 22 + 22) maps to
+    // 44 px at scale 1.0; everything menubar_render does is point-based
+    // so swapping in the real scale later is a one-line change.
+    const double scale = 1.0;
+    const int title_h_px = (int)(menubar_render_title_bar_height_pts() * scale);
+    const int menu_h_px  = (int)(menubar_render_menu_bar_height_pts()  * scale);
+    const int chrome_h   = title_h_px + menu_h_px;
+    const int chrome_w   = 800;
+
+    XSetWindowAttributes wa = {0};
+    wa.background_pixel = WhitePixel(dpy, screen);
+    wa.event_mask = ExposureMask | StructureNotifyMask;
+    Window win = XCreateWindow(dpy, root,
+                               100, 100, chrome_w, chrome_h, 0,
+                               DefaultDepth(dpy, screen),
+                               InputOutput, vis,
+                               CWBackPixel | CWEventMask, &wa);
+
+    // _NET_WM_NAME + WM_CLASS so the host WM groups this stub with the
+    // bundle by bundle-id (matches the StartupWMClass written into the
+    // .desktop entry by xdg_register).
+    XStoreName(dpy, win, m->display_name);
+    XClassHint ch = {(char *)m->bundle_id, (char *)m->bundle_id};
+    XSetClassHint(dpy, win, &ch);
+
+    // Cooperate with the host WM's close button — handled by checking
+    // ClientMessage in the event loop.
+    Atom wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
+    XSetWMProtocols(dpy, win, &wm_delete, 1);
+
+    XMapWindow(dpy, win);
+    XFlush(dpy);
+
+    cairo_surface_t *surf =
+        cairo_xlib_surface_create(dpy, win, vis, chrome_w, chrome_h);
+    cairo_t *cr = cairo_create(surf);
+
+    menubar_render_init();
+
+    // Stub menu items — bundle name (bold) plus the standard Aqua row.
+    // Real items will arrive from the bundle via MoonBase IPC in 19.D-β;
+    // until then a fixed set lets us see the layout end-to-end.
+    menubar_render_item_t items[] = {
+        { .title = m->display_name, .is_app_name_bold = true  },
+        { .title = "File",          .is_app_name_bold = false },
+        { .title = "Edit",          .is_app_name_bold = false },
+        { .title = "View",          .is_app_name_bold = false },
+        { .title = "Window",        .is_app_name_bold = false },
+        { .title = "Help",          .is_app_name_bold = false },
+    };
+    const size_t n_items = sizeof items / sizeof items[0];
+
+    int cur_w = chrome_w;
+    int cur_h = chrome_h;
+    int cur_title_h = title_h_px;
+    int cur_menu_h  = menu_h_px;
+
+    while (!chrome_stub_should_exit) {
+        XEvent ev;
+        // Block on the next event but stay reactive to SIGTERM by
+        // checking the pending queue first; if empty, XNextEvent will
+        // wake when the signal handler returns (because the read errno
+        // becomes EINTR and Xlib retries — but the flag is already set).
+        XNextEvent(dpy, &ev);
+        if (ev.type == ConfigureNotify) {
+            if (ev.xconfigure.width != cur_w || ev.xconfigure.height != cur_h) {
+                cur_w = ev.xconfigure.width;
+                cur_h = ev.xconfigure.height;
+                // Clamp menu/title heights to the window's actual size
+                // when the WM forces a smaller chrome — keeps the paint
+                // valid; final pixel height is title + menu.
+                cur_title_h = title_h_px;
+                cur_menu_h  = (cur_h > cur_title_h) ? (cur_h - cur_title_h) : 0;
+                cairo_xlib_surface_set_size(surf, cur_w, cur_h);
+            }
+        } else if (ev.type == ClientMessage &&
+                   (Atom)ev.xclient.data.l[0] == wm_delete) {
+            chrome_stub_should_exit = 1;
+        } else if (ev.type != Expose) {
+            continue;
+        }
+
+        // Title bar at top, menu bar directly beneath — Snow Leopard's
+        // two-row chrome. menubar_render's high-level entry points lay
+        // out menus, paint the bg gradient, and draw the centered title
+        // for us.
+        cairo_save(cr);
+        menubar_render_paint_title_bar(cr, cur_w, cur_title_h,
+                                       m->display_name, true,
+                                       theme, scale);
+        cairo_restore(cr);
+
+        cairo_save(cr);
+        cairo_translate(cr, 0, cur_title_h);
+        menubar_render_layout_menus(items, n_items, /*origin_x=*/76, scale);
+        menubar_render_paint_menu_bar(cr, cur_w, cur_menu_h,
+                                      items, n_items,
+                                      /*hover_index=*/-1,
+                                      theme, scale);
+        cairo_restore(cr);
+
+        cairo_surface_flush(surf);
+        XFlush(dpy);
+    }
+
+    cairo_destroy(cr);
+    cairo_surface_destroy(surf);
+    menubar_render_cleanup();
+    XDestroyWindow(dpy, win);
+    XCloseDisplay(dpy);
     return 0;
 }
 
