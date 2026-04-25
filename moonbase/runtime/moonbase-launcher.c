@@ -53,6 +53,7 @@
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/keysym.h>
 
 // ----------------------------------------------------------------------------
 // Manifest + config — minimal launcher-tier shape
@@ -840,6 +841,11 @@ static void chrome_stub_sigterm(int sig) { (void)sig; chrome_stub_should_exit = 
 
 typedef struct {
     menubar_render_item_t   items[CHROME_STUB_MAX_ITEMS];
+    // Parallel to items[]: the DBusMenu legacy_id of the MenuNode each
+    // top-level slot was sourced from, so a click can translate slot index
+    // → AboutToShow / Event(id, …) targets without re-walking the root.
+    // Slot 0 (the bold app name) has no DBusMenu source — sentinel -1.
+    int32_t                 top_level_ids[CHROME_STUB_MAX_ITEMS];
     size_t                  n_items;
     bool                    legacy_dirty;
     DbusMenuClient         *dbusmenu;
@@ -862,6 +868,7 @@ static void chrome_stub_rebuild_items(chrome_stub_state_t *s) {
     s->items[0].is_app_name_bold = true;
     s->items[0].x                = 0;
     s->items[0].width            = 0;
+    s->top_level_ids[0]          = -1;        // bold app name has no DBusMenu source
     s->n_items = 1;
 
     if (!s->dbusmenu) return;
@@ -877,6 +884,7 @@ static void chrome_stub_rebuild_items(chrome_stub_state_t *s) {
         s->items[s->n_items].is_app_name_bold = false;
         s->items[s->n_items].x                = 0;
         s->items[s->n_items].width            = 0;
+        s->top_level_ids[s->n_items]          = c->legacy_id;
         s->n_items++;
     }
 }
@@ -1176,6 +1184,289 @@ static void chrome_stub_send_zoom(Display *dpy, Window root,
                SubstructureRedirectMask | SubstructureNotifyMask, &ev);
 }
 
+// ── Dropdown popup ──────────────────────────────────────────────────
+// Slice 19.D-β-4 — a click on a top-level menu title in the chrome row
+// opens a flat, single-level popup of that menu's children. The full
+// daemon's appmenu.c maintains a 4-deep stack so submenus can drill in
+// (Qt builds File → Recent → <files>); the chrome stub deliberately
+// stays one level deep — leaf items dispatch via the bound
+// DbusMenuClient and submenu items just close. Submenu drill-down is a
+// later slice once the bundle window's foreign-distro chrome is solid.
+//
+// Layout matches appmenu.c lines 596-820: ROW_H_ITEM=22pt, ROW_H_SEP=7pt,
+// 4pt top/bottom panel padding, S(200) min width, S(40) per-item label
+// pad + S(30) shortcut gutter + S(18) submenu-arrow column. Rendered
+// rows go through the shared menubar_render_paint_menu_item primitive,
+// so pixels are bit-identical to the daemon dropdown — same selection
+// pill (#3875D7), same toggle glyphs, same shortcut tier colours.
+
+typedef struct {
+    bool             open;
+    Window           win;
+    cairo_surface_t *surf;
+    cairo_t         *cr;
+    int              w_px;
+    int              h_px;
+    // Borrowed: lives inside the bound DbusMenuClient's MenuNode root.
+    // dbusmenu_client refetches replace the root wholesale, so a refetch
+    // mid-popup invalidates this pointer; we close on legacy_dirty before
+    // the rebuild walks the new tree.
+    const MenuNode  *parent;
+    int              hover_row;          // visible-row index, -1 = none
+} chrome_stub_dropdown_t;
+
+// Visible-row iteration: skips !visible children. Separators are visible
+// rows that consume vertical space but aren't hoverable/clickable.
+static const MenuNode *
+chrome_stub_dropdown_at_y(const chrome_stub_dropdown_t *d, int fy,
+                          double scale, int *out_row_idx,
+                          bool *out_clickable) {
+    *out_row_idx   = -1;
+    *out_clickable = false;
+    if (!d || !d->parent) return NULL;
+
+    int top_pad    = (int)(4  * scale + 0.5);
+    int row_h_item = (int)(22 * scale + 0.5);
+    int row_h_sep  = (int)(7  * scale + 0.5);
+    int y = top_pad;
+    int row_idx = 0;
+    for (int i = 0; i < d->parent->n_children; i++) {
+        const MenuNode *c = d->parent->children[i];
+        if (!c || !c->visible) continue;
+        int rh = (c->type == MENU_ITEM_SEPARATOR) ? row_h_sep : row_h_item;
+        if (fy >= y && fy < y + rh) {
+            *out_row_idx   = row_idx;
+            *out_clickable = (c->type != MENU_ITEM_SEPARATOR && c->enabled);
+            return c;
+        }
+        y += rh;
+        row_idx++;
+    }
+    return NULL;
+}
+
+static int chrome_stub_dropdown_measure_w(const MenuNode *parent,
+                                          double scale) {
+    int min_w = (int)(200 * scale + 0.5);
+    int max_w = min_w;
+    for (int i = 0; i < parent->n_children; i++) {
+        const MenuNode *c = parent->children[i];
+        if (!c || !c->visible) continue;
+        if (c->type == MENU_ITEM_SEPARATOR) continue;
+        if (!c->label) continue;
+
+        double label_w = menubar_render_measure_text(c->label, false, scale);
+        int extra = 0;
+        if (c->shortcut && *c->shortcut) {
+            double sw = menubar_render_measure_text(c->shortcut, false, scale);
+            extra += (int)sw + (int)(30 * scale + 0.5);
+        }
+        if (c->is_submenu) {
+            extra += (int)(18 * scale + 0.5);
+        }
+        int needed = (int)label_w + (int)(40 * scale + 0.5) + extra;
+        if (needed > max_w) max_w = needed;
+    }
+    return max_w;
+}
+
+static int chrome_stub_dropdown_measure_h(const MenuNode *parent,
+                                          double scale) {
+    int row_h_item = (int)(22 * scale + 0.5);
+    int row_h_sep  = (int)(7  * scale + 0.5);
+    int h = (int)(8 * scale + 0.5);    // 4pt top + 4pt bottom padding
+    for (int i = 0; i < parent->n_children; i++) {
+        const MenuNode *c = parent->children[i];
+        if (!c || !c->visible) continue;
+        h += (c->type == MENU_ITEM_SEPARATOR) ? row_h_sep : row_h_item;
+    }
+    return h;
+}
+
+static void chrome_stub_paint_dropdown(chrome_stub_dropdown_t *d,
+                                       menubar_render_theme_t theme,
+                                       double scale) {
+    if (!d || !d->open || !d->cr || !d->parent) return;
+    cairo_t *cr = d->cr;
+
+    // White panel + 1px gray border. The daemon paints SL's translucent
+    // 245/255 white with a rounded 5pt radius and shadowed border; the
+    // chrome stub is drawn into a plain RGB X window without a compositor
+    // alpha channel, so opaque white + a thin 0.25 alpha border is the
+    // closest match the surface can carry. Rounding/shadow becomes
+    // possible once the launcher pulls in the same ARGB visual path the
+    // daemon uses.
+    cairo_save(cr);
+    cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+    cairo_paint(cr);
+    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.25);
+    cairo_set_line_width(cr, 1.0);
+    cairo_rectangle(cr, 0.5, 0.5, d->w_px - 1, d->h_px - 1);
+    cairo_stroke(cr);
+    cairo_restore(cr);
+
+    int top_pad    = (int)(4  * scale + 0.5);
+    int row_h_item = (int)(22 * scale + 0.5);
+    int row_h_sep  = (int)(7  * scale + 0.5);
+    int side_inset = (int)(10 * scale + 0.5);
+
+    int y = top_pad;
+    int row_idx = 0;
+    for (int i = 0; i < d->parent->n_children; i++) {
+        const MenuNode *c = d->parent->children[i];
+        if (!c || !c->visible) continue;
+
+        if (c->type == MENU_ITEM_SEPARATOR) {
+            // 1px #D0D0D0 horizontal rule, vertically centered in the
+            // 7pt separator row. menubar_render_paint_menu_item is for
+            // item rows only; separators are intentionally drawn here
+            // inline (header note at menubar_render.h:82).
+            cairo_save(cr);
+            cairo_set_source_rgb(cr,
+                                 208.0/255.0, 208.0/255.0, 208.0/255.0);
+            cairo_set_line_width(cr, 1.0);
+            double yy = y + (row_h_sep / 2.0) + 0.5;
+            cairo_move_to(cr, side_inset,           yy);
+            cairo_line_to(cr, d->w_px - side_inset, yy);
+            cairo_stroke(cr);
+            cairo_restore(cr);
+            y += row_h_sep;
+            row_idx++;
+            continue;
+        }
+
+        menubar_render_toggle_t tog = MENUBAR_TOGGLE_NONE;
+        if (c->toggle == MENU_TOGGLE_CHECKMARK && c->toggle_state == 1) {
+            tog = MENUBAR_TOGGLE_CHECKMARK;
+        } else if (c->toggle == MENU_TOGGLE_RADIO && c->toggle_state == 1) {
+            tog = MENUBAR_TOGGLE_RADIO;
+        }
+
+        menubar_render_menu_item_t mi = {
+            .label      = c->label ? c->label : "",
+            .toggle     = tog,
+            .enabled    = c->enabled,
+            .is_submenu = c->is_submenu,
+            .shortcut   = c->shortcut,
+        };
+        bool hovered = (row_idx == d->hover_row);
+        menubar_render_paint_menu_item(cr, 0, y, d->w_px, row_h_item,
+                                       &mi, hovered, theme, scale);
+        y += row_h_item;
+        row_idx++;
+    }
+
+    cairo_surface_flush(d->surf);
+}
+
+// Open a flat dropdown for the top-level menu identified by
+// `parent_legacy_id`. Returns true if a popup actually mapped (false on
+// missing tree, missing matching id, or empty children).
+//
+// `dbusmenu_client_about_to_show` is called *before* reading children:
+// Qt's appmenu module lazy-builds submenu contents and won't populate
+// them otherwise. The reply is async on the GLib main context — by the
+// time we paint, the main loop has had a chance to dispatch the
+// LayoutUpdated signal that follows. If it hasn't yet, we open with
+// whatever's there and let the next refetch repaint the popup via the
+// chrome_stub_on_menu_changed → legacy_dirty path (which closes-and-
+// re-opens because the borrowed `parent` pointer is invalidated).
+static bool chrome_stub_open_dropdown(Display *dpy, Window root, int screen,
+                                      Visual *vis,
+                                      DbusMenuClient *dbusmenu,
+                                      int32_t parent_legacy_id,
+                                      int root_x, int root_y,
+                                      menubar_render_theme_t theme,
+                                      double scale,
+                                      chrome_stub_dropdown_t *d) {
+    if (!dbusmenu || !d || d->open) return false;
+
+    dbusmenu_client_about_to_show(dbusmenu, parent_legacy_id);
+
+    const MenuNode *root_node = dbusmenu_client_root(dbusmenu);
+    if (!root_node) return false;
+
+    const MenuNode *parent = NULL;
+    for (int i = 0; i < root_node->n_children; i++) {
+        const MenuNode *c = root_node->children[i];
+        if (!c || !c->visible) continue;
+        if (c->legacy_id == parent_legacy_id) { parent = c; break; }
+    }
+    if (!parent || parent->n_children == 0) return false;
+
+    int w = chrome_stub_dropdown_measure_w(parent, scale);
+    int h = chrome_stub_dropdown_measure_h(parent, scale);
+
+    XSetWindowAttributes wa = {0};
+    wa.background_pixel  = WhitePixel(dpy, screen);
+    wa.event_mask        = ExposureMask | ButtonPressMask
+                         | PointerMotionMask | LeaveWindowMask
+                         | KeyPressMask;
+    wa.override_redirect = True;
+
+    Window win = XCreateWindow(
+        dpy, root,
+        root_x, root_y, w, h, 0,
+        DefaultDepth(dpy, screen),
+        InputOutput, vis,
+        CWBackPixel | CWEventMask | CWOverrideRedirect, &wa);
+
+    XMapWindow(dpy, win);
+    // Round-trip the map *before* attempting the grab; XGrabPointer
+    // returns GrabNotViewable on a window the server hasn't yet
+    // acknowledged as mapped (common gotcha — same fix as GTK menus).
+    XSync(dpy, False);
+
+    int gp = XGrabPointer(dpy, win, False,
+                          ButtonPressMask | ButtonReleaseMask
+                          | PointerMotionMask | LeaveWindowMask,
+                          GrabModeAsync, GrabModeAsync,
+                          None, None, CurrentTime);
+    if (gp != GrabSuccess) {
+        fprintf(stderr,
+                "[chrome-stub %d] XGrabPointer for popup failed (%d) — "
+                "outside-click dismissal will not work this open\n",
+                getpid(), gp);
+    }
+    // Keyboard grab so Escape lands on the popup, not on whichever
+    // window has focus. Failure is non-fatal — Escape just won't dismiss.
+    XGrabKeyboard(dpy, win, False,
+                  GrabModeAsync, GrabModeAsync, CurrentTime);
+
+    d->open      = true;
+    d->win       = win;
+    d->surf      = cairo_xlib_surface_create(dpy, win, vis, w, h);
+    d->cr        = cairo_create(d->surf);
+    d->w_px      = w;
+    d->h_px      = h;
+    d->parent    = parent;
+    d->hover_row = -1;
+
+    // Paint immediately rather than waiting for Expose — XGrabPointer
+    // can swallow the synthetic Expose under some WMs, leaving the
+    // popup blank for a frame. theme is passed through so the Aqua /
+    // host-tint variants render right from the first paint.
+    chrome_stub_paint_dropdown(d, theme, scale);
+    XFlush(dpy);
+    return true;
+}
+
+static void chrome_stub_close_dropdown(Display *dpy,
+                                       chrome_stub_dropdown_t *d) {
+    if (!d || !d->open) return;
+    XUngrabKeyboard(dpy, CurrentTime);
+    XUngrabPointer(dpy, CurrentTime);
+    if (d->cr)   { cairo_destroy(d->cr);            d->cr   = NULL; }
+    if (d->surf) { cairo_surface_destroy(d->surf);  d->surf = NULL; }
+    if (d->win)  { XDestroyWindow(dpy, d->win);     d->win  = None; }
+    d->open      = false;
+    d->parent    = NULL;
+    d->w_px      = 0;
+    d->h_px      = 0;
+    d->hover_row = -1;
+    XFlush(dpy);
+}
+
 static int run_chrome_stub(const char *bundle_path,
                            const LauncherManifest *m,
                            menubar_render_theme_t theme) {
@@ -1329,6 +1620,8 @@ static int run_chrome_stub(const char *bundle_path,
     state.display_name = m->display_name;
     chrome_stub_rebuild_items(&state);
 
+    chrome_stub_dropdown_t dropdown = {0};
+
     int cur_w = chrome_w;
     int cur_h = chrome_h;
     int cur_title_h = title_h_px;
@@ -1378,6 +1671,89 @@ static int run_chrome_stub(const char *bundle_path,
                 (ev.type == UnmapNotify || ev.type == DestroyNotify)) {
                 chrome_stub_should_exit = 1;
                 break;
+            }
+
+            // ── Popup event branch ─────────────────────────────────
+            // Funnels every event whose target is the dropdown window
+            // through the popup state machine. With XGrabPointer
+            // owner_events=False (no confine_to), button presses
+            // outside the popup still arrive here — coords are reported
+            // relative to the popup origin, so anything outside the
+            // [0..w_px) × [0..h_px) box is the click-outside case.
+            if (dropdown.open && ev.xany.window == dropdown.win) {
+                if (ev.type == Expose) {
+                    chrome_stub_paint_dropdown(&dropdown, theme, scale);
+                    XFlush(dpy);
+                    continue;
+                }
+                if (ev.type == ButtonPress &&
+                    ev.xbutton.button == Button1) {
+                    int fx = ev.xbutton.x;
+                    int fy = ev.xbutton.y;
+                    if (fx < 0 || fy < 0 ||
+                        fx >= dropdown.w_px || fy >= dropdown.h_px) {
+                        chrome_stub_close_dropdown(dpy, &dropdown);
+                        continue;
+                    }
+                    int row_idx = -1;
+                    bool clickable = false;
+                    const MenuNode *node = chrome_stub_dropdown_at_y(
+                        &dropdown, fy, scale, &row_idx, &clickable);
+                    if (node && clickable && state.dbusmenu &&
+                        !node->is_submenu) {
+                        // Leaf row: dispatch the dbusmenu Event then
+                        // close. Submenu drill-down stays a future
+                        // slice — chrome stub is one level deep.
+                        dbusmenu_client_activate(state.dbusmenu,
+                                                 node->legacy_id);
+                        chrome_stub_close_dropdown(dpy, &dropdown);
+                    } else if (node && node->is_submenu) {
+                        // No drill-down yet — close so the popup isn't
+                        // a dead-end. Once submenu support lands here
+                        // this branch opens the next stack level.
+                        chrome_stub_close_dropdown(dpy, &dropdown);
+                    }
+                    // Separator / disabled hits are ignored — pointer
+                    // stays grabbed, popup stays open.
+                    continue;
+                }
+                if (ev.type == MotionNotify) {
+                    int fx = ev.xmotion.x;
+                    int fy = ev.xmotion.y;
+                    int new_hover = -1;
+                    if (fx >= 0 && fx < dropdown.w_px &&
+                        fy >= 0 && fy < dropdown.h_px) {
+                        int row_idx = -1;
+                        bool clickable = false;
+                        (void)chrome_stub_dropdown_at_y(
+                            &dropdown, fy, scale,
+                            &row_idx, &clickable);
+                        if (clickable) new_hover = row_idx;
+                    }
+                    if (new_hover != dropdown.hover_row) {
+                        dropdown.hover_row = new_hover;
+                        chrome_stub_paint_dropdown(&dropdown,
+                                                   theme, scale);
+                        XFlush(dpy);
+                    }
+                    continue;
+                }
+                if (ev.type == LeaveNotify) {
+                    if (dropdown.hover_row != -1) {
+                        dropdown.hover_row = -1;
+                        chrome_stub_paint_dropdown(&dropdown,
+                                                   theme, scale);
+                        XFlush(dpy);
+                    }
+                    continue;
+                }
+                if (ev.type == KeyPress) {
+                    KeySym ks = XLookupKeysym(&ev.xkey, 0);
+                    if (ks == XK_Escape) {
+                        chrome_stub_close_dropdown(dpy, &dropdown);
+                    }
+                    continue;
+                }
             }
 
             if (ev.type == PropertyNotify &&
@@ -1432,8 +1808,6 @@ static int run_chrome_stub(const char *bundle_path,
                 ev.xbutton.button == Button1) {
                 int fx = ev.xbutton.x;
                 int fy = ev.xbutton.y;
-                // Title bar occupies [0, cur_title_h); below that is
-                // the menu row, which is β-4's responsibility.
                 if (fy < cur_title_h) {
                     int hit = chrome_stub_hit_test_button(fx, fy, scale);
                     if (hit == 1) {
@@ -1454,12 +1828,48 @@ static int run_chrome_stub(const char *bundle_path,
                                               net_wm_state_max_horz);
                         continue;
                     }
+                    // Empty title-bar area — fall through to activate.
+                } else if (fy < cur_title_h + cur_menu_h) {
+                    // Menu row: hit-test top-level slots[1..n] (slot 0
+                    // is the bold app name and has no DBusMenu source —
+                    // a future slice may synthesize an Application menu
+                    // there, but β-4 leaves it as a no-op click).
+                    bool opened = false;
+                    if (state.dbusmenu && !dropdown.open) {
+                        for (size_t i = 1; i < state.n_items; i++) {
+                            int sx = state.items[i].x;
+                            int sw = state.items[i].width;
+                            if (fx >= sx && fx < sx + sw) {
+                                // Activate the bundle so a subsequent
+                                // dbusmenu Event lands on a focused
+                                // window (some Qt-appmenu apps gate
+                                // accelerator delivery on focus).
+                                chrome_stub_send_active_window(
+                                    dpy, root, bundle_win,
+                                    net_active_win);
+                                int popup_x = bundle_root_x + sx;
+                                int popup_y = bundle_root_y; // menu-bar bottom
+                                (void)chrome_stub_open_dropdown(
+                                    dpy, root, screen, vis,
+                                    state.dbusmenu,
+                                    state.top_level_ids[i],
+                                    popup_x, popup_y,
+                                    theme, scale, &dropdown);
+                                opened = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (opened) continue;
+                    // Slot miss, no DBusMenu bound, or popup already
+                    // open — fall through to the activate-only branch
+                    // so β-3's input-delegate behaviour is preserved
+                    // for menu-row clicks that don't open a popup.
                 }
-                // Click landed on chrome but missed the traffic lights
-                // (empty title-bar area, or anywhere on the menu row
-                // until β-4 wires per-title popup). Acting as the
-                // bundle's input delegate, ask the WM to activate it
-                // so subsequent keystrokes go to the right window.
+                // Empty chrome area (title-bar gap, or menu row when
+                // no slot was hit). Acting as the bundle's input
+                // delegate, ask the WM to activate it so keystrokes
+                // go to the right window.
                 chrome_stub_send_active_window(dpy, root, bundle_win,
                                                net_active_win);
                 continue;
@@ -1472,6 +1882,11 @@ static int run_chrome_stub(const char *bundle_path,
         }
 
         if (state.legacy_dirty) {
+            // The dbusmenu client replaces its root wholesale on
+            // refetch — any popup's borrowed `parent` pointer is now
+            // dangling. Close before rebuilding; the user can re-open
+            // against the new tree on their next click.
+            if (dropdown.open) chrome_stub_close_dropdown(dpy, &dropdown);
             chrome_stub_rebuild_items(&state);
             state.legacy_dirty = false;
             need_paint = true;
@@ -1500,6 +1915,7 @@ static int run_chrome_stub(const char *bundle_path,
         XFlush(dpy);
     }
 
+    if (dropdown.open)  chrome_stub_close_dropdown(dpy, &dropdown);
     if (state.dbusmenu) dbusmenu_client_free(state.dbusmenu);
     if (bridge_up)      appmenu_bridge_shutdown();
     cairo_destroy(cr);
