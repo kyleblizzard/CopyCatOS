@@ -11,13 +11,18 @@
 #include <stdbool.h>
 #include <time.h>
 
-// Snow Leopard title bar dimensions (real values from reference)
-#define TITLEBAR_HEIGHT   22
-#define BORDER_WIDTH       1
-#define BUTTON_DIAMETER   13
-#define BUTTON_SPACING     7
-#define BUTTON_LEFT_PAD    8
-#define BUTTON_TOP_PAD     4
+#include "host_chrome.h"
+
+// Snow Leopard title bar dimensions (real values from reference). The
+// canonical values live in host_chrome.h as MB_CHROME_* constants and
+// are shared with moonrock-lite. These short aliases keep wm.c, frame.c,
+// decor.c, events.c, and friends readable — no per-file rename.
+#define TITLEBAR_HEIGHT   MB_CHROME_TITLEBAR_HEIGHT
+#define BORDER_WIDTH      MB_CHROME_BORDER_WIDTH
+#define BUTTON_DIAMETER   MB_CHROME_BUTTON_DIAMETER
+#define BUTTON_SPACING    MB_CHROME_BUTTON_SPACING
+#define BUTTON_LEFT_PAD   MB_CHROME_BUTTON_LEFT_PAD
+#define BUTTON_TOP_PAD    MB_CHROME_BUTTON_TOP_PAD
 
 // Maximum number of managed clients
 #define MAX_CLIENTS 256

@@ -81,7 +81,6 @@ cc_wm_sources = [
   'src/struts.c',
   'src/resize.c',
   'src/moonbase_host.c',
-  'src/moonbase_chrome.c',
   'src/moonbase_xdnd.c',
 ]
 
@@ -102,14 +101,49 @@ moonbase_ipc_sources = [
   '../moonbase/src/server/consent_responder.c',
 ]
 
+# ── MoonBase host helpers (shared with moonrock-lite) ──────────────────
+#
+# The compositor-agnostic parts of moonrock — IPC parsers/encoders, the
+# Cairo chrome painter, the chrome traffic-light hit-test math, and a
+# handful of small util helpers — live under moonbase/src/host/. Every
+# host TU has to compile cleanly under strict warnings/werror so a
+# regression here can't slip in via moonrock's looser warning_level=2.
+#
+# Build the same source files into a private static library with explicit
+# strict c_args so this file's flag bar matches moonbase/meson.build's
+# project-wide warning_level=3 + werror, even though the rest of moonrock
+# stays at warning_level=2 for now.
+mb_host_sources = [
+  '../moonbase/src/host/host_chrome.c',
+  '../moonbase/src/host/host_hittest.c',
+  '../moonbase/src/host/host_protocol.c',
+  '../moonbase/src/host/host_util.c',
+]
+
 # Compile-time default for the moonbase-consent binary path. The
 # responder resolves this when MOONBASE_CONSENT_BIN is not set in
 # the env. Built from get_option('libexecdir'), which matches where
 # moonbase/meson.build installs the binary.
+#
+# Must be declared *before* any build target — meson disallows
+# add_project_arguments after a target has been declared.
 moonbase_consent_path = get_option('prefix') / get_option('libexecdir') / 'moonbase-consent'
 add_project_arguments(
   '-DMOONBASE_CONSENT_PATH="@0@"'.format(moonbase_consent_path),
   language: 'c',
+)
+
+mb_host_moonrock = static_library(
+  'mb_host_moonrock',
+  mb_host_sources,
+  include_directories: include_directories(
+    '../moonbase/include',
+    '../moonbase/src',
+    '../moonbase/src/host',
+  ),
+  dependencies: [cairo_dep, pangocairo_dep],
+  c_args: ['-Wall', '-Wextra', '-Werror'],
+  install: false,
 )
 
 moonbase_includes = include_directories(
@@ -117,6 +151,7 @@ moonbase_includes = include_directories(
   '../moonbase/src',
   '../moonbase/src/ipc',
   '../moonbase/src/server',
+  '../moonbase/src/host',
 )
 
 # shell-api/ carries headers that are also consumed by standalone shell
@@ -128,6 +163,7 @@ shell_api_includes = include_directories('shell-api')
 executable('moonrock',
   cc_wm_sources + moonrock_sources + moonbase_ipc_sources,
   include_directories: [moonbase_includes, shell_api_includes],
+  link_with: [mb_host_moonrock],
   dependencies: [
     x11_dep, xcomposite_dep, xdamage_dep, xfixes_dep,
     xext_dep, xrender_dep, xrandr_dep,

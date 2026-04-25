@@ -16,11 +16,14 @@
 
 #include "server.h"
 #include "consent_responder.h"
-#include "cbor.h"
 #include "moonbase/ipc/kinds.h"
 #include "moonrock_display.h"
 #include "moonrock_shaders.h"
-#include "moonbase_chrome.h"
+#include "host_chrome.h"      // mb_chrome_t, mb_chrome_repaint, mb_chrome_release
+#include "host_hittest.h"     // mb_host_chrome_hit_button[_region]
+#include "host_protocol.h"    // mb_host_parse_*/build_* CBOR codecs
+#include "host_util.h"        // mb_host_default_socket_path / ts_us / rect math
+#include "assets.h"           // assets_get_*_button — passed into mb_chrome_repaint
 #include "moonbase_xdnd.h"
 #include "wm.h"   // TITLEBAR_HEIGHT, BORDER_WIDTH, BUTTON_* (point-space)
 
@@ -28,8 +31,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <sys/stat.h>
-#include <time.h>
 #include <unistd.h>
 
 #include <GL/gl.h>
@@ -118,14 +119,18 @@ typedef struct {
     uint32_t       tex_w, tex_h;       // dimensions last uploaded to tex
 
     // Aqua chrome (title bar, borders, traffic lights) painted into a
-    // CPU-side Cairo surface and uploaded to its own GL texture. Managed
-    // by moonbase_chrome.{h,c}. chrome_stale is set whenever content
-    // dimensions, scale, title, or focus change and the chrome needs to
-    // be re-painted and re-uploaded. chrome_uploaded_revision is the
-    // last chrome.revision we copied into chrome.tex.
+    // CPU-side Cairo surface (managed by host_chrome.{h,c} as a
+    // mb_chrome_t) and uploaded to a GL texture owned by this surface.
+    // GL bookkeeping lives here, not in mb_chrome_t, because mb_chrome_t
+    // is shared with moonrock-lite (which uploads to an X drawable, not
+    // GL). chrome_stale fires whenever dimensions, scale, title, focus,
+    // or button hover/press state changes; chrome_uploaded_revision is
+    // the last mb_chrome_t.revision we copied into chrome_tex.
     mb_chrome_t    chrome;
     bool           chrome_stale;
     uint64_t       chrome_uploaded_revision;
+    GLuint         chrome_tex;             // 0 == no texture yet
+    uint32_t       chrome_tex_w, chrome_tex_h;
 
     // InputOnly X window parked at the same physical-pixel footprint as
     // the composited chrome. X routes ButtonPress events on the proxy to
@@ -157,11 +162,6 @@ static int          g_surface_count = 0;
 static GLuint       g_pending_delete[MB_MAX_SURFACES];
 static int          g_pending_delete_count = 0;
 
-// Adapter so moonbase_chrome.c can enqueue GL deletion without knowing
-// about our pending-delete list. Matches mb_chrome_release's defer_gl_delete
-// callback signature.
-static void chrome_defer_gl_delete(GLuint tex);
-
 static void pending_delete_push(GLuint tex) {
     if (tex == 0) return;
     if (g_pending_delete_count >= MB_MAX_SURFACES) {
@@ -174,10 +174,6 @@ static void pending_delete_push(GLuint tex) {
         return;
     }
     g_pending_delete[g_pending_delete_count++] = tex;
-}
-
-static void chrome_defer_gl_delete(GLuint tex) {
-    pending_delete_push(tex);
 }
 
 // Cascade placement for a new surface. The menu bar is ~22 points tall
@@ -230,31 +226,11 @@ static void surface_release(mb_surface_t *s) {
         munmap(s->map, s->map_size);
     }
     pending_delete_push(s->tex);
-    mb_chrome_release(&s->chrome, chrome_defer_gl_delete);
+    pending_delete_push(s->chrome_tex);
+    mb_chrome_release(&s->chrome);
     free(s->title);
     memset(s, 0, sizeof(*s));
     g_surface_count--;
-}
-
-// Compute the chrome's physical-pixel footprint from the client-declared
-// points size plus the current backing scale. This is the initial /
-// pre-commit estimate we use to size the InputOnly proxy. Once a commit
-// arrives, handle_window_commit recomputes from real content pixels and
-// reconfigures the proxy if the footprint changed.
-//
-// Must match the math in moonbase_chrome.c's layout so the click region
-// lines up with the painted pixels.
-static void chrome_px_from_points(int points_w, int points_h, float scale,
-                                  uint32_t *out_w, uint32_t *out_h) {
-    int content_w_px = (int)(points_w * scale + 0.5f);
-    int content_h_px = (int)(points_h * scale + 0.5f);
-    int titlebar_px  = (int)(TITLEBAR_HEIGHT * scale + 0.5f);
-    // Chrome has no side/bottom inset (SL 10.6 ground truth — see
-    // mb_chrome_repaint for the full note). The 1-px hairline is
-    // overlaid on the content's outer pixels, so the proxy footprint
-    // equals content_w × (content_h + titlebar).
-    *out_w = (uint32_t)content_w_px;
-    *out_h = (uint32_t)(content_h_px + titlebar_px);
 }
 
 // Create the InputOnly click proxy for a newly-created surface.
@@ -311,23 +287,13 @@ static Window create_input_proxy(int screen_x, int screen_y,
 // Send WINDOW_FOCUSED to the client owning `surf`.
 static void send_focus_event(mb_surface_t *surf, bool focused) {
     if (!surf || !g_server) return;
-    mb_cbor_w_t w;
-    mb_cbor_w_init_grow(&w, 16);
-    mb_cbor_w_map_begin(&w, 2);
-    mb_cbor_w_key(&w, 1); mb_cbor_w_uint(&w, surf->window_id);
-    mb_cbor_w_key(&w, 2); mb_cbor_w_bool(&w, focused);
-    if (!mb_cbor_w_ok(&w)) {
-        mb_cbor_w_drop(&w);
-        return;
-    }
     size_t len = 0;
-    uint8_t *body = mb_cbor_w_finish(&w, &len);
-    if (body) {
-        (void)mb_server_send(g_server, surf->client,
-                             MB_IPC_WINDOW_FOCUSED,
-                             body, len, NULL, 0);
-        free(body);
-    }
+    uint8_t *body = mb_host_build_window_focused(surf->window_id, focused, &len);
+    if (!body) return;
+    (void)mb_server_send(g_server, surf->client,
+                         MB_IPC_WINDOW_FOCUSED,
+                         body, len, NULL, 0);
+    free(body);
 }
 
 // Transition focus to the given window_id (0 == no MoonBase focus).
@@ -388,95 +354,6 @@ static void surface_sweep_client(mb_client_id_t client) {
     }
 }
 
-// Parse a WINDOW_CREATE body. Ignores unknown keys so the schema can
-// grow later without wire-format churn. Returns true if the minimum
-// viable set (width, height) was present and well-formed.
-typedef struct {
-    uint32_t version;
-    char    *title;              // owned or NULL
-    int32_t  width_points, height_points;
-    int32_t  min_width_points, min_height_points;
-    int32_t  max_width_points, max_height_points;
-    uint32_t render_mode;        // 0 cairo, 1 gl
-    uint32_t flags;
-} window_create_req_t;
-
-static bool parse_window_create(const uint8_t *body, size_t body_len,
-                                window_create_req_t *out) {
-    memset(out, 0, sizeof(*out));
-    mb_cbor_r_t r;
-    mb_cbor_r_init(&r, body, body_len);
-    uint64_t pairs = 0;
-    if (!mb_cbor_r_map_begin(&r, &pairs)) return false;
-    bool have_w = false, have_h = false;
-    for (uint64_t i = 0; i < pairs; i++) {
-        uint64_t key = 0;
-        if (!mb_cbor_r_uint(&r, &key)) return false;
-        switch (key) {
-            case 1: { uint64_t v = 0;
-                if (!mb_cbor_r_uint(&r, &v)) return false;
-                out->version = (uint32_t)v; break; }
-            case 2: { const char *s = NULL; size_t sl = 0;
-                if (!mb_cbor_r_tstr(&r, &s, &sl)) return false;
-                out->title = malloc(sl + 1);
-                if (!out->title) return false;
-                memcpy(out->title, s, sl);
-                out->title[sl] = '\0'; break; }
-            case 3: { uint64_t v = 0;
-                if (!mb_cbor_r_uint(&r, &v)) return false;
-                out->width_points = (int32_t)v; have_w = true; break; }
-            case 4: { uint64_t v = 0;
-                if (!mb_cbor_r_uint(&r, &v)) return false;
-                out->height_points = (int32_t)v; have_h = true; break; }
-            case 5: { uint64_t v = 0;
-                if (!mb_cbor_r_uint(&r, &v)) return false;
-                out->min_width_points = (int32_t)v; break; }
-            case 6: { uint64_t v = 0;
-                if (!mb_cbor_r_uint(&r, &v)) return false;
-                out->min_height_points = (int32_t)v; break; }
-            case 7: { uint64_t v = 0;
-                if (!mb_cbor_r_uint(&r, &v)) return false;
-                out->max_width_points = (int32_t)v; break; }
-            case 8: { uint64_t v = 0;
-                if (!mb_cbor_r_uint(&r, &v)) return false;
-                out->max_height_points = (int32_t)v; break; }
-            case 9: { uint64_t v = 0;
-                if (!mb_cbor_r_uint(&r, &v)) return false;
-                out->render_mode = (uint32_t)v; break; }
-            case 10: { uint64_t v = 0;
-                if (!mb_cbor_r_uint(&r, &v)) return false;
-                out->flags = (uint32_t)v; break; }
-            default:
-                if (!mb_cbor_r_skip(&r)) return false;
-                break;
-        }
-    }
-    return have_w && have_h;
-}
-
-// Build a WINDOW_CREATE_REPLY body with the given fields.
-// Caller takes ownership of the returned buffer.
-static uint8_t *build_window_create_reply(uint32_t window_id,
-                                          uint32_t output_id,
-                                          double   initial_scale,
-                                          uint32_t actual_w_points,
-                                          uint32_t actual_h_points,
-                                          size_t *out_len) {
-    mb_cbor_w_t w;
-    mb_cbor_w_init_grow(&w, 48);
-    mb_cbor_w_map_begin(&w, 5);
-    mb_cbor_w_key(&w, 1); mb_cbor_w_uint(&w, window_id);
-    mb_cbor_w_key(&w, 2); mb_cbor_w_uint(&w, output_id);
-    mb_cbor_w_key(&w, 3); mb_cbor_w_float(&w, initial_scale);
-    mb_cbor_w_key(&w, 4); mb_cbor_w_uint(&w, actual_w_points);
-    mb_cbor_w_key(&w, 5); mb_cbor_w_uint(&w, actual_h_points);
-    if (!mb_cbor_w_ok(&w)) {
-        mb_cbor_w_drop(&w);
-        return NULL;
-    }
-    return mb_cbor_w_finish(&w, out_len);
-}
-
 // Handle a WINDOW_CREATE request. Allocates a window_id and replies.
 // Slice 3a stubbed the scale at 1.0; slice 3b (this code) looks up the
 // real scale of the target output — primary for now, since we don't yet
@@ -484,12 +361,12 @@ static uint8_t *build_window_create_reply(uint32_t window_id,
 // window.
 static void handle_window_create(mb_server_t *s, mb_client_id_t client,
                                  const uint8_t *body, size_t body_len) {
-    window_create_req_t req;
-    if (!parse_window_create(body, body_len, &req)) {
+    mb_host_window_create_req_t req;
+    if (!mb_host_parse_window_create(body, body_len, &req)) {
         fprintf(stderr,
                 "[moonrock] moonbase client %u sent malformed WINDOW_CREATE\n",
                 client);
-        free(req.title);
+        mb_host_window_create_req_free(&req);
         return;
     }
     uint32_t window_id = g_next_window_id++;
@@ -519,7 +396,7 @@ static void handle_window_create(mb_server_t *s, mb_client_id_t client,
         fprintf(stderr,
                 "[moonrock] moonbase client %u: surface table full — "
                 "dropping WINDOW_CREATE\n", client);
-        free(req.title);
+        mb_host_window_create_req_free(&req);
         return;
     }
     surf->window_id   = window_id;
@@ -536,8 +413,8 @@ static void handle_window_create(mb_server_t *s, mb_client_id_t client,
 
     // Compute chrome footprint from the declared points size and build
     // an InputOnly proxy so clicks on the chrome reach moonrock.
-    chrome_px_from_points(surf->points_w, surf->points_h, surf->scale,
-                          &surf->chrome_w_px, &surf->chrome_h_px);
+    mb_host_chrome_px_from_points(surf->points_w, surf->points_h, surf->scale,
+                                  &surf->chrome_w_px, &surf->chrome_h_px);
     surf->input_proxy = create_input_proxy(surf->screen_x, surf->screen_y,
                                            surf->chrome_w_px,
                                            surf->chrome_h_px);
@@ -550,15 +427,15 @@ static void handle_window_create(mb_server_t *s, mb_client_id_t client,
             req.width_points, req.height_points,
             req.render_mode, req.flags, window_id,
             output_id, (double)init_scale, g_surface_count);
-    free(req.title);
+    mb_host_window_create_req_free(&req);
 
     size_t reply_len = 0;
-    uint8_t *reply = build_window_create_reply(
+    uint8_t *reply = mb_host_build_window_create_reply(
         window_id,
         output_id,
         (double)init_scale,
-        (uint32_t)req.width_points,
-        (uint32_t)req.height_points,
+        (uint32_t)surf->points_w,
+        (uint32_t)surf->points_h,
         &reply_len);
     if (!reply) {
         fprintf(stderr,
@@ -582,35 +459,12 @@ static void handle_window_create(mb_server_t *s, mb_client_id_t client,
     focus_set(window_id);
 }
 
-// Parse a WINDOW_CLOSE body: { 1: uint window_id }.
-// Returns 0 on failure — 0 is never a valid window_id because we
-// start the counter at 1, so the caller can null-check cheaply.
-static uint32_t parse_window_close_id(const uint8_t *body, size_t body_len) {
-    mb_cbor_r_t r;
-    mb_cbor_r_init(&r, body, body_len);
-    uint64_t pairs = 0;
-    if (!mb_cbor_r_map_begin(&r, &pairs)) return 0;
-    uint32_t window_id = 0;
-    for (uint64_t i = 0; i < pairs; i++) {
-        uint64_t key = 0;
-        if (!mb_cbor_r_uint(&r, &key)) return 0;
-        if (key == 1) {
-            uint64_t v = 0;
-            if (!mb_cbor_r_uint(&r, &v)) return 0;
-            window_id = (uint32_t)v;
-        } else {
-            if (!mb_cbor_r_skip(&r)) return 0;
-        }
-    }
-    return window_id;
-}
-
 // Handle a client-initiated WINDOW_CLOSE. The app wants to release a
 // window it previously created. We drop the surface entry; a future
 // slice will emit a damage call so the compositor can stop drawing it.
 static void handle_window_close(mb_client_id_t client,
                                 const uint8_t *body, size_t body_len) {
-    uint32_t window_id = parse_window_close_id(body, body_len);
+    uint32_t window_id = mb_host_parse_window_close_id(body, body_len);
     if (window_id == 0) {
         fprintf(stderr,
                 "[moonrock] moonbase client %u sent malformed WINDOW_CLOSE\n",
@@ -649,58 +503,6 @@ static void handle_window_close(mb_client_id_t client,
     }
 }
 
-// Parse a WINDOW_COMMIT body. Schema:
-//   { 1: window_id, 2: width_px, 3: height_px, 4: stride_bytes,
-//     5: pixel_format, 6: damage_x, 7: damage_y,
-//     8: damage_w, 9: damage_h }
-// Unknown keys are tolerated — schema can grow without wire-format churn.
-typedef struct {
-    uint32_t window_id;
-    uint32_t width_px, height_px;
-    uint32_t stride;
-    uint32_t pixel_format;
-    uint32_t damage_x, damage_y, damage_w, damage_h;
-    bool     have_id, have_w, have_h, have_stride;
-} window_commit_req_t;
-
-static bool parse_window_commit(const uint8_t *body, size_t body_len,
-                                window_commit_req_t *out) {
-    memset(out, 0, sizeof(*out));
-    mb_cbor_r_t r;
-    mb_cbor_r_init(&r, body, body_len);
-    uint64_t pairs = 0;
-    if (!mb_cbor_r_map_begin(&r, &pairs)) return false;
-    for (uint64_t i = 0; i < pairs; i++) {
-        uint64_t key = 0;
-        if (!mb_cbor_r_uint(&r, &key)) return false;
-        uint64_t v = 0;
-        switch (key) {
-            case 1: if (!mb_cbor_r_uint(&r, &v)) return false;
-                    out->window_id = (uint32_t)v; out->have_id = true; break;
-            case 2: if (!mb_cbor_r_uint(&r, &v)) return false;
-                    out->width_px = (uint32_t)v; out->have_w = true; break;
-            case 3: if (!mb_cbor_r_uint(&r, &v)) return false;
-                    out->height_px = (uint32_t)v; out->have_h = true; break;
-            case 4: if (!mb_cbor_r_uint(&r, &v)) return false;
-                    out->stride = (uint32_t)v; out->have_stride = true; break;
-            case 5: if (!mb_cbor_r_uint(&r, &v)) return false;
-                    out->pixel_format = (uint32_t)v; break;
-            case 6: if (!mb_cbor_r_uint(&r, &v)) return false;
-                    out->damage_x = (uint32_t)v; break;
-            case 7: if (!mb_cbor_r_uint(&r, &v)) return false;
-                    out->damage_y = (uint32_t)v; break;
-            case 8: if (!mb_cbor_r_uint(&r, &v)) return false;
-                    out->damage_w = (uint32_t)v; break;
-            case 9: if (!mb_cbor_r_uint(&r, &v)) return false;
-                    out->damage_h = (uint32_t)v; break;
-            default:
-                if (!mb_cbor_r_skip(&r)) return false;
-                break;
-        }
-    }
-    return out->have_id && out->have_w && out->have_h && out->have_stride;
-}
-
 // Handle a WINDOW_COMMIT from a client. The client has rendered a frame
 // into an shm-backed buffer and is handing us the memfd. We validate the
 // fd, mmap it, and keep the mapping alive for mb_host_render to upload
@@ -717,8 +519,8 @@ static bool parse_window_commit(const uint8_t *body, size_t body_len,
 static void handle_window_commit(mb_client_id_t client,
                                  const uint8_t *body, size_t body_len,
                                  const int *fds, size_t nfds) {
-    window_commit_req_t req;
-    if (!parse_window_commit(body, body_len, &req)) {
+    mb_host_window_commit_req_t req;
+    if (!mb_host_parse_window_commit(body, body_len, &req)) {
         fprintf(stderr,
                 "[moonrock] moonbase client %u sent malformed WINDOW_COMMIT\n",
                 client);
@@ -745,38 +547,19 @@ static void handle_window_commit(mb_client_id_t client,
         return;
     }
 
-    int fd = fds[0];
-
-    // Sanity-check the fd: must be sizeable and match stride*height.
-    // An oversized buffer is tolerated (the app may have allocated a
-    // larger backing store than it's committing), but an undersized
-    // one is rejected because mapping past EOF segfaults readers.
-    struct stat st;
-    if (fstat(fd, &st) != 0 || st.st_size <= 0) {
+    // fstat + size-check + mmap is delegated to the shared host helper so
+    // moonrock-lite gets identical validation. The helper logs to stderr
+    // with `[mb_host]` context on failure; supplement with one line that
+    // names the moonrock client + window_id so the operator can tie the
+    // error back to a specific app.
+    int    fd   = fds[0];
+    void  *p    = NULL;
+    size_t need = 0;
+    if (!mb_host_validate_and_map_commit_fd(req.stride, req.height_px,
+                                            fd, &p, &need)) {
         fprintf(stderr,
                 "[moonrock] moonbase client %u WINDOW_COMMIT window_id=%u: "
-                "fstat failed\n", client, req.window_id);
-        return;
-    }
-    size_t need = (size_t)req.stride * (size_t)req.height_px;
-    if ((size_t)st.st_size < need) {
-        fprintf(stderr,
-                "[moonrock] moonbase client %u WINDOW_COMMIT window_id=%u: "
-                "buffer too small (%zu bytes, need %zu)\n",
-                client, req.window_id, (size_t)st.st_size, need);
-        return;
-    }
-
-    // Map the new buffer read-only. MAP_SHARED so we see any future
-    // writes the client makes — in practice the client does one draw
-    // and unmaps, so the buffer contents are stable by the time we
-    // upload, but MAP_SHARED is the semantically correct mode for a
-    // buffer whose ownership is about to be shared.
-    void *p = mmap(NULL, need, PROT_READ, MAP_SHARED, fd, 0);
-    if (p == MAP_FAILED) {
-        fprintf(stderr,
-                "[moonrock] moonbase client %u WINDOW_COMMIT window_id=%u: "
-                "mmap failed\n", client, req.window_id);
+                "validate/map failed\n", client, req.window_id);
         return;
     }
 
@@ -796,7 +579,7 @@ static void handle_window_commit(mb_client_id_t client,
         // Re-derive the proxy footprint from the real content pixels
         // (more accurate than the pre-commit points-×-scale estimate)
         // and resize the InputOnly proxy if it changed. Matches
-        // chrome_px_from_points / mb_chrome_repaint: no side or bottom
+        // mb_host_chrome_px_from_points / mb_chrome_repaint: no side or bottom
         // inset — just content × (content + titlebar).
         int titlebar_px = (int)(TITLEBAR_HEIGHT * surf->scale + 0.5f);
         uint32_t new_cw = req.width_px;
@@ -888,16 +671,6 @@ static void on_event(mb_server_t *s, const mb_server_event_t *ev, void *user) {
     }
 }
 
-static char *default_socket_path(void) {
-    const char *xdg = getenv("XDG_RUNTIME_DIR");
-    if (!xdg || !*xdg) return NULL;
-    size_t len = strlen(xdg) + strlen("/moonbase.sock") + 1;
-    char *p = malloc(len);
-    if (!p) return NULL;
-    snprintf(p, len, "%s/moonbase.sock", xdg);
-    return p;
-}
-
 bool mb_host_init(const char *path, Display *dpy, Window root) {
     if (g_server) {
         fprintf(stderr, "[moonrock] moonbase host already running\n");
@@ -909,7 +682,7 @@ bool mb_host_init(const char *path, Display *dpy, Window root) {
 
     const char *use_path = path;
     if (!use_path) {
-        g_default_path = default_socket_path();
+        g_default_path = mb_host_default_socket_path();
         if (!g_default_path) {
             fprintf(stderr,
                     "[moonrock] XDG_RUNTIME_DIR not set — MoonBase IPC disabled\n");
@@ -964,18 +737,6 @@ size_t mb_host_collect_pollfds(struct pollfd *out_fds, size_t max) {
 //   * User changes an output's scale in SysPrefs → Displays
 //   * (Future slice) user drags a window between outputs
 
-// Axis-aligned rectangle intersection area. Returns 0 when rects are
-// disjoint.
-static long rect_intersection_area(int ax, int ay, int aw, int ah,
-                                   int bx, int by, int bw, int bh) {
-    int x0 = ax > bx ? ax : bx;
-    int y0 = ay > by ? ay : by;
-    int x1 = (ax + aw) < (bx + bw) ? (ax + aw) : (bx + bw);
-    int y1 = (ay + ah) < (by + bh) ? (ay + ah) : (by + bh);
-    if (x1 <= x0 || y1 <= y0) return 0;
-    return (long)(x1 - x0) * (long)(y1 - y0);
-}
-
 // Pick which output the surface lives on. NULL means no connected
 // output intersects its rectangle — happens only during hotplug
 // transients, in which case the caller falls back to primary.
@@ -987,7 +748,7 @@ static MROutput *pick_target_output(const mb_surface_t *s) {
     MROutput *best      = NULL;
     long      best_area = 0;
     for (int i = 0; i < count; i++) {
-        long area = rect_intersection_area(
+        long area = mb_host_rect_intersection_area(
             s->screen_x, s->screen_y,
             (int)s->chrome_w_px, (int)s->chrome_h_px,
             outs[i].x, outs[i].y, outs[i].width, outs[i].height);
@@ -1006,16 +767,9 @@ static void emit_backing_scale_changed(mb_surface_t *s,
                                        float old_scale, float new_scale,
                                        uint32_t output_id) {
     if (!g_server) return;
-    mb_cbor_w_t w;
-    mb_cbor_w_init_grow(&w, 32);
-    mb_cbor_w_map_begin(&w, 4);
-    mb_cbor_w_key(&w, 1); mb_cbor_w_uint (&w, s->window_id);
-    mb_cbor_w_key(&w, 2); mb_cbor_w_float(&w, (double)old_scale);
-    mb_cbor_w_key(&w, 3); mb_cbor_w_float(&w, (double)new_scale);
-    mb_cbor_w_key(&w, 4); mb_cbor_w_uint (&w, output_id);
-    if (!mb_cbor_w_ok(&w)) { mb_cbor_w_drop(&w); return; }
     size_t len = 0;
-    uint8_t *body = mb_cbor_w_finish(&w, &len);
+    uint8_t *body = mb_host_build_backing_scale_changed(
+        s->window_id, old_scale, new_scale, output_id, &len);
     if (!body) return;
     (void)mb_server_send(g_server, s->client,
                          MB_IPC_BACKING_SCALE_CHANGED,
@@ -1072,14 +826,6 @@ bool mb_host_has_focus(void) {
     return surface_find(g_focused_window_id) != NULL;
 }
 
-// Timestamp for outgoing input events. Monotonic microseconds since
-// boot — matches mb_event_t.timestamp_us semantics on the client side.
-static uint64_t ts_us(void) {
-    struct timespec t;
-    clock_gettime(CLOCK_MONOTONIC, &t);
-    return (uint64_t)t.tv_sec * 1000000u + (uint64_t)t.tv_nsec / 1000u;
-}
-
 // Send MB_IPC_WINDOW_CLOSED to `surf`'s owning client so the app's
 // event loop can observe the close request and decide how to respond
 // (save-on-quit, put up a confirmation sheet, etc.). We do NOT tear the
@@ -1087,13 +833,8 @@ static uint64_t ts_us(void) {
 // MB_IPC_WINDOW_CLOSE or to disconnect.
 static void send_window_closed_event(mb_surface_t *surf) {
     if (!surf || !g_server) return;
-    mb_cbor_w_t w;
-    mb_cbor_w_init_grow(&w, 16);
-    mb_cbor_w_map_begin(&w, 1);
-    mb_cbor_w_key(&w, 1); mb_cbor_w_uint(&w, surf->window_id);
-    if (!mb_cbor_w_ok(&w)) { mb_cbor_w_drop(&w); return; }
     size_t len = 0;
-    uint8_t *body = mb_cbor_w_finish(&w, &len);
+    uint8_t *body = mb_host_build_window_closed(surf->window_id, &len);
     if (!body) return;
     (void)mb_server_send(g_server, surf->client,
                          MB_IPC_WINDOW_CLOSED,
@@ -1113,44 +854,6 @@ static mb_surface_t *surface_find_by_proxy(Window win) {
     return NULL;
 }
 
-// Hit-test the three traffic-light buttons in a chrome rect at the
-// current scale. Returns 1 for close, 2 for minimize, 3 for zoom, or 0
-// when (x, y) misses every disc. x/y are proxy-relative pixel
-// coordinates (i.e. chrome-relative, since the proxy and chrome share
-// an origin). Mirrors hit_test_button in events.c so MoonBase and
-// X-client windows have identical click regions.
-static int chrome_hit_button(mb_surface_t *s, int x, int y) {
-    int left_pad = (int)(BUTTON_LEFT_PAD  * s->scale + 0.5f);
-    int top_pad  = (int)(BUTTON_TOP_PAD   * s->scale + 0.5f);
-    int diameter = (int)(BUTTON_DIAMETER  * s->scale + 0.5f);
-    int spacing  = (int)(BUTTON_SPACING   * s->scale + 0.5f);
-    if (diameter < 1) diameter = 1;
-    if (y < top_pad || y > top_pad + diameter) return 0;
-
-    int bx = left_pad;
-    if (x >= bx && x <= bx + diameter) return 1;
-    bx += diameter + spacing;
-    if (x >= bx && x <= bx + diameter) return 2;
-    bx += diameter + spacing;
-    if (x >= bx && x <= bx + diameter) return 3;
-    return 0;
-}
-
-// Wider "button region" hit test — the bounding box around all three
-// discs. Hovering anywhere inside reveals the glyphs on ALL three
-// buttons, matching SL 10.6.
-static bool chrome_hit_button_region(mb_surface_t *s, int x, int y) {
-    int left_pad = (int)(BUTTON_LEFT_PAD  * s->scale + 0.5f);
-    int top_pad  = (int)(BUTTON_TOP_PAD   * s->scale + 0.5f);
-    int diameter = (int)(BUTTON_DIAMETER  * s->scale + 0.5f);
-    int spacing  = (int)(BUTTON_SPACING   * s->scale + 0.5f);
-    if (diameter < 1) diameter = 1;
-    int region_left  = left_pad;
-    int region_right = left_pad + 3 * diameter + 2 * spacing;
-    return y >= top_pad && y <= top_pad + diameter
-        && x >= region_left && x <= region_right;
-}
-
 bool mb_host_handle_button_press(Window win, int x, int y, unsigned int button) {
     mb_surface_t *surf = surface_find_by_proxy(win);
     if (!surf) return false;
@@ -1165,7 +868,7 @@ bool mb_host_handle_button_press(Window win, int x, int y, unsigned int button) 
     // doesn't double-handle them.
     if (button != Button1) return true;
 
-    int btn = chrome_hit_button(surf, x, y);
+    int btn = mb_host_chrome_hit_button(x, y, surf->scale);
     if (btn > 0) {
         // Press feedback — set pressed_button, show hover glyphs on all
         // three, re-raster chrome. Grab the pointer so we still get the
@@ -1199,7 +902,7 @@ bool mb_host_handle_button_release(Window win, int x, int y,
     if (surf->pressed_button == 0) return true;
 
     int pressed = surf->pressed_button;
-    int over    = chrome_hit_button(surf, x, y);
+    int over    = mb_host_chrome_hit_button(x, y, surf->scale);
 
     surf->pressed_button = 0;
     surf->chrome_stale   = true;
@@ -1208,8 +911,8 @@ bool mb_host_handle_button_release(Window win, int x, int y,
 
     // Update hover after the grab ends — if the release happened inside
     // the button region, glyphs should keep showing; if the user dragged
-    // off, clear. chrome_hit_button_region does the correct test.
-    surf->buttons_hover = chrome_hit_button_region(surf, x, y);
+    // off, clear. mb_host_chrome_hit_button_region does the correct test.
+    surf->buttons_hover = mb_host_chrome_hit_button_region(x, y, surf->scale);
 
     // Fire the action only if the release was on the SAME button that
     // was originally pressed — matches SL 10.6 click-and-release.
@@ -1240,7 +943,7 @@ bool mb_host_handle_motion(Window win, int x, int y) {
     mb_surface_t *surf = surface_find_by_proxy(win);
     if (!surf) return false;
 
-    bool now_hover = chrome_hit_button_region(surf, x, y);
+    bool now_hover = mb_host_chrome_hit_button_region(x, y, surf->scale);
     if (now_hover != surf->buttons_hover) {
         surf->buttons_hover = now_hover;
         surf->chrome_stale  = true;
@@ -1305,58 +1008,13 @@ bool mb_host_emit_drag_frame(uint32_t client,
                              size_t   uri_count,
                              uint64_t timestamp_us) {
     if (!g_server) return false;
-    if (timestamp_us == 0) timestamp_us = ts_us();
+    if (timestamp_us == 0) timestamp_us = mb_host_ts_us();
 
-    // Map shape per IPC.md §5.3:
-    //   ENTER / DROP → { 1, 2, 3, 4, 5, 6 }
-    //   OVER         → { 1, 2, 3, 4, 6 }
-    //   LEAVE        → { 1, 6 }
-    // Unknown kinds are refused here — the caller is the only path
-    // that builds these frames so wrong kinds are a bug, not a network
-    // condition.
-    bool is_enter = (kind == MB_IPC_DRAG_ENTER);
-    bool is_drop  = (kind == MB_IPC_DRAG_DROP);
-    bool is_over  = (kind == MB_IPC_DRAG_OVER);
-    bool is_leave = (kind == MB_IPC_DRAG_LEAVE);
-    if (!is_enter && !is_drop && !is_over && !is_leave) return false;
-
-    size_t pairs;
-    if (is_leave)                 pairs = 2;
-    else if (is_over)             pairs = 5;
-    else                          pairs = 6;  // ENTER / DROP
-
-    mb_cbor_w_t w;
-    // Rough headroom for map header + small keys + URIs. URIs are the
-    // only thing that can push this over 64 bytes; sum them up once.
-    size_t cap = 48;
-    if (is_enter || is_drop) {
-        for (size_t i = 0; i < uri_count; i++) {
-            cap += (uris && uris[i] ? strlen(uris[i]) : 0) + 8;
-        }
-    }
-    mb_cbor_w_init_grow(&w, cap);
-    mb_cbor_w_map_begin(&w, pairs);
-    mb_cbor_w_key(&w, 1); mb_cbor_w_uint(&w, window_id);
-    if (!is_leave) {
-        mb_cbor_w_key(&w, 2); mb_cbor_w_int (&w, (int64_t)x);
-        mb_cbor_w_key(&w, 3); mb_cbor_w_int (&w, (int64_t)y);
-        mb_cbor_w_key(&w, 4); mb_cbor_w_uint(&w, modifiers);
-    }
-    if (is_enter || is_drop) {
-        mb_cbor_w_key(&w, 5);
-        mb_cbor_w_array_begin(&w, uri_count);
-        for (size_t i = 0; i < uri_count; i++) {
-            const char *u = (uris && uris[i]) ? uris[i] : "";
-            mb_cbor_w_tstr_n(&w, u, strlen(u));
-        }
-    }
-    mb_cbor_w_key(&w, 6); mb_cbor_w_uint(&w, timestamp_us);
-
-    if (!mb_cbor_w_ok(&w)) { mb_cbor_w_drop(&w); return false; }
     size_t len = 0;
-    uint8_t *body = mb_cbor_w_finish(&w, &len);
+    uint8_t *body = mb_host_build_drag_frame(kind, window_id, x, y,
+                                             modifiers, uris, uri_count,
+                                             timestamp_us, &len);
     if (!body) return false;
-
     int rc = mb_server_send(g_server, (mb_client_id_t)client,
                             kind, body, len, NULL, 0);
     free(body);
@@ -1373,22 +1031,11 @@ bool mb_host_route_key(uint32_t keycode, uint32_t modifiers,
         return false;
     }
 
-    mb_cbor_w_t w;
-    mb_cbor_w_init_grow(&w, 32);
-    mb_cbor_w_map_begin(&w, 5);
-    mb_cbor_w_key(&w, 1); mb_cbor_w_uint(&w, surf->window_id);
-    mb_cbor_w_key(&w, 2); mb_cbor_w_uint(&w, keycode);
-    mb_cbor_w_key(&w, 3); mb_cbor_w_uint(&w, modifiers);
-    mb_cbor_w_key(&w, 4); mb_cbor_w_bool(&w, is_repeat);
-    mb_cbor_w_key(&w, 5); mb_cbor_w_uint(&w, ts_us());
-    if (!mb_cbor_w_ok(&w)) {
-        mb_cbor_w_drop(&w);
-        return false;
-    }
     size_t len = 0;
-    uint8_t *body = mb_cbor_w_finish(&w, &len);
+    uint8_t *body = mb_host_build_key_event(surf->window_id, keycode,
+                                            modifiers, is_repeat,
+                                            mb_host_ts_us(), &len);
     if (!body) return false;
-
     int rc = mb_server_send(g_server, surf->client,
                             is_down ? MB_IPC_KEY_DOWN : MB_IPC_KEY_UP,
                             body, len, NULL, 0);
@@ -1405,22 +1052,11 @@ bool mb_host_route_text_input(const char *utf8) {
         return false;
     }
 
-    size_t text_len = strlen(utf8);
-
-    mb_cbor_w_t w;
-    mb_cbor_w_init_grow(&w, 32 + text_len);
-    mb_cbor_w_map_begin(&w, 3);
-    mb_cbor_w_key(&w, 1); mb_cbor_w_uint(&w, surf->window_id);
-    mb_cbor_w_key(&w, 2); mb_cbor_w_tstr_n(&w, utf8, text_len);
-    mb_cbor_w_key(&w, 3); mb_cbor_w_uint(&w, ts_us());
-    if (!mb_cbor_w_ok(&w)) {
-        mb_cbor_w_drop(&w);
-        return false;
-    }
     size_t len = 0;
-    uint8_t *body = mb_cbor_w_finish(&w, &len);
+    uint8_t *body = mb_host_build_text_input(surf->window_id, utf8,
+                                             strlen(utf8),
+                                             mb_host_ts_us(), &len);
     if (!body) return false;
-
     int rc = mb_server_send(g_server, surf->client, MB_IPC_TEXT_INPUT,
                             body, len, NULL, 0);
     free(body);
@@ -1493,42 +1129,45 @@ static bool surface_upload_texture(mb_surface_t *s) {
 
 // Make sure the chrome texture mirrors chrome.pixels for this surface.
 // Returns true if the chrome is ready to draw. Structurally identical to
-// surface_upload_texture but reads from chrome state instead of the shm
-// mapping. The revision counter lets us skip the GL upload on frames
-// where only the content changed (common case: client animating inside
-// a window that hasn't resized or changed focus).
+// surface_upload_texture but reads from the surface's mb_chrome_t (Cairo
+// pixels, stride, dimensions, revision counter) and uploads into the
+// surface-owned GL texture. mb_chrome_t carries no GL state because it
+// is shared with moonrock-lite, which uploads to an X drawable rather
+// than a GL texture. The revision counter lets us skip the GL upload on
+// frames where only the content changed (common case: client animating
+// inside a window that hasn't resized or changed focus).
 static bool chrome_upload_texture(mb_surface_t *s) {
-    mb_chrome_t *c = &s->chrome;
+    const mb_chrome_t *c = &s->chrome;
     if (!c->pixels || c->chrome_w == 0 || c->chrome_h == 0) return false;
 
-    if (c->tex == 0) {
-        glGenTextures(1, &c->tex);
-        if (c->tex == 0) return false;
-        glBindTexture(GL_TEXTURE_2D, c->tex);
+    if (s->chrome_tex == 0) {
+        glGenTextures(1, &s->chrome_tex);
+        if (s->chrome_tex == 0) return false;
+        glBindTexture(GL_TEXTURE_2D, s->chrome_tex);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE);
-        c->tex_w = c->tex_h = 0;
+        s->chrome_tex_w = s->chrome_tex_h = 0;
     } else {
-        glBindTexture(GL_TEXTURE_2D, c->tex);
+        glBindTexture(GL_TEXTURE_2D, s->chrome_tex);
     }
 
     if (s->chrome_uploaded_revision == c->revision
-            && c->tex_w == c->chrome_w
-            && c->tex_h == c->chrome_h) {
+            && s->chrome_tex_w == c->chrome_w
+            && s->chrome_tex_h == c->chrome_h) {
         return true;
     }
 
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
     glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint)(c->stride / 4));
 
-    if (c->tex_w != c->chrome_w || c->tex_h != c->chrome_h) {
+    if (s->chrome_tex_w != c->chrome_w || s->chrome_tex_h != c->chrome_h) {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA,
                      (GLsizei)c->chrome_w, (GLsizei)c->chrome_h, 0,
                      GL_BGRA, GL_UNSIGNED_BYTE, c->pixels);
-        c->tex_w = c->chrome_w;
-        c->tex_h = c->chrome_h;
+        s->chrome_tex_w = c->chrome_w;
+        s->chrome_tex_h = c->chrome_h;
     } else {
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
                         (GLsizei)c->chrome_w, (GLsizei)c->chrome_h,
@@ -1560,12 +1199,20 @@ void mb_host_render(GLuint basic_shader, float *projection) {
         // Repaint the chrome if first frame, dimensions changed, or
         // focus / title / scale / hover / pressed changed. active=true
         // for now; real focus routing arrives when pointer + keyboard
-        // input hit MoonBase surfaces.
+        // input hit MoonBase surfaces. host_chrome.h takes the three
+        // traffic-light PNGs as void* so it stays Cairo-only and free
+        // of moonrock asset-cache headers — pass them in here.
         if (s->chrome_stale) {
+            void *const btn_imgs[3] = {
+                assets_get_close_button(),
+                assets_get_minimize_button(),
+                assets_get_zoom_button(),
+            };
             if (mb_chrome_repaint(&s->chrome,
                                   s->px_w, s->px_h, s->scale,
                                   s->title, /*active*/ true,
-                                  s->buttons_hover, s->pressed_button)) {
+                                  s->buttons_hover, s->pressed_button,
+                                  btn_imgs)) {
                 s->chrome_stale = false;
             }
         }
@@ -1595,7 +1242,7 @@ void mb_host_render(GLuint basic_shader, float *projection) {
             (float)s->px_w, (float)s->px_h);
 
         if (chrome_ready) {
-            glBindTexture(GL_TEXTURE_2D, s->chrome.tex);
+            glBindTexture(GL_TEXTURE_2D, s->chrome_tex);
             shaders_draw_quad((float)s->screen_x, (float)s->screen_y,
                               (float)s->chrome.chrome_w,
                               (float)s->chrome.chrome_h);

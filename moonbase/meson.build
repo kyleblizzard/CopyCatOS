@@ -180,6 +180,49 @@ libmoonbase = shared_library(
   install: false,
 )
 
+# ---------------------------------------------------------------------
+# mb_host — compositor-host shared static library
+# ---------------------------------------------------------------------
+#
+# Compositor-agnostic helpers shared by moonrock (the full Snow Leopard
+# compositor on a CopyCatOS session) and moonrock-lite (the foreign-distro
+# sidecar used when a CopyCatOS user double-clicks a `.app` on Ubuntu /
+# Fedora / KDE). Both compositors speak the same MoonBase IPC, paint the
+# same Aqua chrome, and run the same hit-test math, so the parsers,
+# encoders, Cairo painter, and util helpers all live here behind one
+# header set.
+#
+# Built once inside moonbase under the project's strict
+# warning_level=3 + werror flags so the host TUs compile clean against
+# the same bar as libmoonbase. moonrock has a slightly looser flag mix
+# (warning_level=2) and therefore builds the same source files into its
+# own static library with explicit strict c_args to keep this file's
+# guarantee from being silently weakened on the moonrock side.
+#
+# install: false — slice 19.H.1 lives in-tree; outside builds reach this
+# code via the source files, not via a system static library.
+
+mb_host_sources = files(
+  'src/host/host_chrome.c',
+  'src/host/host_hittest.c',
+  'src/host/host_protocol.c',
+  'src/host/host_util.c',
+)
+
+mb_host_lib = static_library(
+  'mb_host',
+  mb_host_sources,
+  include_directories: include_directories('include', 'src'),
+  dependencies: [cairo_dep, pangocairo_dep],
+  install: false,
+)
+
+mb_host_dep = declare_dependency(
+  link_with: mb_host_lib,
+  include_directories: include_directories('include', 'src/host'),
+  dependencies: [cairo_dep, pangocairo_dep],
+)
+
 # pkg-config so third-party code can `pkg-config --cflags --libs moonbase`.
 # The Libs: line points at MoonBase.framework/Versions/Current and uses
 # GNU ld's '-l:<exact-filename>' form so the linker picks up the bare

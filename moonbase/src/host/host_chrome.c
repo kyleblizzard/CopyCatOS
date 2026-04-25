@@ -1,16 +1,15 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// moonbase_chrome.c — paints Aqua chrome for MoonBase windows into a
-// CPU-side Cairo image surface. mb_host_render uploads the resulting
-// pixels to a GL texture and stamps the chrome behind the client's
-// content rect every frame.
+// host_chrome.c — paints Aqua chrome for MoonBase windows into a
+// CPU-side Cairo image surface. The caller uploads or blits the pixels
+// (moonrock → GL texture, moonrock-lite → X drawable).
 //
 // Every gradient / color / inset constant here matches decor.c so
 // MoonBase windows are visually indistinguishable from X-client windows
 // framed by CCWM. The only architectural difference is the destination:
 // decor.c draws into an Xlib-backed Cairo surface wrapping an X frame
-// window; here we draw into a private cairo_image_surface the
-// compositor owns.
+// window; here we draw into a private cairo_image_surface the consumer
+// owns.
 //
 // Title-bar palette (SL 10.6, measured from
 // snowleopardaura/example photos/finderexample.png averaged across
@@ -26,15 +25,12 @@
 //     tb_y=1..20   linear #EDEDED -> #E4E4E4     body gradient
 //     tb_y=21      rgb(208, 208, 208)  #D0D0D0   divider (derived)
 //
-// Traffic-light buttons use the extracted real-screenshot PNGs under
-// $HOME/.local/share/aqua-widgets/sl_{close,minimize,zoom}_button.png
-// via assets_get_*_button() — same source surfaces decor.c paints, so
-// MoonBase and X-client chrome stay pixel-identical.
+// Traffic-light buttons are passed in as cairo_surface_t* by the caller
+// (host_chrome doesn't depend on moonrock's asset cache) — same source
+// surfaces decor.c paints, so MoonBase and X-client chrome stay
+// pixel-identical.
 
-#include "moonbase_chrome.h"
-
-#include "assets.h"  // assets_get_*_button
-#include "wm.h"      // TITLEBAR_HEIGHT, BORDER_WIDTH, BUTTON_*
+#include "host_chrome.h"
 
 #include <cairo/cairo.h>
 #include <pango/pangocairo.h>
@@ -64,7 +60,8 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
                        const char *title,
                        bool     active,
                        bool     buttons_hover,
-                       int      pressed_button)
+                       int      pressed_button,
+                       void *const btn_imgs[3])
 {
     if (!chrome) return false;
     if (content_w == 0 || content_h == 0 || scale <= 0.0f) return false;
@@ -82,7 +79,7 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
     // overlay, not as reserved chrome space) so the window has a
     // hairline definition against the wallpaper when the GL shadow
     // pass is disabled.
-    int titlebar_px = px(TITLEBAR_HEIGHT * scale);
+    int titlebar_px = px(MB_CHROME_TITLEBAR_HEIGHT * scale);
 
     uint32_t chrome_w = content_w;
     uint32_t chrome_h = content_h + (uint32_t)titlebar_px;
@@ -90,10 +87,7 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
     // Re-allocate the Cairo surface when the outer size changes. This
     // happens on the first paint and whenever the client commits at a
     // new pixel size. The old surface is destroyed synchronously — it
-    // has no GL state, it's pure RAM — and the GL texture is retained
-    // so the next upload can still glTexSubImage2D into it if the new
-    // dimensions happen to match (they won't here, but the logic keeps
-    // the state machine simple).
+    // has no GPU state, it's pure RAM.
     if (chrome->cairo_surface == NULL
             || chrome->chrome_w != chrome_w
             || chrome->chrome_h != chrome_h) {
@@ -155,22 +149,14 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
     // comment block at top of this file). Both active and inactive
     // follow the same three-part recipe: 1-px highlight row, body
     // gradient, 1-px divider at the bottom edge.
-    //
-    // At fractional scale we stretch the three regions proportionally:
-    //   highlight = 1 px (always)
-    //   divider   = 1 px (always, drawn as a stroke below)
-    //   body      = titlebar_px - 1 px  (the remainder)
-    // so the first and last rows remain crisp at every scale while the
-    // gradient takes the slack.
     {
         double w = (double)chrome_w;
         double h = (double)titlebar_px;
 
-        // Colour stops.
-        double hi_r, hi_g, hi_b;     // 1-px highlight
-        double g0_r, g0_g, g0_b;     // body gradient top
-        double g1_r, g1_g, g1_b;     // body gradient bottom
-        double dv_r, dv_g, dv_b;     // 1-px divider
+        double hi_r, hi_g, hi_b;
+        double g0_r, g0_g, g0_b;
+        double g1_r, g1_g, g1_b;
+        double dv_r, dv_g, dv_b;
 
         if (active) {
             hi_r = hi_g = hi_b = 226/255.0;
@@ -184,13 +170,10 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
             dv_r = dv_g = dv_b = 208/255.0;
         }
 
-        // 1-px highlight row at the very top.
         cairo_set_source_rgb(cr, hi_r, hi_g, hi_b);
         cairo_rectangle(cr, 0, 0, w, 1);
         cairo_fill(cr);
 
-        // Body gradient, spanning y=1 to y=titlebar_px-1 (divider sits
-        // on the last row drawn as a separate stroke below).
         cairo_pattern_t *grad = cairo_pattern_create_linear(0, 1, 0, h - 1);
         cairo_pattern_add_color_stop_rgb(grad, 0.0, g0_r, g0_g, g0_b);
         cairo_pattern_add_color_stop_rgb(grad, 1.0, g1_r, g1_g, g1_b);
@@ -199,36 +182,26 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
         cairo_fill(cr);
         cairo_pattern_destroy(grad);
 
-        // 1-px divider at the very bottom of the titlebar.
         cairo_set_source_rgb(cr, dv_r, dv_g, dv_b);
         cairo_rectangle(cr, 0, h - 1, w, 1);
         cairo_fill(cr);
     }
 
     // ── Traffic lights ──
-    // Active: real SL 10.6 PNG assets via assets_get_*_button(), same
-    // surfaces decor.c uses for CCWM-framed X windows, so MoonBase
-    // chrome is pixel-identical. Each PNG is a 14x14 disc cropped from
-    // finderexample.png with a circular alpha mask so the titlebar
-    // gradient shows around the button.
-    //
+    // Active: caller-supplied PNG asset surfaces (close, minimize, zoom).
     // Inactive: uniform gray dots with a thin outline — matches real
-    // Snow Leopard, which replaces the three coloured lights with
-    // indistinguishable circles when the window loses focus.
-    int btn_d  = px(BUTTON_DIAMETER  * scale);
-    int btn_sp = px(BUTTON_SPACING   * scale);
-    int btn_lx = px(BUTTON_LEFT_PAD  * scale);
-    int btn_ty = px(BUTTON_TOP_PAD   * scale);
+    // Snow Leopard.
+    int btn_d  = px(MB_CHROME_BUTTON_DIAMETER  * scale);
+    int btn_sp = px(MB_CHROME_BUTTON_SPACING   * scale);
+    int btn_lx = px(MB_CHROME_BUTTON_LEFT_PAD  * scale);
+    int btn_ty = px(MB_CHROME_BUTTON_TOP_PAD   * scale);
 
-    cairo_surface_t *btn_imgs[3] = {
-        assets_get_close_button(),
-        assets_get_minimize_button(),
-        assets_get_zoom_button(),
+    cairo_surface_t *imgs[3] = {
+        btn_imgs ? (cairo_surface_t *)btn_imgs[0] : NULL,
+        btn_imgs ? (cairo_surface_t *)btn_imgs[1] : NULL,
+        btn_imgs ? (cairo_surface_t *)btn_imgs[2] : NULL,
     };
 
-    // A hover OR press on any one button reveals all three glyphs
-    // (SL 10.6 behaviour) and keeps the PNG discs in their coloured
-    // state — inactive paint only happens when !active.
     bool show_glyphs = active && (buttons_hover || pressed_button > 0);
     int bx = btn_lx;
     int by = btn_ty;
@@ -237,27 +210,17 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
         double cy = by + btn_d / 2.0;
         double r  = btn_d / 2.0;
 
-        if (active && btn_imgs[i]) {
-            // Paint the PNG asset scaled to the current button diameter.
-            // BILINEAR is a deliberate compromise: fractional scales
-            // (e.g. 1.75x -> 13 px native upscaled to ~23 px) introduce
-            // mild softness vs. the 1x reference, but sharper filters
-            // would alias the circular alpha edge. Cheapest path that
-            // keeps the disc's anti-aliased border clean.
-            int img_w = cairo_image_surface_get_width (btn_imgs[i]);
-            int img_h = cairo_image_surface_get_height(btn_imgs[i]);
+        if (active && imgs[i]) {
+            int img_w = cairo_image_surface_get_width (imgs[i]);
+            int img_h = cairo_image_surface_get_height(imgs[i]);
             cairo_save(cr);
             cairo_translate(cr, bx, by);
             cairo_scale(cr, (double)btn_d / img_w, (double)btn_d / img_h);
-            cairo_set_source_surface(cr, btn_imgs[i], 0, 0);
+            cairo_set_source_surface(cr, imgs[i], 0, 0);
             cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR);
             cairo_paint(cr);
             cairo_restore(cr);
         } else {
-            // Inactive (or fallback when a PNG failed to load): solid
-            // gray dot with a slightly darker stroke. Colors measured
-            // from the inactive Finder window behind the Sharing sheet
-            // in example.png — roughly #B0B0B0 fill, #969696 stroke.
             cairo_arc(cr, cx, cy, r - 0.5, 0, 2 * M_PI);
             cairo_set_source_rgb(cr, 176/255.0, 176/255.0, 176/255.0);
             cairo_fill_preserve(cr);
@@ -266,8 +229,6 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
             cairo_stroke(cr);
         }
 
-        // Pressed overlay — darken the currently-pressed disc. Mirrors
-        // decor.c's 25% black over the PNG, which is the SL feedback.
         if (pressed_button == (i + 1) && active) {
             cairo_save(cr);
             cairo_arc(cr, cx, cy, r - 0.5, 0, 2 * M_PI);
@@ -276,9 +237,6 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
             cairo_restore(cr);
         }
 
-        // Glyphs: ×, −, + rendered as short strokes across ~55% of the
-        // disc. Copied from decor.c so X-client and MoonBase windows
-        // paint identical pixels. Only appears on active + hover/press.
         if (show_glyphs) {
             double glyph_size = r * 0.55;
             cairo_save(cr);
@@ -313,13 +271,8 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
     }
 
     // ── Title text (centered in the title bar) ──
-    // Pango gives us Lucida Grande with the project's font config. We
-    // scale the point size by the backing scale so text is crisp at
-    // 1.5× / 2.0× without relying on Pango's own DPI setting.
     PangoLayout *layout = pango_cairo_create_layout(cr);
     char font_spec[64];
-    // Bold on focused windows, regular on inactive — matches decor.c.
-    // 11pt base, scaled for backing scale.
     int pt_size = (int)(11.0f * scale + 0.5f);
     if (pt_size < 8) pt_size = 8;
     snprintf(font_spec, sizeof(font_spec), "%s %d",
@@ -333,9 +286,6 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
     double tx = ((double)chrome_w - (double)tw) / 2.0;
     double ty = ((double)titlebar_px - (double)th) / 2.0;
 
-    // 1 pt white drop shadow below the text (embossed / engraved look).
-    // Offset scales with backing scale — a flat 1 px offset would vanish
-    // visually at 2×/1.75× and stop reading as an engraved edge.
     cairo_move_to(cr, tx, ty + (double)px(scale));
     cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, active ? 0.7 : 0.3);
     pango_cairo_show_layout(cr, layout);
@@ -351,14 +301,6 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
     g_object_unref(layout);
 
     // ── Side + bottom hairline ──
-    // 1-px edge line overlaid on the content's outermost pixels so the
-    // window has a faint definition against the wallpaper when the GL
-    // shadow pass isn't drawing. Not reserved chrome space — the
-    // content quad spans the full chrome width and this line paints
-    // over its edge after content has already blitted. Colour is the
-    // CLAUDE.md canonical #A0A0A0 active / #BEBEBE inactive, far
-    // lighter than the prior #8A8A8A / #B4B4B4 so the window no
-    // longer reads as "a pixel or two inset."
     double bc = active ? 160/255.0 : 190/255.0;
     cairo_set_source_rgb(cr, bc, bc, bc);
     cairo_set_line_width(cr, 1.0);
@@ -377,9 +319,6 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
 
     cairo_destroy(cr);
 
-    // Expose the Cairo pixels to the uploader. cairo_image_surface_flush
-    // guarantees every pending draw op has landed in RAM before we let
-    // GL read it.
     cairo_surface_flush(surface);
     chrome->pixels = cairo_image_surface_get_data(surface);
     chrome->stride = (uint32_t)cairo_image_surface_get_stride(surface);
@@ -391,15 +330,11 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
 // Public: release
 // ---------------------------------------------------------------------
 
-void mb_chrome_release(mb_chrome_t *chrome,
-                       void (*defer_gl_delete)(GLuint tex))
+void mb_chrome_release(mb_chrome_t *chrome)
 {
     if (!chrome) return;
     if (chrome->cairo_surface) {
         cairo_surface_destroy((cairo_surface_t *)chrome->cairo_surface);
-    }
-    if (defer_gl_delete && chrome->tex) {
-        defer_gl_delete(chrome->tex);
     }
     memset(chrome, 0, sizeof(*chrome));
 }
