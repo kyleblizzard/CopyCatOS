@@ -1039,8 +1039,11 @@ static bool translate_window_to_root(Display *dpy, Window w,
 //   * No taskbar entry — fine, chrome is decoration not an app window.
 //   * No automatic stacking — we re-raise chrome above the bundle on
 //     every ConfigureNotify, which keeps it visually attached.
-//   * No WM-managed focus — a click on chrome doesn't activate the
-//     bundle. Forwarding to the bundle is a 19.D-β-3 follow-up.
+//   * No WM-managed focus — a click on chrome won't auto-activate the
+//     bundle, so 19.D-β-3 wires ButtonPress on the chrome window into
+//     explicit forwarding (traffic-light actions + _NET_ACTIVE_WINDOW
+//     pager-class messages). Without that the user sees decorations
+//     they can't interact with.
 //
 // WM_CLASS, _NET_WM_NAME, and WM_TRANSIENT_FOR are still set —
 // purely informational (taskbar grouping, _NET_CLIENT_LIST_STACKING,
@@ -1049,6 +1052,128 @@ static bool translate_window_to_root(Display *dpy, Window w,
 static void set_chrome_window_metadata(Display *dpy, Window chrome,
                                        Window bundle) {
     XSetTransientForHint(dpy, chrome, bundle);
+}
+
+// Snow Leopard traffic-light geometry. Canonical source is
+// moonrock/src/wm.h (BUTTON_DIAMETER / BUTTON_SPACING / BUTTON_LEFT_PAD
+// / BUTTON_TOP_PAD); duplicated here because wm.h is moonrock-private
+// and pulling it across the runtime boundary would drag the rest of the
+// WM with it. When 19.D-γ migrates the chrome layer into shared code,
+// these collapse onto the menubar_render constants alongside the paint
+// extraction. Until then: keep these in sync with wm.h by inspection.
+#define CHROME_STUB_BUTTON_DIAMETER  13
+#define CHROME_STUB_BUTTON_SPACING    7
+#define CHROME_STUB_BUTTON_LEFT_PAD   8
+#define CHROME_STUB_BUTTON_TOP_PAD    4
+
+// Hit-test a click against the title-bar traffic lights. Returns
+// 1=close, 2=minimize, 3=zoom, 0=miss. Mirrors the canonical
+// hit_test_button() in moonrock/src/events.c — same constants,
+// same scaling rule, same return convention. Inlined here (rather
+// than extracted into menubar_render) because the SL traffic-light
+// glyphs and gradient still live in moonrock/src/moonbase_chrome.c;
+// extracting both paint and hit-test belongs to its own slice that
+// migrates the chrome layer wholesale.
+static int chrome_stub_hit_test_button(int fx, int fy, double scale) {
+    int btn_d  = (int)(CHROME_STUB_BUTTON_DIAMETER  * scale);
+    int btn_sp = (int)(CHROME_STUB_BUTTON_SPACING   * scale);
+    int btn_lx = (int)(CHROME_STUB_BUTTON_LEFT_PAD  * scale);
+    int btn_ty = (int)(CHROME_STUB_BUTTON_TOP_PAD   * scale);
+    if (fy < btn_ty || fy > btn_ty + btn_d) return 0;
+    int bx = btn_lx;
+    if (fx >= bx && fx <= bx + btn_d) return 1;
+    bx += btn_d + btn_sp;
+    if (fx >= bx && fx <= bx + btn_d) return 2;
+    bx += btn_d + btn_sp;
+    if (fx >= bx && fx <= bx + btn_d) return 3;
+    return 0;
+}
+
+// Send _NET_ACTIVE_WINDOW to root requesting bundle_win be activated.
+// source=2 (pager-class) is correct: the chrome stub is acting as a
+// delegate for user input, not as a normal app sending its own window
+// to the front. EWMH-compliant WMs (KWin, Mutter, Xfwm) honour pager
+// requests unconditionally; source=1 (normal app) gets focus-stealing-
+// prevention rejection on a backgrounded chrome process.
+static void chrome_stub_send_active_window(Display *dpy, Window root,
+                                           Window bundle_win,
+                                           Atom net_active_win) {
+    XEvent ev = {0};
+    ev.type                 = ClientMessage;
+    ev.xclient.window       = bundle_win;
+    ev.xclient.message_type = net_active_win;
+    ev.xclient.format       = 32;
+    ev.xclient.data.l[0]    = 2;            // source: pager
+    ev.xclient.data.l[1]    = CurrentTime;
+    ev.xclient.data.l[2]    = 0;            // requestor's currently-active window: none
+    XSendEvent(dpy, root, False,
+               SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+}
+
+// Send WM_DELETE_WINDOW to bundle_win if it advertises support, falling
+// back to XKillClient if it doesn't. ICCCM 4.2.8.1: WM_DELETE goes to
+// the *client*, not root — unlike the EWMH state messages below.
+static void chrome_stub_send_delete(Display *dpy, Window bundle_win,
+                                    Atom wm_protocols, Atom wm_delete) {
+    Atom *protos = NULL;
+    int n_protos = 0;
+    bool supported = false;
+    if (XGetWMProtocols(dpy, bundle_win, &protos, &n_protos)) {
+        for (int i = 0; i < n_protos; i++) {
+            if (protos[i] == wm_delete) { supported = true; break; }
+        }
+        if (protos) XFree(protos);
+    }
+    if (supported) {
+        XEvent ev = {0};
+        ev.type                 = ClientMessage;
+        ev.xclient.window       = bundle_win;
+        ev.xclient.message_type = wm_protocols;
+        ev.xclient.format       = 32;
+        ev.xclient.data.l[0]    = (long)wm_delete;
+        ev.xclient.data.l[1]    = CurrentTime;
+        XSendEvent(dpy, bundle_win, False, NoEventMask, &ev);
+    } else {
+        XKillClient(dpy, bundle_win);
+    }
+}
+
+// Send WM_CHANGE_STATE / IconicState to root — the ICCCM minimize
+// request. Reparenting WMs map this to their per-window minimise/iconify
+// flow (KWin, Mutter, Xfwm, moonrock all comply).
+static void chrome_stub_send_minimize(Display *dpy, Window root,
+                                      Window bundle_win,
+                                      Atom wm_change_state) {
+    XEvent ev = {0};
+    ev.type                 = ClientMessage;
+    ev.xclient.window       = bundle_win;
+    ev.xclient.message_type = wm_change_state;
+    ev.xclient.format       = 32;
+    ev.xclient.data.l[0]    = 3;            // IconicState (X11/Xutil.h)
+    XSendEvent(dpy, root, False,
+               SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+}
+
+// Toggle the EWMH maximised state — the SL "zoom" button. data.l[0]=2
+// means "toggle"; data.l[1]/l[2] are the two atoms being toggled
+// together (vertical + horizontal). source=2 (pager-class), same
+// reasoning as _NET_ACTIVE_WINDOW above.
+static void chrome_stub_send_zoom(Display *dpy, Window root,
+                                  Window bundle_win,
+                                  Atom net_wm_state,
+                                  Atom net_wm_state_max_vert,
+                                  Atom net_wm_state_max_horz) {
+    XEvent ev = {0};
+    ev.type                 = ClientMessage;
+    ev.xclient.window       = bundle_win;
+    ev.xclient.message_type = net_wm_state;
+    ev.xclient.format       = 32;
+    ev.xclient.data.l[0]    = 2;            // _NET_WM_STATE_TOGGLE
+    ev.xclient.data.l[1]    = (long)net_wm_state_max_vert;
+    ev.xclient.data.l[2]    = (long)net_wm_state_max_horz;
+    ev.xclient.data.l[3]    = 2;            // source: pager
+    XSendEvent(dpy, root, False,
+               SubstructureRedirectMask | SubstructureNotifyMask, &ev);
 }
 
 static int run_chrome_stub(const char *bundle_path,
@@ -1094,10 +1219,17 @@ static int run_chrome_stub(const char *bundle_path,
     // on the WM publishing the new client.
     Window bundle_win = wait_for_bundle_window(dpy, root, m->bundle_id, 30);
     if (!bundle_win) {
-        fprintf(stderr,
-                "[chrome-stub %d] bundle window for '%s' did not appear "
-                "within 30s — exiting (no chrome to draw)\n",
-                getpid(), m->bundle_id);
+        if (chrome_stub_should_exit) {
+            fprintf(stderr,
+                    "[chrome-stub %d] exiting (signaled) before bundle "
+                    "window for '%s' was located\n",
+                    getpid(), m->bundle_id);
+        } else {
+            fprintf(stderr,
+                    "[chrome-stub %d] bundle window for '%s' did not appear "
+                    "within 30s — exiting (no chrome to draw)\n",
+                    getpid(), m->bundle_id);
+        }
         if (bridge_up) appmenu_bridge_shutdown();
         XCloseDisplay(dpy);
         return 0;
@@ -1133,7 +1265,8 @@ static int run_chrome_stub(const char *bundle_path,
 
     XSetWindowAttributes wa = {0};
     wa.background_pixel    = WhitePixel(dpy, screen);
-    wa.event_mask          = ExposureMask | StructureNotifyMask;
+    wa.event_mask          = ExposureMask | StructureNotifyMask
+                           | ButtonPressMask;
     wa.override_redirect   = True;
     Window chrome_win = XCreateWindow(
         dpy, root,
@@ -1161,7 +1294,13 @@ static int run_chrome_stub(const char *bundle_path,
     // *resize*, not on a pure move, leaving chrome stranded. Listening
     // for ConfigureNotify on root catches the WM frame moving, which
     // covers the moonrock case and is harmless duplication elsewhere.
-    Atom net_active_win = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
+    Atom net_active_win           = XInternAtom(dpy, "_NET_ACTIVE_WINDOW",            False);
+    Atom wm_protocols             = XInternAtom(dpy, "WM_PROTOCOLS",                  False);
+    Atom wm_delete_window         = XInternAtom(dpy, "WM_DELETE_WINDOW",              False);
+    Atom wm_change_state          = XInternAtom(dpy, "WM_CHANGE_STATE",               False);
+    Atom net_wm_state             = XInternAtom(dpy, "_NET_WM_STATE",                 False);
+    Atom net_wm_state_max_vert    = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT",  False);
+    Atom net_wm_state_max_horz    = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ",  False);
     {
         XWindowAttributes ra;
         XGetWindowAttributes(dpy, root, &ra);
@@ -1285,6 +1424,44 @@ static int run_chrome_stub(const char *bundle_path,
                     cairo_xlib_surface_set_size(surf, cur_w, cur_h);
                     need_paint  = true;
                 }
+                continue;
+            }
+
+            if (ev.type == ButtonPress &&
+                ev.xbutton.window == chrome_win &&
+                ev.xbutton.button == Button1) {
+                int fx = ev.xbutton.x;
+                int fy = ev.xbutton.y;
+                // Title bar occupies [0, cur_title_h); below that is
+                // the menu row, which is β-4's responsibility.
+                if (fy < cur_title_h) {
+                    int hit = chrome_stub_hit_test_button(fx, fy, scale);
+                    if (hit == 1) {
+                        chrome_stub_send_delete(dpy, bundle_win,
+                                                wm_protocols,
+                                                wm_delete_window);
+                        continue;
+                    }
+                    if (hit == 2) {
+                        chrome_stub_send_minimize(dpy, root, bundle_win,
+                                                  wm_change_state);
+                        continue;
+                    }
+                    if (hit == 3) {
+                        chrome_stub_send_zoom(dpy, root, bundle_win,
+                                              net_wm_state,
+                                              net_wm_state_max_vert,
+                                              net_wm_state_max_horz);
+                        continue;
+                    }
+                }
+                // Click landed on chrome but missed the traffic lights
+                // (empty title-bar area, or anywhere on the menu row
+                // until β-4 wires per-title popup). Acting as the
+                // bundle's input delegate, ask the WM to activate it
+                // so subsequent keystrokes go to the right window.
+                chrome_stub_send_active_window(dpy, root, bundle_win,
+                                               net_active_win);
                 continue;
             }
 
