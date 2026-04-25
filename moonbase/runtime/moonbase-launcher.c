@@ -53,6 +53,7 @@
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
+#include <X11/extensions/Xrandr.h>
 #include <X11/keysym.h>
 
 // ----------------------------------------------------------------------------
@@ -1467,6 +1468,107 @@ static void chrome_stub_close_dropdown(Display *dpy,
     XFlush(dpy);
 }
 
+// 19.D-γ — Probe the effective UI scale at a point in root coordinates.
+//
+// Two-tier strategy:
+//   1. Fast path: parse _MOONROCK_OUTPUT_SCALES, the per-output atom that
+//      moonrock publishes inside a full CopyCatOS session. Wire format
+//      (one row per output, newline-separated):
+//          "<name> <x> <y> <w> <h> <effective> <primary> <rot> <mult>"
+//      Field 6 is already-folded effective_scale = backing × multiplier;
+//      don't re-multiply. The atom is absent on foreign distros, which
+//      is fine — we fall through to XRandR.
+//   2. Fallback: walk XRandR outputs, find the CRTC that contains
+//      (cx, cy), compute PPI from the CRTC's pixel width and the
+//      output's EDID-reported mm_width (rotation-corrected), then map
+//      to the discrete scale ladder from the HiDPI mandate:
+//        ≲160 → 1.0×, 160–210 → 1.25×, 210–260 → 1.5×,
+//        260–320 → 1.75×, ≥320 → 2.0×
+//      mm_width == 0 (no EDID) or no enclosing CRTC → 1.0×.
+//
+// Returns 1.0 on any failure path, never less.
+static double chrome_stub_probe_scale(Display *dpy, Window root,
+                                      int cx, int cy) {
+    Atom scales_atom = XInternAtom(dpy, "_MOONROCK_OUTPUT_SCALES", True);
+    if (scales_atom != None) {
+        Atom actual_type = None;
+        int actual_format = 0;
+        unsigned long nitems = 0, bytes_after = 0;
+        unsigned char *prop = NULL;
+        if (XGetWindowProperty(dpy, root, scales_atom, 0, (~0L), False,
+                               XA_STRING, &actual_type, &actual_format,
+                               &nitems, &bytes_after, &prop) == Success
+            && prop && nitems > 0) {
+            char *line = (char *)prop;
+            while (line && *line) {
+                char *eol = strchr(line, '\n');
+                if (eol) *eol = '\0';
+                char namebuf[64];
+                int x = 0, y = 0, w = 0, h = 0;
+                float eff = 1.0f;
+                int got = sscanf(line, "%63s %d %d %d %d %f",
+                                 namebuf, &x, &y, &w, &h, &eff);
+                if (got >= 6 && cx >= x && cx < x + w &&
+                    cy >= y && cy < y + h && eff > 0.0f) {
+                    XFree(prop);
+                    return (double)eff;
+                }
+                if (!eol) break;
+                line = eol + 1;
+            }
+        }
+        if (prop) XFree(prop);
+    }
+
+    int xrr_event_base = 0, xrr_error_base = 0;
+    if (!XRRQueryExtension(dpy, &xrr_event_base, &xrr_error_base)) {
+        return 1.0;
+    }
+
+    XRRScreenResources *res = XRRGetScreenResources(dpy, root);
+    if (!res) return 1.0;
+
+    double picked = 1.0;
+    for (int i = 0; i < res->noutput; i++) {
+        XRROutputInfo *oi = XRRGetOutputInfo(dpy, res, res->outputs[i]);
+        if (!oi) continue;
+        if (oi->connection != RR_Connected || oi->crtc == None) {
+            XRRFreeOutputInfo(oi);
+            continue;
+        }
+        XRRCrtcInfo *ci = XRRGetCrtcInfo(dpy, res, oi->crtc);
+        if (!ci) { XRRFreeOutputInfo(oi); continue; }
+
+        if (cx >= ci->x && cx < ci->x + (int)ci->width &&
+            cy >= ci->y && cy < ci->y + (int)ci->height) {
+            // Rotation: 90/270 swaps the panel's natural axes, so the
+            // CRTC's width corresponds to the EDID's mm_height.
+            unsigned int rot      = ci->rotation & 0xf;
+            unsigned int pix_axis = ci->width;
+            unsigned long mm_axis = oi->mm_width;
+            if (rot == RR_Rotate_90 || rot == RR_Rotate_270) {
+                pix_axis = ci->height;
+                mm_axis  = oi->mm_height;
+            }
+            if (mm_axis > 0 && pix_axis > 0) {
+                double ppi = ((double)pix_axis / (double)mm_axis) * 25.4;
+                if      (ppi <  160.0) picked = 1.0;
+                else if (ppi <  210.0) picked = 1.25;
+                else if (ppi <  260.0) picked = 1.5;
+                else if (ppi <  320.0) picked = 1.75;
+                else                   picked = 2.0;
+            }
+            XRRFreeCrtcInfo(ci);
+            XRRFreeOutputInfo(oi);
+            break;
+        }
+        XRRFreeCrtcInfo(ci);
+        XRRFreeOutputInfo(oi);
+    }
+    XRRFreeScreenResources(res);
+    return picked;
+}
+
 static int run_chrome_stub(const char *bundle_path,
                            const LauncherManifest *m,
                            menubar_render_theme_t theme) {
@@ -1539,6 +1641,7 @@ static int run_chrome_stub(const char *bundle_path,
         return 1;
     }
     int bundle_w = attrs.width;
+    int bundle_h = attrs.height;
     int bundle_root_x = 0, bundle_root_y = 0;
     translate_window_to_root(dpy, bundle_win,
                              &bundle_root_x, &bundle_root_y);
@@ -1546,13 +1649,33 @@ static int run_chrome_stub(const char *bundle_path,
     // Track the bundle for placement + lifecycle.
     XSelectInput(dpy, bundle_win, StructureNotifyMask);
 
-    // Chrome geometry — Menu Bar Law: 22 pt × scale. 19.D-γ replaces
-    // the hardcoded 1.0 with a real XRandR-derived scale.
-    const double scale = 1.0;
-    const int title_h_px = (int)(menubar_render_title_bar_height_pts() * scale);
-    const int menu_h_px  = (int)(menubar_render_menu_bar_height_pts()  * scale);
-    const int chrome_h   = title_h_px + menu_h_px;
-    int chrome_w         = bundle_w;
+    // 19.D-γ — Subscribe to RandR screen-change events so a mode/scale
+    // change on the bundle's output rerenders chrome inside one event
+    // round-trip. xrr_event_base is added to RRScreenChangeNotify in
+    // the loop's event match. Foreign distros without XRandR keep
+    // working — the probe + extension query both degrade to no-op.
+    int  xrr_event_base = 0, xrr_error_base = 0;
+    bool have_xrr = XRRQueryExtension(dpy, &xrr_event_base, &xrr_error_base);
+    if (have_xrr) {
+        XRRSelectInput(dpy, root, RRScreenChangeNotifyMask);
+    }
+
+    // Chrome geometry — Menu Bar Law: chrome_h = 22pt × effective_scale,
+    // re-evaluated when the bundle moves between outputs (ConfigureNotify)
+    // or the output's scale itself changes (RRScreenChangeNotify). The
+    // bundle's centre is the probe point — splits straddling outputs
+    // resolve to the output owning the majority of pixels.
+    double scale = chrome_stub_probe_scale(
+        dpy, root,
+        bundle_root_x + bundle_w / 2,
+        bundle_root_y + bundle_h / 2);
+    int title_h_px = (int)(menubar_render_title_bar_height_pts() * scale);
+    int menu_h_px  = (int)(menubar_render_menu_bar_height_pts()  * scale);
+    int chrome_h   = title_h_px + menu_h_px;
+    int chrome_w   = bundle_w;
+    fprintf(stderr,
+            "[chrome-stub %d] initial scale=%.2f title_h=%d menu_h=%d\n",
+            getpid(), scale, title_h_px, menu_h_px);
 
     XSetWindowAttributes wa = {0};
     wa.background_pixel    = WhitePixel(dpy, screen);
@@ -1784,22 +1907,101 @@ static int run_chrome_stub(const char *bundle_path,
                     continue;
                 }
                 int nw = a.width;
-                if (nw != chrome_w || rx != bundle_root_x ||
-                    ry != bundle_root_y) {
-                    bundle_root_x = rx;
-                    bundle_root_y = ry;
-                    chrome_w      = nw;
-                    XMoveResizeWindow(dpy, chrome_win,
-                                      rx, ry - chrome_h,
-                                      nw, chrome_h);
-                    XRaiseWindow(dpy, chrome_win);
-                    cur_w       = nw;
-                    cur_h       = chrome_h;
-                    cur_title_h = title_h_px;
-                    cur_menu_h  = menu_h_px;
-                    cairo_xlib_surface_set_size(surf, cur_w, cur_h);
-                    need_paint  = true;
+                int nh = a.height;
+                bool moved   = (rx != bundle_root_x || ry != bundle_root_y);
+                bool resized = (nw != chrome_w || nh != bundle_h);
+
+                // Re-probe scale at the new bundle centre. A move across
+                // outputs of different scale flips chrome_h here; a same-
+                // output resize leaves the integer chrome_h untouched and
+                // skips the close-popup/cairo-resize cost below.
+                double new_scale = chrome_stub_probe_scale(
+                    dpy, root, rx + nw / 2, ry + nh / 2);
+                int new_title_h = (int)(
+                    menubar_render_title_bar_height_pts() * new_scale);
+                int new_menu_h  = (int)(
+                    menubar_render_menu_bar_height_pts()  * new_scale);
+                int new_chrome_h = new_title_h + new_menu_h;
+
+                bool scaled = (new_chrome_h != chrome_h);
+
+                if (!moved && !resized && !scaled) continue;
+
+                bundle_root_x = rx;
+                bundle_root_y = ry;
+                bundle_h      = nh;
+                chrome_w      = nw;
+
+                if (scaled) {
+                    // Borrowed surface dims will change; popup parent
+                    // pointers and cached row geometry no longer match.
+                    if (dropdown.open) {
+                        chrome_stub_close_dropdown(dpy, &dropdown);
+                    }
+                    scale       = new_scale;
+                    title_h_px  = new_title_h;
+                    menu_h_px   = new_menu_h;
+                    chrome_h    = new_chrome_h;
+                    fprintf(stderr,
+                            "[chrome-stub %d] scale=%.2f title_h=%d "
+                            "menu_h=%d (output change)\n",
+                            getpid(), scale, title_h_px, menu_h_px);
                 }
+
+                XMoveResizeWindow(dpy, chrome_win,
+                                  rx, ry - chrome_h,
+                                  nw, chrome_h);
+                XRaiseWindow(dpy, chrome_win);
+                cur_w       = nw;
+                cur_h       = chrome_h;
+                cur_title_h = title_h_px;
+                cur_menu_h  = menu_h_px;
+                cairo_xlib_surface_set_size(surf, cur_w, cur_h);
+                need_paint  = true;
+                continue;
+            }
+
+            // 19.D-γ — RandR screen change: a mode/rotation/scale change
+            // on the host. Always reprobe — the bundle's output may have
+            // flipped scale without a single ConfigureNotify firing on
+            // the bundle window. Same close-popup-on-scale-change rule.
+            if (have_xrr &&
+                ev.type == xrr_event_base + RRScreenChangeNotify) {
+                XRRUpdateConfiguration(&ev);
+                double new_scale = chrome_stub_probe_scale(
+                    dpy, root,
+                    bundle_root_x + chrome_w / 2,
+                    bundle_root_y + bundle_h / 2);
+                int new_title_h = (int)(
+                    menubar_render_title_bar_height_pts() * new_scale);
+                int new_menu_h  = (int)(
+                    menubar_render_menu_bar_height_pts()  * new_scale);
+                int new_chrome_h = new_title_h + new_menu_h;
+                if (new_chrome_h == chrome_h) continue;
+
+                if (dropdown.open) {
+                    chrome_stub_close_dropdown(dpy, &dropdown);
+                }
+                scale       = new_scale;
+                title_h_px  = new_title_h;
+                menu_h_px   = new_menu_h;
+                chrome_h    = new_chrome_h;
+                fprintf(stderr,
+                        "[chrome-stub %d] scale=%.2f title_h=%d "
+                        "menu_h=%d (RRScreenChangeNotify)\n",
+                        getpid(), scale, title_h_px, menu_h_px);
+
+                XMoveResizeWindow(dpy, chrome_win,
+                                  bundle_root_x,
+                                  bundle_root_y - chrome_h,
+                                  chrome_w, chrome_h);
+                XRaiseWindow(dpy, chrome_win);
+                cur_w       = chrome_w;
+                cur_h       = chrome_h;
+                cur_title_h = title_h_px;
+                cur_menu_h  = menu_h_px;
+                cairo_xlib_surface_set_size(surf, cur_w, cur_h);
+                need_paint  = true;
                 continue;
             }
 

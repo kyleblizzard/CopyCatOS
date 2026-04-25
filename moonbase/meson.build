@@ -402,6 +402,7 @@ moonbase_launch = executable(
 x11_dep        = dependency('x11')
 cairo_xlib_dep = dependency('cairo-xlib')
 gio_dep        = dependency('gio-2.0')
+xrandr_dep     = dependency('xrandr')
 
 moonbase_launcher = executable(
   'moonbase-launcher',
@@ -417,7 +418,7 @@ moonbase_launcher = executable(
     '../menubar/src',
   ),
   dependencies: [cairo_dep, cairo_xlib_dep, pangocairo_dep, libpng_dep,
-                 x11_dep, gio_dep],
+                 x11_dep, xrandr_dep, gio_dep],
   link_with: libmoonbase,
   install: true,
   install_rpath: get_option('prefix') / mb_framework_versions / 'Current',
