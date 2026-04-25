@@ -40,9 +40,11 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/prctl.h>
+#include <sys/select.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
@@ -776,28 +778,179 @@ static bool xdg_register(const char *bundle_path,
 // instant its parent (which becomes moonbase-launch → bwrap → bundle
 // binary after the parent's execvp) exits. No orphaned chrome windows.
 //
-// 19.D-α scope (this slice):
-//   * Open X display, create a standalone top-level chrome window of
-//     fixed size at scale 1.0. The host WM places it; we don't reach
-//     for the bundle's window yet.
-//   * Paint title bar + menu bar via menubar_render with the resolved
-//     theme. Repaint on Expose, ConfigureNotify resize, and theme atom
-//     changes (the latter is a no-op until 19.F-γ-2 lands a live probe).
-//   * Exit cleanly on SIGTERM (PR_SET_PDEATHSIG) or WM close.
+// 19.D-β scope (current):
+//   * Discover the bundle's top-level window via _NET_CLIENT_LIST.
+//     Match WM_CLASS instance against bundle_id. EWMH-correct path —
+//     works on every reparenting WM (KWin, Mutter, Xfwm, …) where
+//     MapNotify on root sees the WM frame, not the client.
+//   * Dock above the bundle: _NET_WM_WINDOW_TYPE_UTILITY +
+//     WM_TRANSIENT_FOR + _MOTIF_WM_HINTS decorations=0. Position
+//     resolved via XTranslateCoordinates because client coords are
+//     frame-relative on reparenting WMs.
+//   * Follow the bundle's geometry — every ConfigureNotify on the
+//     bundle re-translates and XMoveResizeWindows the chrome to
+//     keep the two visually glued.
+//   * Exit when the bundle window unmaps/destroys, on SIGTERM, or
+//     on WM close.
 //
-// 19.D-β follow-ups (NOT here):
-//   * IPC handoff to the bundle: discover the bundle's top-level
-//     window via _NET_WM_PID + _NET_CLIENT_LIST (or, better, a
-//     MoonBase IPC handshake the bundle initiates), then position
-//     and re-parent or shape this chrome window above its content.
-//   * Pointer + key event routing to the bundle.
-//   * XRandR scale probe so chrome paints pixel-correct on HiDPI hosts
-//     instead of the current scale = 1.0 baseline.
+// Wrapped-toolkit lane only — Qt apps need `-name $bundle_id` and
+// GTK apps need `exec -a $bundle_id` so their WM_CLASS instance
+// matches. moonbase-launch's bundle invocation will inject those
+// based on a manifest toolkit hint in a follow-up; for the smoke
+// test 19.D-β-1 just relies on a wrapper script in the bundle's
+// Contents/CopyCatOS/<bin>. Native libmoonbase bundles need a
+// different handoff (no toolkit window for chrome to dock above)
+// and are deferred to slice 19.H — MoonRock-Lite.
+//
+// 19.D-γ follow-up (NOT here):
+//   * XRandR scale probe so chrome paints pixel-correct on HiDPI
+//     hosts instead of the current scale = 1.0 baseline.
 
 // Atomic flag flipped by SIGTERM — the X event loop polls it each
 // iteration and exits cleanly, freeing X + Cairo before _exit.
 static volatile sig_atomic_t chrome_stub_should_exit = 0;
 static void chrome_stub_sigterm(int sig) { (void)sig; chrome_stub_should_exit = 1; }
+
+// True iff w's WM_CLASS instance (XClassHint.res_name) equals bundle_id.
+// The instance is what argv-name overrides set; the class is the toolkit's
+// natural name. Match instance only — Qt sets `instance=bundle_id, class=kate`
+// when launched with `-name bundle_id`, GTK with argv[0]=bundle_id sets both.
+static bool x_window_class_instance_matches(Display *dpy, Window w,
+                                            const char *bundle_id) {
+    XClassHint ch = {0};
+    if (!XGetClassHint(dpy, w, &ch)) return false;
+    bool match = (ch.res_name && strcmp(ch.res_name, bundle_id) == 0);
+    if (ch.res_name)  XFree(ch.res_name);
+    if (ch.res_class) XFree(ch.res_class);
+    return match;
+}
+
+// Walk the WM's _NET_CLIENT_LIST on root and return the first window
+// whose WM_CLASS instance matches bundle_id, or 0 if none. Linear scan
+// of the list is fine — discovery runs once at startup.
+static Window find_bundle_window_in_client_list(Display *dpy, Window root,
+                                                Atom net_client_list,
+                                                const char *bundle_id) {
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems = 0, bytes_after = 0;
+    unsigned char *data = NULL;
+    if (XGetWindowProperty(dpy, root, net_client_list, 0, 1024,
+                           False, XA_WINDOW, &actual_type, &actual_format,
+                           &nitems, &bytes_after, &data) != Success) {
+        return 0;
+    }
+    Window found = 0;
+    if (actual_type == XA_WINDOW && actual_format == 32 && data) {
+        Window *list = (Window *)data;
+        for (unsigned long i = 0; i < nitems; ++i) {
+            if (x_window_class_instance_matches(dpy, list[i], bundle_id)) {
+                found = list[i];
+                break;
+            }
+        }
+    }
+    if (data) XFree(data);
+    return found;
+}
+
+// Block (with timeout) until a window matching bundle_id appears in
+// _NET_CLIENT_LIST. Returns 0 on timeout. The bundle is launched
+// downstream of the chrome stub's parent fork, so we generally see it
+// within ~1s; allow timeout_sec for slow cold starts (squashfuse mount,
+// bwrap setup, language runtime warmup).
+//
+// EWMH-correct path: PropertyNotify on root for _NET_CLIENT_LIST. On
+// reparenting WMs (KWin, Mutter, Xfwm) MapNotify on root fires for
+// the WM frame, not the client; the client gets a ReparentNotify into
+// the frame and is otherwise invisible to root listeners. Every modern
+// EWMH-compliant WM does append the *client* (not frame) to
+// _NET_CLIENT_LIST, so this is the universal hook.
+//
+// Race-safe: we select PropertyChangeMask first, then immediately scan
+// the current _NET_CLIENT_LIST. If the bundle window is already there
+// (chrome stub started slowly), we catch it without waiting for an
+// event that already fired.
+static Window wait_for_bundle_window(Display *dpy, Window root,
+                                     const char *bundle_id,
+                                     int timeout_sec) {
+    Atom net_client_list = XInternAtom(dpy, "_NET_CLIENT_LIST", False);
+    XSelectInput(dpy, root, PropertyChangeMask);
+
+    Window found = find_bundle_window_in_client_list(dpy, root,
+                                                    net_client_list,
+                                                    bundle_id);
+    if (found) {
+        XSelectInput(dpy, root, NoEventMask);
+        return found;
+    }
+
+    int x_fd = ConnectionNumber(dpy);
+    time_t start = time(NULL);
+    while (!chrome_stub_should_exit) {
+        while (XPending(dpy) > 0) {
+            XEvent ev;
+            XNextEvent(dpy, &ev);
+            if (ev.type == PropertyNotify &&
+                ev.xproperty.window == root &&
+                ev.xproperty.atom == net_client_list) {
+                found = find_bundle_window_in_client_list(dpy, root,
+                                                         net_client_list,
+                                                         bundle_id);
+                if (found) {
+                    XSelectInput(dpy, root, NoEventMask);
+                    return found;
+                }
+            }
+        }
+        // 1s slice keeps SIGTERM and the overall timeout reactive
+        // without busy-looping when no events are pending.
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        FD_SET(x_fd, &rfds);
+        struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
+        (void)select(x_fd + 1, &rfds, NULL, NULL, &tv);
+        if (time(NULL) - start > timeout_sec) break;
+    }
+    XSelectInput(dpy, root, NoEventMask);
+    return 0;
+}
+
+// Translate a window's (0,0) origin to root coordinates. xconfigure.x/y
+// on a reparented client is frame-relative, not screen-relative, so
+// we re-translate every time we follow the bundle.
+static bool translate_window_to_root(Display *dpy, Window w,
+                                     int *rx, int *ry) {
+    Window root = DefaultRootWindow(dpy);
+    Window child;
+    return XTranslateCoordinates(dpy, w, root, 0, 0, rx, ry, &child)
+           ? true : false;
+}
+
+// Hint chord on a *managed* chrome window (UTILITY + transient_for +
+// Motif decorations=0) is the EWMH-clean approach in theory, but in
+// practice every reparenting WM still wraps chrome in a frame and
+// reinterprets our XMoveResizeWindow against frame coordinates — so
+// chrome ends up shifted by the frame extents, not pinned to the
+// bundle's actual client origin. The Aqua-chrome use case is a fake
+// decoration, not a managed window: we want absolute pixel placement,
+// no negotiation. That's the override-redirect idiom in X11.
+//
+// Override-redirect side effects we accept:
+//   * No taskbar entry — fine, chrome is decoration not an app window.
+//   * No automatic stacking — we re-raise chrome above the bundle on
+//     every ConfigureNotify, which keeps it visually attached.
+//   * No WM-managed focus — a click on chrome doesn't activate the
+//     bundle. Forwarding to the bundle is a 19.D-β-3 follow-up.
+//
+// WM_CLASS, _NET_WM_NAME, and WM_TRANSIENT_FOR are still set —
+// purely informational (taskbar grouping, _NET_CLIENT_LIST_STACKING,
+// debugging). The WM is told not to manage chrome via override-
+// redirect, so these don't affect placement.
+static void set_chrome_window_metadata(Display *dpy, Window chrome,
+                                       Window bundle) {
+    XSetTransientForHint(dpy, chrome, bundle);
+}
 
 static int run_chrome_stub(const char *bundle_path,
                            const LauncherManifest *m,
@@ -822,49 +975,101 @@ static int run_chrome_stub(const char *bundle_path,
     Window root = RootWindow(dpy, screen);
     Visual *vis = DefaultVisual(dpy, screen);
 
-    // 19.D-α uses a fixed scale. 19.D-β will read the X output's PPI via
-    // XRandR. The Aqua chrome's logical size (44 pts = 22 + 22) maps to
-    // 44 px at scale 1.0; everything menubar_render does is point-based
-    // so swapping in the real scale later is a one-line change.
+    // Discovery — wait for the bundle's first top-level to appear in
+    // _NET_CLIENT_LIST with WM_CLASS instance matching bundle_id. 30s
+    // budget covers cold starts; on a warm system the bundle arrives
+    // in ~1s.
+    Window bundle_win = wait_for_bundle_window(dpy, root, m->bundle_id, 30);
+    if (!bundle_win) {
+        fprintf(stderr,
+                "[chrome-stub %d] bundle window for '%s' did not appear "
+                "within 30s — exiting (no chrome to draw)\n",
+                getpid(), m->bundle_id);
+        XCloseDisplay(dpy);
+        return 0;
+    }
+    fprintf(stderr, "[chrome-stub %d] bundle window 0x%lx located\n",
+            getpid(), bundle_win);
+    fflush(stderr);
+
+    XWindowAttributes attrs;
+    if (!XGetWindowAttributes(dpy, bundle_win, &attrs)) {
+        fprintf(stderr,
+                "[chrome-stub %d] XGetWindowAttributes failed; exiting\n",
+                getpid());
+        XCloseDisplay(dpy);
+        return 1;
+    }
+    int bundle_w = attrs.width;
+    int bundle_root_x = 0, bundle_root_y = 0;
+    translate_window_to_root(dpy, bundle_win,
+                             &bundle_root_x, &bundle_root_y);
+
+    // Track the bundle for placement + lifecycle.
+    XSelectInput(dpy, bundle_win, StructureNotifyMask);
+
+    // Chrome geometry — Menu Bar Law: 22 pt × scale. 19.D-γ replaces
+    // the hardcoded 1.0 with a real XRandR-derived scale.
     const double scale = 1.0;
     const int title_h_px = (int)(menubar_render_title_bar_height_pts() * scale);
     const int menu_h_px  = (int)(menubar_render_menu_bar_height_pts()  * scale);
     const int chrome_h   = title_h_px + menu_h_px;
-    const int chrome_w   = 800;
+    int chrome_w         = bundle_w;
 
     XSetWindowAttributes wa = {0};
-    wa.background_pixel = WhitePixel(dpy, screen);
-    wa.event_mask = ExposureMask | StructureNotifyMask;
-    Window win = XCreateWindow(dpy, root,
-                               100, 100, chrome_w, chrome_h, 0,
-                               DefaultDepth(dpy, screen),
-                               InputOutput, vis,
-                               CWBackPixel | CWEventMask, &wa);
+    wa.background_pixel    = WhitePixel(dpy, screen);
+    wa.event_mask          = ExposureMask | StructureNotifyMask;
+    wa.override_redirect   = True;
+    Window chrome_win = XCreateWindow(
+        dpy, root,
+        bundle_root_x, bundle_root_y - chrome_h,
+        chrome_w, chrome_h, 0,
+        DefaultDepth(dpy, screen),
+        InputOutput, vis,
+        CWBackPixel | CWEventMask | CWOverrideRedirect, &wa);
 
-    // _NET_WM_NAME + WM_CLASS so the host WM groups this stub with the
-    // bundle by bundle-id (matches the StartupWMClass written into the
-    // .desktop entry by xdg_register).
-    XStoreName(dpy, win, m->display_name);
+    XStoreName(dpy, chrome_win, m->display_name);
     XClassHint ch = {(char *)m->bundle_id, (char *)m->bundle_id};
-    XSetClassHint(dpy, win, &ch);
+    XSetClassHint(dpy, chrome_win, &ch);
 
-    // Cooperate with the host WM's close button — handled by checking
-    // ClientMessage in the event loop.
-    Atom wm_delete = XInternAtom(dpy, "WM_DELETE_WINDOW", False);
-    XSetWMProtocols(dpy, win, &wm_delete, 1);
+    set_chrome_window_metadata(dpy, chrome_win, bundle_win);
 
-    XMapWindow(dpy, win);
+    // _NET_ACTIVE_WINDOW on root tracks which client the user is talking
+    // to. We re-raise chrome when the bundle becomes active so override-
+    // redirect chrome stays visually stuck to its bundle.
+    //
+    // SubstructureNotifyMask on root: ICCCM says reparenting WMs MUST
+    // send a synthetic ConfigureNotify to the client when its absolute
+    // position changes, so our XSelectInput on bundle_win should be
+    // enough on a compliant WM (KWin, Mutter). It isn't enough on every
+    // real WM — moonrock for example only fires ConfigureNotify on
+    // *resize*, not on a pure move, leaving chrome stranded. Listening
+    // for ConfigureNotify on root catches the WM frame moving, which
+    // covers the moonrock case and is harmless duplication elsewhere.
+    Atom net_active_win = XInternAtom(dpy, "_NET_ACTIVE_WINDOW", False);
+    {
+        XWindowAttributes ra;
+        XGetWindowAttributes(dpy, root, &ra);
+        XSelectInput(dpy, root,
+                     ra.your_event_mask
+                     | PropertyChangeMask
+                     | SubstructureNotifyMask);
+    }
+
+    XMapWindow(dpy, chrome_win);
+    XRaiseWindow(dpy, chrome_win);
     XFlush(dpy);
 
     cairo_surface_t *surf =
-        cairo_xlib_surface_create(dpy, win, vis, chrome_w, chrome_h);
+        cairo_xlib_surface_create(dpy, chrome_win, vis, chrome_w, chrome_h);
     cairo_t *cr = cairo_create(surf);
 
     menubar_render_init();
 
     // Stub menu items — bundle name (bold) plus the standard Aqua row.
-    // Real items will arrive from the bundle via MoonBase IPC in 19.D-β;
-    // until then a fixed set lets us see the layout end-to-end.
+    // Real items arrive from the bundle via DBusMenu (Qt/GTK Legacy
+    // Mode) in 19.D-β-2; until then a fixed set lets us see the
+    // layout end-to-end.
     menubar_render_item_t items[] = {
         { .title = m->display_name, .is_app_name_bold = true  },
         { .title = "File",          .is_app_name_bold = false },
@@ -882,33 +1087,71 @@ static int run_chrome_stub(const char *bundle_path,
 
     while (!chrome_stub_should_exit) {
         XEvent ev;
-        // Block on the next event but stay reactive to SIGTERM by
-        // checking the pending queue first; if empty, XNextEvent will
-        // wake when the signal handler returns (because the read errno
-        // becomes EINTR and Xlib retries — but the flag is already set).
         XNextEvent(dpy, &ev);
-        if (ev.type == ConfigureNotify) {
-            if (ev.xconfigure.width != cur_w || ev.xconfigure.height != cur_h) {
-                cur_w = ev.xconfigure.width;
-                cur_h = ev.xconfigure.height;
-                // Clamp menu/title heights to the window's actual size
-                // when the WM forces a smaller chrome — keeps the paint
-                // valid; final pixel height is title + menu.
-                cur_title_h = title_h_px;
-                cur_menu_h  = (cur_h > cur_title_h) ? (cur_h - cur_title_h) : 0;
-                cairo_xlib_surface_set_size(surf, cur_w, cur_h);
-            }
-        } else if (ev.type == ClientMessage &&
-                   (Atom)ev.xclient.data.l[0] == wm_delete) {
+
+        // Bundle lifecycle. When the bundle window vanishes, so does
+        // any reason for chrome to exist.
+        if (ev.xany.window == bundle_win &&
+            (ev.type == UnmapNotify || ev.type == DestroyNotify)) {
             chrome_stub_should_exit = 1;
+            continue;
+        }
+
+        // _NET_ACTIVE_WINDOW change → re-raise chrome above bundle.
+        if (ev.type == PropertyNotify &&
+            ev.xany.window == root &&
+            ev.xproperty.atom == net_active_win) {
+            Atom t; int f;
+            unsigned long n = 0, ba = 0;
+            unsigned char *d = NULL;
+            if (XGetWindowProperty(dpy, root, net_active_win, 0, 1, False,
+                                   XA_WINDOW, &t, &f, &n, &ba, &d) == Success
+                && d && n == 1 && *(Window *)d == bundle_win) {
+                XRaiseWindow(dpy, chrome_win);
+            }
+            if (d) XFree(d);
+            continue;
+        }
+
+        // Any ConfigureNotify — bundle (KWin synthetic), bundle's frame
+        // (substructure on root), or chrome itself — re-checks the
+        // bundle's true root-coords and re-pegs chrome. The work is
+        // tiny (one round-trip translate); doing it for every reconfigure
+        // is simpler than dispatching by window field and matches both
+        // delivery paths cleanly.
+        if (ev.type == ConfigureNotify) {
+            XWindowAttributes a;
+            int rx = 0, ry = 0;
+            if (!XGetWindowAttributes(dpy, bundle_win, &a)) {
+                chrome_stub_should_exit = 1;
+                continue;
+            }
+            if (!translate_window_to_root(dpy, bundle_win, &rx, &ry)) {
+                continue;
+            }
+            int nw = a.width;
+            if (nw != chrome_w || rx != bundle_root_x ||
+                ry != bundle_root_y) {
+                bundle_root_x = rx;
+                bundle_root_y = ry;
+                chrome_w      = nw;
+                XMoveResizeWindow(dpy, chrome_win,
+                                  rx, ry - chrome_h,
+                                  nw, chrome_h);
+                XRaiseWindow(dpy, chrome_win);
+                cur_w       = nw;
+                cur_h       = chrome_h;
+                cur_title_h = title_h_px;
+                cur_menu_h  = menu_h_px;
+                cairo_xlib_surface_set_size(surf, cur_w, cur_h);
+                // Fall through to repaint.
+            } else {
+                continue;
+            }
         } else if (ev.type != Expose) {
             continue;
         }
 
-        // Title bar at top, menu bar directly beneath — Snow Leopard's
-        // two-row chrome. menubar_render's high-level entry points lay
-        // out menus, paint the bg gradient, and draw the centered title
-        // for us.
         cairo_save(cr);
         menubar_render_paint_title_bar(cr, cur_w, cur_title_h,
                                        m->display_name, true,
@@ -931,7 +1174,7 @@ static int run_chrome_stub(const char *bundle_path,
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
     menubar_render_cleanup();
-    XDestroyWindow(dpy, win);
+    XDestroyWindow(dpy, chrome_win);
     XCloseDisplay(dpy);
     return 0;
 }
@@ -980,6 +1223,26 @@ static void usage(const char *argv0) {
 
 int main(int argc, char **argv) {
     if (argc < 2) { usage(argv[0]); return 2; }
+
+    // --chrome-stub-test <bundle_id> [display_name] — runs only the
+    // chrome-stub flow (discovery + docking + paint) against an already-
+    // running window with WM_CLASS instance == bundle_id. Skips the full
+    // launcher path (no .appdev parsing, no bwrap, no exec). Used to
+    // smoke-test slice 19.D-β in isolation; not invoked from production.
+    if (strcmp(argv[1], "--chrome-stub-test") == 0) {
+        if (argc < 3) {
+            fprintf(stderr,
+                "usage: %s --chrome-stub-test <bundle_id> [display_name]\n",
+                argv[0]);
+            return 2;
+        }
+        LauncherManifest tm = {0};
+        snprintf(tm.bundle_id, sizeof tm.bundle_id, "%s", argv[2]);
+        snprintf(tm.display_name, sizeof tm.display_name, "%s",
+                 argc >= 4 ? argv[3] : argv[2]);
+        return run_chrome_stub(NULL, &tm, MENUBAR_THEME_AQUA);
+    }
+
     const char *bundle_path = argv[1];
     int    extra_argc = argc - 2;
     char **extra_argv = argv + 2;
