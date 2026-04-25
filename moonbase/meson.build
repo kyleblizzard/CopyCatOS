@@ -416,52 +416,25 @@ moonbase_launch = executable(
 )
 
 # ---------------------------------------------------------------------
-# moonbase-launcher — portable .app entry point (foreign-distro chrome)
+# moonbase-launcher — portable .app entry point
 # ---------------------------------------------------------------------
 #
 # The user-facing launcher that gets registered as the .desktop Exec=
 # target on every host. Decides at startup whether we're inside a full
 # CopyCatOS session (XDG_SESSION_DESKTOP=CopyCatOS — fast pass-through to
-# moonbase-launch) or on a foreign distro (KDE / GNOME / XFCE — fork a
-# Cairo/Pango chrome stub that draws the title + menu bar inside the
-# app's own X window using shared menubar_render code, then exec into
-# moonbase-launch).
+# moonbase-launch) or on a foreign distro (KDE / GNOME / XFCE — forks
+# moonrock-lite for chrome painting and execvp's into moonbase-launch).
 #
-# Compiles in menubar/render/menubar_render.c verbatim — the same
-# translation unit the menubar daemon links. One source of truth, two
-# consumers, no shared library overhead. moonrock/shell-api/moonrock_scale.c
-# isn't pulled in because the chrome stub reads its host scale from the
-# X output directly (no MoonRock atom subscription on a foreign distro).
-#
-# Slice 19.D-β-2b: also link the menubar daemon's three Legacy-Mode
-# helpers — menu_model.c (allocators), dbusmenu_client.c (DBusMenu
-# proxy), appmenu_bridge.c (com.canonical.AppMenu.Registrar). The
-# chrome stub claims the registrar and imports a Qt/GTK bundle's menu
-# tree exactly the same way the daemon does inside a CopyCatOS session,
-# so reusing the daemon's code is the single-source-of-truth choice.
-# These three TUs reference no menubar globals (verified at slice time)
-# so they link cleanly into the launcher without the daemon runtime.
-
-x11_dep        = dependency('x11')
-cairo_xlib_dep = dependency('cairo-xlib')
-gio_dep        = dependency('gio-2.0')
-xrandr_dep     = dependency('xrandr')
-
+# Pre-19.H.1.a this binary also painted Aqua chrome inline via Cairo
+# and the menubar Legacy-Mode helpers. That moved out to the standalone
+# moonrock-lite binary (../../moonrock-lite/) so the launcher process
+# no longer pulls cairo, X11, xrandr, gio, libpng, or the four menubar
+# TUs. It's now strictly a session detector + XDG registrar + execvp
+# delegator — pure libc plus libmoonbase for the bundle parser.
 moonbase_launcher = executable(
   'moonbase-launcher',
   'runtime/moonbase-launcher.c',
-  '../menubar/render/menubar_render.c',
-  '../menubar/src/menu_model.c',
-  '../menubar/src/dbusmenu_client.c',
-  '../menubar/src/appmenu_bridge.c',
-  include_directories: include_directories(
-    'include',
-    'src',
-    '../menubar/render',
-    '../menubar/src',
-  ),
-  dependencies: [cairo_dep, cairo_xlib_dep, pangocairo_dep, libpng_dep,
-                 x11_dep, xrandr_dep, gio_dep],
+  include_directories: include_directories('include', 'src'),
   link_with: libmoonbase,
   install: true,
   install_rpath: get_option('prefix') / mb_framework_versions / 'Current',

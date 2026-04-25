@@ -58,6 +58,7 @@ COMPONENTS=(
     "inputsession"
     "systemcontrol"
     "moonbase"
+    "moonrock-lite"
 )
 
 FAILED=0
