@@ -36,6 +36,19 @@ typedef enum {
     MB_INFO_APPC_RENDER_GL,
 } mb_info_appc_render_t;
 
+// [wrap].toolkit — hint that lets moonbase-launch stamp the bundle id onto
+// the resulting top-level X window's WM_CLASS instance. Default NATIVE means
+// the bundle binary is a real MoonBase app and the chrome stub will find
+// it via IPC handshake; the other values cover Legacy Mode bundles that
+// wrap an unmodified Qt or GTK binary.
+typedef enum {
+    MB_INFO_APPC_WRAP_NATIVE = 0,
+    MB_INFO_APPC_WRAP_QT5,
+    MB_INFO_APPC_WRAP_QT6,
+    MB_INFO_APPC_WRAP_GTK3,
+    MB_INFO_APPC_WRAP_GTK4,
+} mb_info_appc_wrap_toolkit_t;
+
 typedef enum {
     MB_INFO_APPC_OK = 0,
     MB_INFO_APPC_ERR_TOO_LARGE,         // > MB_INFO_APPC_MAX_BYTES
@@ -80,6 +93,9 @@ typedef struct {
     // [update]
     char *update_url;
     char *update_channel;                // stable | beta
+
+    // [wrap] — Legacy Mode toolkit hint. NATIVE when omitted.
+    mb_info_appc_wrap_toolkit_t wrap_toolkit;
 } mb_info_appc_t;
 
 // Parse an Info.appc buffer. Result on success is a fully populated,

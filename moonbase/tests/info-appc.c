@@ -129,6 +129,7 @@ static void test_happy_c(void) {
     EXPECT(info.supported_locales_count == 3, "loc count");
     EXPECT(info.update_url != NULL, "update_url");
     EXPECT(info.update_channel && strcmp(info.update_channel, "stable") == 0, "channel");
+    EXPECT(info.wrap_toolkit == MB_INFO_APPC_WRAP_NATIVE, "wrap_toolkit defaults to native");
 
     mb_info_appc_free(&info);
     // free-of-free must be safe (second free no-ops).
@@ -344,6 +345,55 @@ static void test_unknown_table_warned_not_errored(void) {
     mb_info_appc_free(&info);
 }
 
+static void test_wrap_toolkit_qt6(void) {
+    const char *src =
+        "[bundle]\n"
+        "id = \"show.blizzard.kate\"\n"
+        "name = \"Kate\"\n"
+        "version = \"1.0.0\"\n"
+        "minimum-moonbase = \"1.0\"\n"
+        "\n"
+        "[executable]\n"
+        "path = \"Contents/CopyCatOS/kate\"\n"
+        "language = \"c\"\n"
+        "\n"
+        "[permissions]\n"
+        "\n"
+        "[wrap]\n"
+        "toolkit = \"qt6\"\n";
+    mb_info_appc_t info;
+    char err[256] = {0};
+    mb_info_appc_err_t rc = parse(src, &info, err, sizeof(err));
+    EXPECT(rc == MB_INFO_APPC_OK, "wrap-qt6 rc=%s (%s)",
+        mb_info_appc_err_string(rc), err);
+    EXPECT(info.wrap_toolkit == MB_INFO_APPC_WRAP_QT6, "wrap_toolkit qt6");
+    mb_info_appc_free(&info);
+}
+
+static void test_wrap_toolkit_unknown(void) {
+    const char *src =
+        "[bundle]\n"
+        "id = \"show.blizzard.x\"\n"
+        "name = \"X\"\n"
+        "version = \"1.0.0\"\n"
+        "minimum-moonbase = \"1.0\"\n"
+        "\n"
+        "[executable]\n"
+        "path = \"Contents/CopyCatOS/x\"\n"
+        "language = \"c\"\n"
+        "\n"
+        "[permissions]\n"
+        "\n"
+        "[wrap]\n"
+        "toolkit = \"tk\"\n";
+    mb_info_appc_t info;
+    char err[256] = {0};
+    mb_info_appc_err_t rc = parse(src, &info, err, sizeof(err));
+    EXPECT(rc == MB_INFO_APPC_ERR_UNKNOWN_VALUE, "wrap-unknown rc=%s",
+        mb_info_appc_err_string(rc));
+    mb_info_appc_free(&info);
+}
+
 int main(void) {
     test_happy_c();
     test_happy_web();
@@ -358,6 +408,8 @@ int main(void) {
     test_parse_error();
     test_too_large();
     test_unknown_table_warned_not_errored();
+    test_wrap_toolkit_qt6();
+    test_wrap_toolkit_unknown();
 
     if (fail_count) {
         fprintf(stderr, "FAIL: %d assertion(s) failed\n", fail_count);

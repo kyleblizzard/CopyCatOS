@@ -854,7 +854,30 @@ int main(int argc, char **argv) {
     }
 
     // 7. Inner exec + user args.
+    //
+    // Legacy Mode toolkit hint ([wrap].toolkit in Info.appc):
+    //
+    //   * non-native — bwrap is told `--argv0 <bundle.id>`, which sets
+    //     argv[0] inside the sandbox to the reverse-DNS bundle id. GTK
+    //     reads argv[0] basename for g_get_prgname() → WM_CLASS.res_name,
+    //     so this alone is enough for GTK3/4 wrappers.
+    //   * qt5 / qt6 — Qt picks res_name from QGuiApplication's own argv
+    //     parser, not from argv[0]. Pass `-name <bundle.id>` after the
+    //     inner exec so QApplication::setApplicationName() / WM_CLASS
+    //     instance both land on the bundle id.
+    //
+    // The chrome stub finds the bundle's top-level window by matching
+    // XClassHint.res_name against the bundle id (see chrome_stub_*).
+    if (bundle.info.wrap_toolkit != MB_INFO_APPC_WRAP_NATIVE) {
+        if (argv_push(&bw, "--argv0") < 0) goto oom;
+        if (argv_push(&bw, bundle.info.id) < 0) goto oom;
+    }
     if (argv_push(&bw, bundle.exe_abs_path) < 0) goto oom;
+    if (bundle.info.wrap_toolkit == MB_INFO_APPC_WRAP_QT5 ||
+        bundle.info.wrap_toolkit == MB_INFO_APPC_WRAP_QT6) {
+        if (argv_push(&bw, "-name") < 0) goto oom;
+        if (argv_push(&bw, bundle.info.id) < 0) goto oom;
+    }
     if (inner_user_argv) {
         for (int i = 0; inner_user_argv[i]; i++) {
             if (argv_push(&bw, inner_user_argv[i]) < 0) goto oom;

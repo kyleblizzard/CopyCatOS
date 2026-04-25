@@ -55,6 +55,9 @@ static const char *const CATEGORY_VALUES[] = {
     "education", "games", "system", "other", NULL,
 };
 static const char *const CHANNEL_VALUES[]  = { "stable", "beta", NULL };
+static const char *const WRAP_TOOLKIT_VALUES[] = {
+    "native", "qt5", "qt6", "gtk3", "gtk4", NULL,
+};
 
 static const char *const PERM_FS_VALUES[] = {
     "documents:read", "documents:read-write",
@@ -207,6 +210,16 @@ static mb_info_appc_err_t parse_render(const char *s, mb_info_appc_render_t *out
     return MB_INFO_APPC_ERR_UNKNOWN_VALUE;
 }
 
+static mb_info_appc_err_t parse_wrap_toolkit(const char *s,
+                                             mb_info_appc_wrap_toolkit_t *out) {
+    if (strcmp(s, "native") == 0) { *out = MB_INFO_APPC_WRAP_NATIVE; return MB_INFO_APPC_OK; }
+    if (strcmp(s, "qt5")    == 0) { *out = MB_INFO_APPC_WRAP_QT5;    return MB_INFO_APPC_OK; }
+    if (strcmp(s, "qt6")    == 0) { *out = MB_INFO_APPC_WRAP_QT6;    return MB_INFO_APPC_OK; }
+    if (strcmp(s, "gtk3")   == 0) { *out = MB_INFO_APPC_WRAP_GTK3;   return MB_INFO_APPC_OK; }
+    if (strcmp(s, "gtk4")   == 0) { *out = MB_INFO_APPC_WRAP_GTK4;   return MB_INFO_APPC_OK; }
+    return MB_INFO_APPC_ERR_UNKNOWN_VALUE;
+}
+
 // -------------------------------------------------------------------
 // primary parse
 // -------------------------------------------------------------------
@@ -342,6 +355,21 @@ mb_info_appc_err_t mb_info_appc_parse_buffer(const char *src, size_t len,
         if ((rc = opt_string(upd, "url", &out->update_url, err_buf, err_cap))) goto done;
         if ((rc = opt_enum(upd, "channel", "update", CHANNEL_VALUES,
                            &out->update_channel, err_buf, err_cap))) goto done;
+    }
+
+    // ---- [wrap] (optional) ----------------------------------------
+    out->wrap_toolkit = MB_INFO_APPC_WRAP_NATIVE;
+    const tl_table *wrap = tl_doc_get_table(doc, "wrap");
+    if (wrap) {
+        const char *tk = tl_table_string(wrap, "toolkit");
+        if (tk) {
+            if (!in_list(tk, WRAP_TOOLKIT_VALUES)) {
+                set_err(err_buf, err_cap,
+                        "[wrap].toolkit = \"%s\" not in allowlist", tk);
+                rc = MB_INFO_APPC_ERR_UNKNOWN_VALUE; goto done;
+            }
+            parse_wrap_toolkit(tk, &out->wrap_toolkit);
+        }
     }
 
 done:
