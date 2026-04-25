@@ -4,8 +4,9 @@
 //
 // Two paths, one binary:
 //
-//   1. Full CopyCatOS session — MOONROCK_SOCKET set and reachable.
-//      No XDG work, no chrome stub. execvp moonbase-launch and let
+//   1. Full CopyCatOS session — XDG_SESSION_DESKTOP=CopyCatOS (set by
+//      moonrock-session.sh; mirrored in XDG_CURRENT_DESKTOP). No XDG
+//      .desktop work, no chrome stub. execvp moonbase-launch and let
 //      the existing 927-line bundle / sandbox / exec path do its job.
 //      This is the fast path. Zero observable change vs. invoking
 //      moonbase-launch directly today.
@@ -21,19 +22,10 @@
 // all live in moonbase-launch (../launcher/moonbase-launch.c). Two
 // binaries, one each for portability and for sandboxing — neither
 // duplicates the other.
-//
-// Layout invariant: the bundle binary always lives at
-// <bundle>/Contents/CopyCatOS/<name>. The legacy Contents/MacOS path is
-// retired in slice 19.G — there is no fallback in this file.
 
-// TODO(meson 19.A): wire menubar/render into the moonbase build so this
-// can be a clean <menubar_render.h> include. Relative path is the
-// skeleton form.
-// TODO(libmenubar-render 19.B): the bodies behind these symbols are
-// stubs returning safe defaults. The chrome stub's paint code will not
-// look correct until 19.B extracts the real Cairo/Pango bodies out of
-// menubar/src/render.c.
-#include "../../menubar/render/menubar_render.h"
+#include "menubar_render.h"
+
+#include "bundle/bundle.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -77,40 +69,67 @@ typedef struct {
 // Session detection
 // ----------------------------------------------------------------------------
 
-// True when MOONROCK_SOCKET is set and points at a live Unix socket.
-// MoonRock sets this in moonrock-session.sh; foreign distros never have
-// it. This is the entire portability fork.
+// True inside a full CopyCatOS session. moonrock-session.sh sets
+// XDG_SESSION_DESKTOP=CopyCatOS (the canonical signal per CLAUDE.md)
+// and mirrors it into XDG_CURRENT_DESKTOP for any consumer that reads
+// the broader spec variant. Foreign distros set neither to "CopyCatOS",
+// which is the entire portability fork.
 static bool in_full_copycatos_session(void) {
-    const char *sock = getenv("MOONROCK_SOCKET");
-    if (!sock || !*sock) return false;
-    struct stat st;
-    if (stat(sock, &st) < 0) return false;
-    return S_ISSOCK(st.st_mode);
-}
-
-// ----------------------------------------------------------------------------
-// Bundle layout — Contents/CopyCatOS/ canonical
-// ----------------------------------------------------------------------------
-
-// Resolve <bundle_root>/Contents/CopyCatOS/<exec-name>. The legacy
-// Contents/MacOS fallback is intentionally absent — slice 19.G drops the
-// transitional symlink and the launcher is the moment the legacy path
-// stops being supported on disk.
-static bool bundle_executable_path(const char *bundle_root,
-                                   char *out, size_t out_sz) {
-    (void)bundle_root; (void)out; (void)out_sz;
-    // TODO(19.C): open <bundle_root>/Contents/Info.appc, read
-    // [executable].name, build "<bundle_root>/Contents/CopyCatOS/<name>".
+    const char *desktop = getenv("XDG_SESSION_DESKTOP");
+    if (desktop && strcmp(desktop, "CopyCatOS") == 0) return true;
+    const char *current = getenv("XDG_CURRENT_DESKTOP");
+    if (current && strcmp(current, "CopyCatOS") == 0) return true;
     return false;
 }
 
+// ----------------------------------------------------------------------------
+// Bundle manifest — minimal launcher view over mb_bundle_load
+// ----------------------------------------------------------------------------
+
+// Read the manifest fields the launcher needs (bundle id, display name,
+// icon path) by running the canonical bundle-spec.md §8 validator from
+// libmoonbase. moonbase-launch will run the same validator a second
+// time when we exec it — that's deliberate. The launcher must not exec
+// against a malformed bundle (we'd register a broken .desktop entry,
+// then fail past the point where we could surface the error nicely).
+//
+// .appdev directories load directly. Single-file .app images need a
+// squashfuse mount before Info.appc is reachable; that mount lives
+// inside moonbase-launch, and teaching the launcher to peek through the
+// .app trailer is slice 19.E. Until then mb_bundle_load returns
+// MB_BUNDLE_ERR_NOT_DIR for single-file .app and we surface a clear
+// "use the .appdev directory for now" hint.
 static bool bundle_manifest_load(const char *bundle_root,
                                  LauncherManifest *out) {
-    (void)bundle_root; (void)out;
-    // TODO(19.E/19.F): read <bundle_root>/Contents/moonbase-manifest.json:
-    //   bundle_id, display_name, icon (Resources-relative), and the
-    //   optional theme.host_override key.
-    return false;
+    mb_bundle_t b = {0};
+    char err[256] = {0};
+    mb_bundle_err_t rc = mb_bundle_load(bundle_root, &b, err, sizeof err);
+    if (rc != MB_BUNDLE_OK) {
+        fprintf(stderr,
+                "[moonbase-launcher] %s: %s\n",
+                mb_bundle_err_string(rc), err);
+        if (rc == MB_BUNDLE_ERR_NOT_DIR) {
+            fprintf(stderr,
+                    "[moonbase-launcher] hint: single-file .app on a "
+                    "foreign distro is not yet supported (slice 19.E). "
+                    "Use the .appdev directory for now.\n");
+        }
+        return false;
+    }
+    snprintf(out->bundle_id,    sizeof out->bundle_id,    "%s", b.info.id);
+    snprintf(out->display_name, sizeof out->display_name, "%s", b.info.name);
+
+    // Icon convention: Contents/Resources/AppIcon.png. Info.appc's
+    // schema doesn't carry an icon field yet — slice 19.E adds one
+    // alongside XDG hicolor export.
+    snprintf(out->icon_relpath, sizeof out->icon_relpath, "%s", "AppIcon.png");
+
+    // Per-bundle theme override field is reserved for slice 19.F.
+    out->host_theme_override_present = false;
+    out->host_theme_override_value   = false;
+
+    mb_bundle_free(&b);
+    return true;
 }
 
 // ----------------------------------------------------------------------------
@@ -282,8 +301,8 @@ int main(int argc, char **argv) {
     char **extra_argv = argv + 2;
 
     // Fast path. Full CopyCatOS session — moonrock-session.sh sets
-    // MOONROCK_SOCKET, the daemon owns chrome already, no XDG glue
-    // applies. Hand straight through.
+    // XDG_SESSION_DESKTOP=CopyCatOS, the daemon owns chrome already,
+    // no XDG glue applies. Hand straight through.
     if (in_full_copycatos_session()) {
         return exec_moonbase_launch(bundle_path, extra_argc, extra_argv);
     }
@@ -293,12 +312,9 @@ int main(int argc, char **argv) {
     LauncherConfig   cfg = {0};
     // TODO(19.F): launcher_config_load must also create the config dir if missing.
     launcher_config_load(&cfg);
-    if (!bundle_manifest_load(bundle_path, &m)) {
-        fprintf(stderr,
-                "[moonbase-launcher] missing or invalid moonbase-manifest.json: %s\n",
-                bundle_path);
-        return 1;
-    }
+    // bundle_manifest_load already printed a specific diagnostic
+    // (and a single-file-.app hint when applicable) on failure.
+    if (!bundle_manifest_load(bundle_path, &m)) return 1;
 
     // Lazy first-launch XDG registration so the bundle becomes a real
     // app on the host DE (Activities, application menu, taskbar) on

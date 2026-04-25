@@ -71,6 +71,13 @@ sources = [
   'src/systray.c',
   'src/apple.c',
   'src/appmenu_bridge.c',
+  # Slice 19.B: the actual Cairo/Pango bodies live in the shared
+  # menubar_render translation unit. menubar/src/render.c is a thin
+  # forwarder that plugs the global menubar_scale + MENUBAR_HEIGHT into
+  # this module's explicit-scale entry points. moonbase-launcher links
+  # the same .c file from its meson target — one source of truth, two
+  # consumers, no shared library overhead.
+  'render/menubar_render.c',
   moonrock_shell_api_dir / 'moonrock_scale.c',
 ] + legacy_menu_sources
 

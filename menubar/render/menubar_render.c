@@ -15,7 +15,9 @@
 // daemon's existing paint flow stays in the daemon — no refactor of
 // paint_pane / appmenu / dropdowns is in this slice.
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE  // M_PI in math.h under strict C11
+#endif
 
 #include "menubar_render.h"
 

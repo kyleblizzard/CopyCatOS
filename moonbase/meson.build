@@ -153,6 +153,11 @@ glesv2_dep = dependency('glesv2')
 libpng_dep  = dependency('libpng')
 libjpeg_dep = dependency('libjpeg')
 
+# pangocairo is the text shaper behind menubar_render. moonbase-launcher
+# links the shared menubar_render translation unit for foreign-distro
+# chrome — the framework library itself never depends on Pango.
+pangocairo_dep = dependency('pangocairo')
+
 # The shared library builds with:
 #   - name 'MoonBase'        : output basename before prefix/suffix
 #   - name_prefix ''         : drop the Linux 'lib' prefix
@@ -362,6 +367,39 @@ moonbase_launch = executable(
   'moonbase-launch',
   'launcher/moonbase-launch.c',
   include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: true,
+  install_rpath: get_option('prefix') / mb_framework_versions / 'Current',
+)
+
+# ---------------------------------------------------------------------
+# moonbase-launcher — portable .app entry point (foreign-distro chrome)
+# ---------------------------------------------------------------------
+#
+# The user-facing launcher that gets registered as the .desktop Exec=
+# target on every host. Decides at startup whether we're inside a full
+# CopyCatOS session (XDG_SESSION_DESKTOP=CopyCatOS — fast pass-through to
+# moonbase-launch) or on a foreign distro (KDE / GNOME / XFCE — fork a
+# Cairo/Pango chrome stub that draws the title + menu bar inside the
+# app's own X window using shared menubar_render code, then exec into
+# moonbase-launch).
+#
+# Compiles in menubar/render/menubar_render.c verbatim — the same
+# translation unit the menubar daemon links. One source of truth, two
+# consumers, no shared library overhead. moonrock/shell-api/moonrock_scale.c
+# isn't pulled in because the chrome stub reads its host scale from the
+# X output directly (no MoonRock atom subscription on a foreign distro).
+
+moonbase_launcher = executable(
+  'moonbase-launcher',
+  'runtime/moonbase-launcher.c',
+  '../menubar/render/menubar_render.c',
+  include_directories: include_directories(
+    'include',
+    'src',
+    '../menubar/render',
+  ),
+  dependencies: [cairo_dep, pangocairo_dep, libpng_dep],
   link_with: libmoonbase,
   install: true,
   install_rpath: get_option('prefix') / mb_framework_versions / 'Current',
