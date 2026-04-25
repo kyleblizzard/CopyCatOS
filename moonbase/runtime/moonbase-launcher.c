@@ -36,6 +36,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -119,6 +120,47 @@ static int resolve_xdg_data_home(char *out, size_t cap) {
     if (!home || !*home) return -1;
     int n = snprintf(out, cap, "%s/.local/share", home);
     return (n < 0 || (size_t)n >= cap) ? -1 : 0;
+}
+
+// Mirror of the data-home resolver for XDG_CONFIG_HOME → $HOME/.config.
+// Used by the slice 19.F theme resolver to find moonbase.conf.
+static int resolve_xdg_config_home(char *out, size_t cap) {
+    const char *xh = getenv("XDG_CONFIG_HOME");
+    if (xh && *xh) {
+        int n = snprintf(out, cap, "%s", xh);
+        return (n < 0 || (size_t)n >= cap) ? -1 : 0;
+    }
+    const char *home = getenv("HOME");
+    if (!home || !*home) return -1;
+    int n = snprintf(out, cap, "%s/.config", home);
+    return (n < 0 || (size_t)n >= cap) ? -1 : 0;
+}
+
+// Strip ASCII whitespace from both ends of `s` in place. INI values like
+// `host_theme_enabled = true` arrive with leading + trailing space; we
+// don't want to ship a regex dep just for one option.
+static void strip_inplace(char *s) {
+    char *p = s;
+    while (*p == ' ' || *p == '\t') p++;
+    if (p != s) memmove(s, p, strlen(p) + 1);
+    size_t len = strlen(s);
+    while (len > 0 && (s[len - 1] == ' '  || s[len - 1] == '\t' ||
+                       s[len - 1] == '\r' || s[len - 1] == '\n')) {
+        s[--len] = '\0';
+    }
+}
+
+// Liberal bool parser — accepts the four words a user might write in a
+// config file plus 1/0. Anything else returns false via *out_valid so
+// the caller can fall through to the next precedence tier rather than
+// silently picking a wrong default.
+static bool parse_bool_loose(const char *s, bool *out_valid) {
+    if (!s) { *out_valid = false; return false; }
+    if (strcasecmp(s, "true")  == 0 || strcasecmp(s, "yes") == 0 ||
+        strcmp(s, "1") == 0)        { *out_valid = true;  return true;  }
+    if (strcasecmp(s, "false") == 0 || strcasecmp(s, "no")  == 0 ||
+        strcmp(s, "0") == 0)        { *out_valid = true;  return false; }
+    *out_valid = false; return false;
 }
 
 // Atomic write — emit `contents` to `<target>.tmp.<pid>` then rename.
@@ -396,10 +438,58 @@ static bool bundle_manifest_load(const char *bundle_root,
 // Launcher config
 // ----------------------------------------------------------------------------
 
+// Minimal INI reader — single section/key tracker. We don't ship a
+// general-purpose parser because moonbase.conf is the only file the
+// launcher itself reads, and its grammar is two lines:
+//
+//     [theme]
+//     host_theme_enabled = true
+//
+// Comments start with # or ;; section headers are bracketed; keys are
+// `name = value`. Anything else is silently skipped — a future option
+// the launcher doesn't recognize must not break older launchers.
 static void launcher_config_load(LauncherConfig *out) {
     out->host_theme_enabled = false;     // pure Snow Leopard Aqua — hard default
-    // TODO(19.F): open ~/.config/copycatos/moonbase.conf, read
-    // [theme] host_theme_enabled = true|false. Missing file = defaults.
+
+    char cfg_home[PATH_MAX];
+    if (resolve_xdg_config_home(cfg_home, sizeof cfg_home) != 0) return;
+
+    char path[PATH_MAX];
+    int n = snprintf(path, sizeof path, "%s/copycatos/moonbase.conf", cfg_home);
+    if (n < 0 || (size_t)n >= sizeof path) return;
+
+    FILE *f = fopen(path, "r");
+    if (!f) return;                       // missing file = defaults; not an error
+
+    char line[512];
+    char section[64] = "";
+    while (fgets(line, sizeof line, f)) {
+        strip_inplace(line);
+        if (line[0] == '\0' || line[0] == '#' || line[0] == ';') continue;
+
+        if (line[0] == '[') {
+            char *end = strchr(line, ']');
+            if (!end) continue;
+            *end = '\0';
+            snprintf(section, sizeof section, "%s", line + 1);
+            strip_inplace(section);
+            continue;
+        }
+
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+        *eq = '\0';
+        char *key = line, *val = eq + 1;
+        strip_inplace(key); strip_inplace(val);
+
+        if (strcmp(section, "theme") == 0 &&
+            strcmp(key, "host_theme_enabled") == 0) {
+            bool ok = false;
+            bool b = parse_bool_loose(val, &ok);
+            if (ok) out->host_theme_enabled = b;
+        }
+    }
+    fclose(f);
 }
 
 // Resolve the host-theme decision for THIS bundle. Precedence (most
@@ -418,13 +508,49 @@ static void launcher_config_load(LauncherConfig *out) {
 //
 // Same precedence Apple's Info.plist + NSUserDefaults follow when an
 // app overrides a system preference.
+// Tier 1 reader — opens
+// $XDG_DATA_HOME/moonbase/<bundle_id>/Preferences/host_theme_enabled
+// and parses its body as a loose bool. The file's *existence* doesn't
+// commit a tier — only a parseable value does, so an empty or garbage
+// file falls through to the next tier instead of pinning Aqua. The
+// View → Use Host Desktop Theme menu item writes "true\n" / "false\n"
+// here; nothing else writes to this path.
+static bool read_per_app_host_theme(const char *bundle_id, bool *out_set) {
+    *out_set = false;
+    if (!bundle_id || !*bundle_id) return false;
+
+    char data_home[PATH_MAX];
+    if (resolve_xdg_data_home(data_home, sizeof data_home) != 0) return false;
+
+    char path[PATH_MAX];
+    int n = snprintf(path, sizeof path,
+                     "%s/moonbase/%s/Preferences/host_theme_enabled",
+                     data_home, bundle_id);
+    if (n < 0 || (size_t)n >= sizeof path) return false;
+
+    FILE *f = fopen(path, "r");
+    if (!f) return false;
+
+    char buf[32] = {0};
+    size_t got = fread(buf, 1, sizeof buf - 1, f);
+    fclose(f);
+    if (got == 0) return false;
+    buf[got] = '\0';
+    strip_inplace(buf);
+
+    bool ok = false;
+    bool v = parse_bool_loose(buf, &ok);
+    if (!ok) return false;
+    *out_set = true;
+    return v;
+}
+
 static bool resolve_host_theme(const LauncherConfig *cfg,
                                const LauncherManifest *m,
                                const char *bundle_id) {
-    (void)bundle_id;
-    // TODO(19.F): read ~/.local/share/moonbase/<bundle_id>/Preferences/
-    //             host_theme_enabled (set by the View menu item in the
-    //             running app). If present, return that value.
+    bool per_app_set = false;
+    bool per_app = read_per_app_host_theme(bundle_id, &per_app_set);
+    if (per_app_set) return per_app;
     if (m->host_theme_override_present) return m->host_theme_override_value;
     return cfg->host_theme_enabled;
 }
@@ -435,7 +561,12 @@ static bool resolve_host_theme(const LauncherConfig *cfg,
 // return it. Pure Aqua otherwise.
 static menubar_render_theme_t resolve_theme(bool host_theme_on) {
     if (!host_theme_on) return MENUBAR_THEME_AQUA;
-    // TODO(19.F): XSettings + portal Settings probe → Breeze / Adwaita.
+    // 19.F-γ: probe XSettings (Net/ThemeName) + the freedesktop portal
+    // Settings interface, map to Breeze / Adwaita. Until that lands the
+    // host-theme decision is plumbed end-to-end but the rendered tint
+    // is still Aqua — same pixels as host_theme_enabled = false. The
+    // *decision* needs to be visible so 19.F-γ only adds the tint, not
+    // a precedence path.
     return MENUBAR_THEME_AQUA;
 }
 
@@ -699,7 +830,6 @@ int main(int argc, char **argv) {
     // Foreign-distro path from here down.
     LauncherManifest m   = {0};
     LauncherConfig   cfg = {0};
-    // TODO(19.F): launcher_config_load must also create the config dir if missing.
     launcher_config_load(&cfg);
 
     // Single-file .app vs .appdev directory. mb_appimg_is_single_file
