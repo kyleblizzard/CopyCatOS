@@ -1018,11 +1018,21 @@ void menubar_run(MenuBar *mb)
     time_t last_clock_check = 0;
     time_t last_systray_update = 0;
 
+    // Heartbeat watchdog — task #76 instrumentation. Stamps the wall
+    // clock every time XNextEvent returns so the periodic block can
+    // print "seconds since last X event" alongside live mode/pane state.
+    // The delta is the discriminator: a growing age while heartbeats
+    // keep firing means the X queue is dry (root cause upstream); a
+    // frozen heartbeat means the menubar loop itself is wedged.
+    time_t last_x_event_at = time(NULL);
+    time_t last_heartbeat_at = 0;
+
     while (mb->running) {
         // ── Handle all pending X events ─────────────────────────
         while (XPending(mb->dpy)) {
             XEvent ev;
             XNextEvent(mb->dpy, &ev);
+            last_x_event_at = time(NULL);
 
             // ── Route events to the dropdown if it's open ───────
             // Dropdown handlers read S() / SF() for row layout, hit-test,
@@ -1510,9 +1520,34 @@ void menubar_run(MenuBar *mb)
             systray_update(mb);
         }
 
+        // ── Heartbeat watchdog — task #76 ────────────────────────
+        // Every 12s log a one-liner showing the loop is alive and the
+        // age of the most recent X event. Hotplug test cycle is ~30s,
+        // so we get ≥2 ticks inside the bug window. Log goes to stderr
+        // (~/.xsession-errors). If the heartbeat itself stops, the loop
+        // is wedged; if it keeps firing while x_event_age grows, the X
+        // queue has gone dry (events not reaching XNextEvent).
+        if (now - last_heartbeat_at >= 12) {
+            last_heartbeat_at = now;
+            fprintf(stderr,
+                    "[menubar] alive | mode=%s panes=%d focused=%d "
+                    "x_event_age=%lds\n",
+                    mb->menubar_mode == MENUBAR_MODE_CLASSIC
+                        ? "classic" : "modern",
+                    mb->pane_count,
+                    mb->focused_pane_idx,
+                    (long)(now - last_x_event_at));
+        }
+
         // ── Check for SIGHUP config reload ──────────────────────
         if (reload_config) {
             reload_config = false;
+            // Always log SIGHUP arrival — even when height is unchanged.
+            // Without this, a SIGHUP that doesn't change the bar height
+            // is invisible from the outside, which made task #76 harder
+            // to diagnose ("does the loop even see SIGHUP during the
+            // hang?" — now answerable from ~/.xsession-errors alone).
+            fprintf(stderr, "[menubar] SIGHUP observed (config reload)\n");
             int old_height = menubar_height;
             read_menubar_config();
 
