@@ -92,7 +92,7 @@ static const char *INFO =
 "minimum-moonbase = \"1.0\"\n"
 "\n"
 "[executable]\n"
-"path = \"Contents/MacOS/run\"\n"
+"path = \"Contents/CopyCatOS/run\"\n"
 "language = \"c\"\n"
 "\n"
 "[permissions]\n";
@@ -134,13 +134,13 @@ static void env_build(env_t *e) {
     mkdir(e->bundle, 0755);
     char sub[PATH_MAX];
     path_snprintf(sub, sizeof(sub), "%s/Contents", e->bundle);         mkdir(sub, 0755);
-    path_snprintf(sub, sizeof(sub), "%s/Contents/MacOS", e->bundle);   mkdir(sub, 0755);
+    path_snprintf(sub, sizeof(sub), "%s/Contents/CopyCatOS", e->bundle);   mkdir(sub, 0755);
     path_snprintf(sub, sizeof(sub), "%s/Contents/Resources", e->bundle); mkdir(sub, 0755);
 
     char p[PATH_MAX];
     path_snprintf(p, sizeof(p), "%s/Contents/Info.appc", e->bundle);
     if (write_file(p, INFO, 0644) != 0) { perror("info"); abort(); }
-    path_snprintf(p, sizeof(p), "%s/Contents/MacOS/run", e->bundle);
+    path_snprintf(p, sizeof(p), "%s/Contents/CopyCatOS/run", e->bundle);
     if (write_file(p, SCRIPT, 0755) != 0) { perror("script"); abort(); }
 
     path_snprintf(e->data_dir, PATH_MAX,

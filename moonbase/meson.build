@@ -1250,8 +1250,7 @@ test('data-dir-isolation', mb_data_dir_isolation,
 # Per example we produce two build artifacts:
 #
 #   <name>.appdev   — classic directory form (bundle-spec.md §1).
-#                     Contents/{Info.appc, CopyCatOS/<exe>, Resources/}
-#                     plus a Contents/MacOS → CopyCatOS legacy symlink.
+#                     Contents/{Info.appc, CopyCatOS/<exe>, Resources/}.
 #                     Runs directly via `moonbase-launch <name>.appdev`
 #                     — the daily dev loop.
 #
@@ -1317,8 +1316,8 @@ foreach spec : example_specs
   )
 
   # Step 1: assemble the .appdev directory. Shape matches bundle-spec.md
-  # §1: Contents/Info.appc + Contents/CopyCatOS/<exe> + legacy MacOS
-  # symlink + an empty Resources/ placeholder.
+  # §1: Contents/Info.appc + Contents/CopyCatOS/<exe> + an empty
+  # Resources/ placeholder.
   #
   # Optional AppIcon.png under examples/<name>/Resources/ is copied when
   # present. Passed as a plain path string (not an `input`) so a missing
@@ -1339,7 +1338,6 @@ foreach spec : example_specs
       + 'cp "$1" "$0/Contents/Info.appc"; '
       + 'cp "$2" "$0/Contents/CopyCatOS/$3"; '
       + 'chmod 0755 "$0/Contents/CopyCatOS/$3"; '
-      + 'ln -s CopyCatOS "$0/Contents/MacOS"; '
       + 'if [ -f "$4" ]; then cp "$4" "$0/Contents/Resources/AppIcon.png"; fi',
       '@OUTPUT0@', '@INPUT0@', '@INPUT1@', name, example_icon,
     ],

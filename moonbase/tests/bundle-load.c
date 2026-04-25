@@ -77,7 +77,7 @@ static int write_file(const char *path, const char *content, mode_t mode) {
     return 0;
 }
 
-// Create tmp/.../MyApp.app/Contents/{Info.appc,MacOS/exe} with caller-
+// Create tmp/.../MyApp.app/Contents/{Info.appc,CopyCatOS/exe} with caller-
 // supplied Info.appc body and a trivial executable. dst_root must be
 // caller-provided scratch; returns 0 and fills *out_bundle with the
 // bundle path on success.
@@ -93,7 +93,7 @@ static int make_bundle(const char *scratch, const char *bundle_name,
     char sub[PATH_MAX];
     path_snprintf(sub, sizeof(sub), "%s/Contents", root);
     if (mkdir(sub, 0755) != 0) return -1;
-    path_snprintf(sub, sizeof(sub), "%s/Contents/MacOS", root);
+    path_snprintf(sub, sizeof(sub), "%s/Contents/CopyCatOS", root);
     if (mkdir(sub, 0755) != 0) return -1;
     path_snprintf(sub, sizeof(sub), "%s/Contents/Resources", root);
     if (mkdir(sub, 0755) != 0) return -1;
@@ -118,7 +118,7 @@ static const char *HAPPY_INFO =
 "minimum-moonbase = \"1.0\"\n"
 "\n"
 "[executable]\n"
-"path = \"Contents/MacOS/hello\"\n"
+"path = \"Contents/CopyCatOS/hello\"\n"
 "language = \"c\"\n"
 "\n"
 "[permissions]\n";
@@ -128,7 +128,7 @@ static const char *HAPPY_INFO =
 static void test_happy(const char *scratch) {
     char path[PATH_MAX];
     EXPECT(make_bundle(scratch, "Happy.app", HAPPY_INFO,
-                       "Contents/MacOS/hello", 0755, path, sizeof(path)) == 0,
+                       "Contents/CopyCatOS/hello", 0755, path, sizeof(path)) == 0,
            "make happy bundle");
 
     mb_bundle_t b;
@@ -136,7 +136,7 @@ static void test_happy(const char *scratch) {
     mb_bundle_err_t rc = mb_bundle_load(path, &b, err, sizeof(err));
     EXPECT(rc == MB_BUNDLE_OK, "happy rc=%s (%s)", mb_bundle_err_string(rc), err);
     EXPECT(b.bundle_path && strstr(b.bundle_path, "/Happy.app") != NULL, "bundle_path");
-    EXPECT(b.exe_abs_path && strstr(b.exe_abs_path, "/Contents/MacOS/hello") != NULL,
+    EXPECT(b.exe_abs_path && strstr(b.exe_abs_path, "/Contents/CopyCatOS/hello") != NULL,
            "exe_abs_path: %s", b.exe_abs_path ? b.exe_abs_path : "(null)");
     EXPECT(strcmp(b.info.id, "show.blizzard.hello") == 0, "info.id");
     mb_bundle_free(&b);
@@ -222,7 +222,7 @@ static void test_exec_missing(const char *scratch) {
 static void test_exec_not_executable(const char *scratch) {
     char path[PATH_MAX];
     EXPECT(make_bundle(scratch, "NotExec.app", HAPPY_INFO,
-                       "Contents/MacOS/hello", 0644, path, sizeof(path)) == 0, "make NotExec");
+                       "Contents/CopyCatOS/hello", 0644, path, sizeof(path)) == 0, "make NotExec");
     mb_bundle_t b;
     char err[256] = {0};
     mb_bundle_err_t rc = mb_bundle_load(path, &b, err, sizeof(err));
@@ -234,7 +234,7 @@ static void test_exec_not_executable(const char *scratch) {
 
 static void test_exec_location(const char *scratch) {
     // Info.appc points at Contents/Info-wrong/hello which is not in
-    // MacOS/ or Resources/.
+    // CopyCatOS/ or Resources/.
     const char *bad_info =
         "[bundle]\n"
         "id = \"show.blizzard.hello\"\n"
@@ -269,14 +269,14 @@ static void test_exec_location(const char *scratch) {
 }
 
 static void test_exec_escape_via_symlink(const char *scratch) {
-    // Bundle has a relative symlink Contents/MacOS/hello -> ../../../../bin/sh,
+    // Bundle has a relative symlink Contents/CopyCatOS/hello -> ../../../../bin/sh,
     // which resolves outside the bundle. After realpath, the executable
     // path shouldn't lie inside abs bundle.
     char path[PATH_MAX];
     EXPECT(make_bundle(scratch, "Escape.app", HAPPY_INFO,
                        NULL, 0, path, sizeof(path)) == 0, "make Escape bundle");
     char link[PATH_MAX];
-    path_snprintf(link, sizeof(link), "%s/Contents/MacOS/hello", path);
+    path_snprintf(link, sizeof(link), "%s/Contents/CopyCatOS/hello", path);
     unlink(link);
     // Make a symlink to /bin/sh using a relative path so the bundle itself
     // carries the relative link (absolute links are rejected first).
@@ -293,7 +293,7 @@ static void test_exec_escape_via_symlink(const char *scratch) {
 static void test_absolute_symlink(const char *scratch) {
     char path[PATH_MAX];
     EXPECT(make_bundle(scratch, "AbsLink.app", HAPPY_INFO,
-                       "Contents/MacOS/hello", 0755, path, sizeof(path)) == 0,
+                       "Contents/CopyCatOS/hello", 0755, path, sizeof(path)) == 0,
            "make AbsLink bundle");
     char link[PATH_MAX];
     path_snprintf(link, sizeof(link), "%s/Contents/Resources/abs-link", path);
@@ -310,7 +310,7 @@ static void test_absolute_symlink(const char *scratch) {
 static void test_outside_contents(const char *scratch) {
     char path[PATH_MAX];
     EXPECT(make_bundle(scratch, "Stray.app", HAPPY_INFO,
-                       "Contents/MacOS/hello", 0755, path, sizeof(path)) == 0,
+                       "Contents/CopyCatOS/hello", 0755, path, sizeof(path)) == 0,
            "make Stray bundle");
     char stray[PATH_MAX];
     path_snprintf(stray, sizeof(stray), "%s/README", path);
@@ -333,13 +333,13 @@ static void test_api_version_too_new(const char *scratch) {
         "minimum-moonbase = \"99.99\"\n"
         "\n"
         "[executable]\n"
-        "path = \"Contents/MacOS/hello\"\n"
+        "path = \"Contents/CopyCatOS/hello\"\n"
         "language = \"c\"\n"
         "\n"
         "[permissions]\n";
     char path[PATH_MAX];
     EXPECT(make_bundle(scratch, "Future.app", info,
-                       "Contents/MacOS/hello", 0755, path, sizeof(path)) == 0,
+                       "Contents/CopyCatOS/hello", 0755, path, sizeof(path)) == 0,
            "make Future bundle");
     mb_bundle_t b;
     char err[256] = {0};

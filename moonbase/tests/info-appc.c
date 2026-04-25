@@ -43,7 +43,7 @@ static const char *HAPPY_C =
 "category = \"utility\"\n"
 "\n"
 "[executable]\n"
-"path = \"Contents/MacOS/hello\"\n"
+"path = \"Contents/CopyCatOS/hello\"\n"
 "language = \"c\"\n"
 "\n"
 "[permissions]\n"
@@ -88,7 +88,7 @@ static const char *EMPTY_PERMS =
 "minimum-moonbase = \"1.0\"\n"
 "\n"
 "[executable]\n"
-"path = \"Contents/MacOS/minimal\"\n"
+"path = \"Contents/CopyCatOS/minimal\"\n"
 "language = \"c\"\n"
 "\n"
 "[permissions]\n"
@@ -109,7 +109,7 @@ static void test_happy_c(void) {
     EXPECT(info.minimum_moonbase && strcmp(info.minimum_moonbase, "1.0") == 0, "minmb");
     EXPECT(info.copyright && strcmp(info.copyright, "© 2026 Blizzard.show") == 0, "copyright");
     EXPECT(info.category && strcmp(info.category, "utility") == 0, "category");
-    EXPECT(info.exec_path && strcmp(info.exec_path, "Contents/MacOS/hello") == 0, "exec_path");
+    EXPECT(info.exec_path && strcmp(info.exec_path, "Contents/CopyCatOS/hello") == 0, "exec_path");
     EXPECT(info.lang == MB_INFO_APPC_LANG_C, "lang");
     EXPECT(info.render_default == MB_INFO_APPC_RENDER_DEFAULT, "render_default");
 
@@ -163,7 +163,7 @@ static void test_empty_perms(void) {
 static void test_missing_bundle(void) {
     const char *src =
         "[executable]\n"
-        "path = \"Contents/MacOS/x\"\n"
+        "path = \"Contents/CopyCatOS/x\"\n"
         "language = \"c\"\n"
         "\n"
         "[permissions]\n";
@@ -183,7 +183,7 @@ static void test_bad_id(void) {
         "minimum-moonbase = \"1.0\"\n"
         "\n"
         "[executable]\n"
-        "path = \"Contents/MacOS/x\"\n"
+        "path = \"Contents/CopyCatOS/x\"\n"
         "language = \"c\"\n"
         "\n"
         "[permissions]\n";
@@ -204,7 +204,7 @@ static void test_unknown_category(void) {
         "category = \"something-else\"\n"
         "\n"
         "[executable]\n"
-        "path = \"Contents/MacOS/x\"\n"
+        "path = \"Contents/CopyCatOS/x\"\n"
         "language = \"c\"\n"
         "\n"
         "[permissions]\n";
@@ -224,7 +224,7 @@ static void test_unknown_permission(void) {
         "minimum-moonbase = \"1.0\"\n"
         "\n"
         "[executable]\n"
-        "path = \"Contents/MacOS/x\"\n"
+        "path = \"Contents/CopyCatOS/x\"\n"
         "language = \"c\"\n"
         "\n"
         "[permissions]\n"
@@ -245,7 +245,7 @@ static void test_unknown_lang(void) {
         "minimum-moonbase = \"1.0\"\n"
         "\n"
         "[executable]\n"
-        "path = \"Contents/MacOS/x\"\n"
+        "path = \"Contents/CopyCatOS/x\"\n"
         "language = \"brainfuck\"\n"
         "\n"
         "[permissions]\n";
@@ -286,7 +286,7 @@ static void test_ipc_not_reverse_dns(void) {
         "minimum-moonbase = \"1.0\"\n"
         "\n"
         "[executable]\n"
-        "path = \"Contents/MacOS/x\"\n"
+        "path = \"Contents/CopyCatOS/x\"\n"
         "language = \"c\"\n"
         "\n"
         "[permissions]\n"
@@ -330,7 +330,7 @@ static void test_unknown_table_warned_not_errored(void) {
         "minimum-moonbase = \"1.0\"\n"
         "\n"
         "[executable]\n"
-        "path = \"Contents/MacOS/x\"\n"
+        "path = \"Contents/CopyCatOS/x\"\n"
         "language = \"c\"\n"
         "\n"
         "[permissions]\n"

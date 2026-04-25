@@ -82,7 +82,7 @@ static const char *INFO_TEMPLATE =
 "minimum-moonbase = \"1.0\"\n"
 "\n"
 "[executable]\n"
-"path = \"Contents/MacOS/run\"\n"
+"path = \"Contents/CopyCatOS/run\"\n"
 "language = \"c\"\n"
 "\n"
 "[permissions]\n";
@@ -157,7 +157,7 @@ static int make_bundle(const char *tmp, const char *bundle_id,
     char sub[PATH_MAX];
     path_snprintf(sub, sizeof(sub), "%s/Contents", bundle_out);
     if (mkdir(sub, 0755) != 0) return -1;
-    path_snprintf(sub, sizeof(sub), "%s/Contents/MacOS", bundle_out);
+    path_snprintf(sub, sizeof(sub), "%s/Contents/CopyCatOS", bundle_out);
     if (mkdir(sub, 0755) != 0) return -1;
     path_snprintf(sub, sizeof(sub), "%s/Contents/Resources", bundle_out);
     if (mkdir(sub, 0755) != 0) return -1;
@@ -170,7 +170,7 @@ static int make_bundle(const char *tmp, const char *bundle_id,
     path_snprintf(p, sizeof(p), "%s/Contents/Info.appc", bundle_out);
     if (write_file(p, info, 0644) != 0) return -1;
 
-    path_snprintf(p, sizeof(p), "%s/Contents/MacOS/run", bundle_out);
+    path_snprintf(p, sizeof(p), "%s/Contents/CopyCatOS/run", bundle_out);
     if (write_file(p, script, 0755) != 0) return -1;
     return 0;
 }

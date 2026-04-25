@@ -29,7 +29,7 @@ typedef enum {
     MB_BUNDLE_ERR_API_VERSION,          // minimum-moonbase > library version
     MB_BUNDLE_ERR_EXEC_MISSING,         // [executable].path doesn't exist
     MB_BUNDLE_ERR_EXEC_ESCAPE,          // [executable].path escapes bundle
-    MB_BUNDLE_ERR_EXEC_LOCATION,        // not under Contents/CopyCatOS/ (or legacy MacOS/) or Resources/
+    MB_BUNDLE_ERR_EXEC_LOCATION,        // not under Contents/CopyCatOS/ or Contents/Resources/
     MB_BUNDLE_ERR_EXEC_MODE,            // not executable, or setuid/setgid set
     MB_BUNDLE_ERR_ABSOLUTE_SYMLINK,     // absolute symlink inside bundle
     MB_BUNDLE_ERR_OUTSIDE_CONTENTS,     // file at bundle root other than Contents/

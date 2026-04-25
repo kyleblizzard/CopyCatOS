@@ -209,8 +209,7 @@ mb_bundle_err_t mb_bundle_load(const char *path, mb_bundle_t *out,
     }
 
     // Executable path — must resolve inside bundle and under
-    // Contents/CopyCatOS/ (canonical), Contents/MacOS/ (legacy soft-transition),
-    // or Contents/Resources/.
+    // Contents/CopyCatOS/ or Contents/Resources/.
     char exe_full[PATH_MAX];
     if (join_path(exe_full, sizeof(exe_full), abs, out->info.exec_path) != 0) {
         mb_info_appc_free(&out->info);
@@ -233,11 +232,9 @@ mb_bundle_err_t mb_bundle_load(const char *path, mb_bundle_t *out,
                 out->info.exec_path, exe_abs, abs);
         return MB_BUNDLE_ERR_EXEC_ESCAPE;
     }
-    // Location check — must be under Contents/CopyCatOS/ (canonical),
-    // Contents/MacOS/ (legacy soft-transition), or Contents/Resources/.
+    // Location check — must be under Contents/CopyCatOS/ or Contents/Resources/.
     const char *rel = exe_abs + abs_len + 1;
     if (strncmp(rel, "Contents/CopyCatOS/", 19) != 0
-        && strncmp(rel, "Contents/MacOS/", 15) != 0
         && strncmp(rel, "Contents/Resources/", 19) != 0) {
         mb_info_appc_free(&out->info);
         set_err(err, err_cap,

@@ -106,7 +106,7 @@ static const char *FIXTURE_INFO =
 "minimum-moonbase = \"1.0\"\n"
 "\n"
 "[executable]\n"
-"path = \"Contents/MacOS/run\"\n"
+"path = \"Contents/CopyCatOS/run\"\n"
 "language = \"c\"\n"
 "\n"
 "[permissions]\n";
@@ -154,7 +154,7 @@ int main(int argc, char **argv) {
 
     char sub[PATH_MAX];
     path_snprintf(sub, sizeof(sub), "%s/Contents", bundle);         mkdir(sub, 0755);
-    path_snprintf(sub, sizeof(sub), "%s/Contents/MacOS", bundle);   mkdir(sub, 0755);
+    path_snprintf(sub, sizeof(sub), "%s/Contents/CopyCatOS", bundle);   mkdir(sub, 0755);
     path_snprintf(sub, sizeof(sub), "%s/Contents/Resources", bundle); mkdir(sub, 0755);
 
     char info_path[PATH_MAX];
@@ -162,7 +162,7 @@ int main(int argc, char **argv) {
     EXPECT(write_file(info_path, FIXTURE_INFO, 0644) == 0, "write Info.appc");
 
     char exe_path[PATH_MAX];
-    path_snprintf(exe_path, sizeof(exe_path), "%s/Contents/MacOS/run", bundle);
+    path_snprintf(exe_path, sizeof(exe_path), "%s/Contents/CopyCatOS/run", bundle);
     EXPECT(write_file(exe_path, FIXTURE_SCRIPT, 0755) == 0, "write exe");
 
     // Tighten HOME/bundle modes to show bwrap binds work with anything
