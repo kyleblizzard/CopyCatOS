@@ -555,19 +555,40 @@ static bool resolve_host_theme(const LauncherConfig *cfg,
     return cfg->host_theme_enabled;
 }
 
-// When host_theme_enabled is on, query the host DE (KDE Breeze, GNOME
-// Adwaita, Xfce) via XSettings (Net/ThemeName) and the freedesktop
-// portal Settings interface, map to a menubar_render_theme_t, and
-// return it. Pure Aqua otherwise.
+// Env-based host DE detection. XDG_CURRENT_DESKTOP is the spec variable
+// (colon-separated; first matching token wins); XDG_SESSION_DESKTOP is
+// the SDDM/login-tier fallback. KDE / Plasma → Breeze. Anything else →
+// Adwaita as a reasonable default for the GTK-family majority (GNOME,
+// XFCE, Cinnamon, MATE, Pantheon, unknown). When a user explicitly
+// opts into host theming they expect *some* host tint, not a silent
+// fall-back to Aqua — that's what host_theme_enabled = false is for.
+//
+// XSettings (Net/ThemeName) and the freedesktop portal Settings probe
+// are a follow-up. Both can refine to the user's actual chosen theme
+// (e.g. Breeze-Dark, Adwaita-Dark) once the chrome stub paints; the
+// env heuristic is sufficient to pick the right *family*.
+static menubar_render_theme_t detect_host_theme_env(void) {
+    const char *vars[] = { "XDG_CURRENT_DESKTOP", "XDG_SESSION_DESKTOP" };
+    for (size_t i = 0; i < sizeof vars / sizeof vars[0]; i++) {
+        const char *v = getenv(vars[i]);
+        if (!v || !*v) continue;
+        char buf[128];
+        snprintf(buf, sizeof buf, "%s", v);
+        char *save = NULL;
+        for (char *tok = strtok_r(buf, ":", &save); tok;
+             tok = strtok_r(NULL, ":", &save)) {
+            if (strcasecmp(tok, "KDE")    == 0 ||
+                strcasecmp(tok, "Plasma") == 0) {
+                return MENUBAR_THEME_HOST_BREEZE_LIGHT;
+            }
+        }
+    }
+    return MENUBAR_THEME_HOST_ADWAITA_LIGHT;
+}
+
 static menubar_render_theme_t resolve_theme(bool host_theme_on) {
     if (!host_theme_on) return MENUBAR_THEME_AQUA;
-    // 19.F-γ: probe XSettings (Net/ThemeName) + the freedesktop portal
-    // Settings interface, map to Breeze / Adwaita. Until that lands the
-    // host-theme decision is plumbed end-to-end but the rendered tint
-    // is still Aqua — same pixels as host_theme_enabled = false. The
-    // *decision* needs to be visible so 19.F-γ only adds the tint, not
-    // a precedence path.
-    return MENUBAR_THEME_AQUA;
+    return detect_host_theme_env();
 }
 
 // ----------------------------------------------------------------------------
