@@ -127,6 +127,24 @@ void events_run(CCWM *wm)
         // sees fresh per-output geometry this same frame.
         display_flush_deferred_hotplug(wm->dpy);
 
+        // After RandR settles, the X root window may have grown or shrunk
+        // (a new monitor extending the virtual root, a mode change on an
+        // existing output). MoonRock's GL viewport + ortho projection were
+        // sized once at mr_init from wm->root_w/h and otherwise never move;
+        // if we don't push the new dimensions through, every frame past the
+        // hotplug clips at the old root width and everything past it shows
+        // the bg-clear color. Cheap to re-query each iteration; only fires
+        // mr_screen_resized when the size actually changed.
+        if (mr_is_active()) {
+            int new_root_w = DisplayWidth(wm->dpy, wm->screen);
+            int new_root_h = DisplayHeight(wm->dpy, wm->screen);
+            if (new_root_w != wm->root_w || new_root_h != wm->root_h) {
+                wm->root_w = new_root_w;
+                wm->root_h = new_root_h;
+                mr_screen_resized(wm);
+            }
+        }
+
         // Composite all windows onto the screen. This is the MoonRock
         // compositor's main render pass — it draws every window with
         // shadows and effects via OpenGL.

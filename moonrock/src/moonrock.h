@@ -354,6 +354,18 @@ int mr_get_damage_event_base(void);
 
 #include "moonrock_shaders.h"
 
+// Notify MoonRock that the X root size changed (RandR hotplug, mode change).
+//
+// MoonRock caches the root dimensions inside its compositor state for the
+// orthographic projection and GL viewport. After a hotplug the X root grows
+// or shrinks but those caches stay stale, leaving the GL viewport pinned to
+// the original startup size — which manifests as the rest of the desktop
+// (wallpaper, dock, menubar) being clipped at the old root width.
+//
+// Caller is responsible for updating wm->root_w / wm->root_h to the new
+// DisplayWidth/Height before invoking this; the function reads them back.
+void mr_screen_resized(CCWM *wm);
+
 // Get a pointer to MoonRock's compiled shader programs.
 // Returns NULL if MoonRock is not initialized.
 ShaderPrograms *mr_get_shaders(void);

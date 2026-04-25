@@ -2223,7 +2223,7 @@ int mr_get_damage_event_base(void)
 // SECTION: Screen resize handling
 // ────────────────────────────────────────────────────────────────────────
 
-static void mr_screen_resized(CCWM *wm)
+void mr_screen_resized(CCWM *wm)
 {
     if (!mr.active || !wm) return;
 
