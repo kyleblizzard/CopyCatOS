@@ -37,6 +37,7 @@
 #include <cairo/cairo-xlib.h>
 #include <cairo/cairo.h>
 #include <errno.h>
+#include <poll.h>
 #include <signal.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -45,7 +46,10 @@
 #include <string.h>
 #include <sys/prctl.h>
 #include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
 #include <X11/Xatom.h>
@@ -55,6 +59,8 @@
 #include <X11/keysym.h>
 
 #include "host_chrome.h"
+#include "host_util.h"
+#include "server.h"
 
 // ----------------------------------------------------------------------------
 // Traffic-light asset loading
@@ -92,6 +98,140 @@ static cairo_surface_t *chrome_stub_load_button_png(const char *home,
 
 static volatile sig_atomic_t chrome_stub_should_exit = 0;
 static void chrome_stub_sigterm(int sig) { (void)sig; chrome_stub_should_exit = 1; }
+
+// ----------------------------------------------------------------------------
+// MoonBase IPC server (slice 19.H.2.a)
+// ----------------------------------------------------------------------------
+//
+// On a foreign distro the bundle's libmoonbase tries to reach
+// $XDG_RUNTIME_DIR/moonbase.sock at startup; without a server bound there
+// the bundle hangs or fails. Inside a real CopyCatOS session that socket is
+// owned by moonrock proper — we must NOT bind it. The two checks below
+// ensure exclusivity:
+//
+//   1. XDG_SESSION_DESKTOP=CopyCatOS — primary signal that a real
+//      moonrock is the session compositor.
+//   2. connect()-probe — belt+suspenders. If a live server is already
+//      bound to the path we back off, even if the env var is unset
+//      (manual launches, broken seat scripts).
+//
+// Both must clear before we call mb_server_open. mb_ipc_frame_listen
+// unlinks before bind() (frame.c:281), so without this guard we would
+// silently steal moonrock's socket and break every running app.
+//
+// Today the responder loops back HELLO → WELCOME and logs every
+// connect/disconnect/frame. Window ops (CREATE_WINDOW, COMMIT_BUFFER,
+// DAMAGE) ride atop this in 19.H.2.b/c/d.
+
+static mb_server_t *g_mb_server      = NULL;
+static char        *g_mb_socket_path = NULL;
+
+static bool socket_path_has_live_server(const char *path) {
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0) return false;
+    struct sockaddr_un sa = {0};
+    sa.sun_family = AF_UNIX;
+    size_t plen = strlen(path);
+    if (plen >= sizeof(sa.sun_path)) { close(fd); return false; }
+    memcpy(sa.sun_path, path, plen + 1);
+    bool live = (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) == 0);
+    close(fd);
+    return live;
+}
+
+static bool should_host_moonbase(const char *socket_path) {
+    const char *xdg_session = getenv("XDG_SESSION_DESKTOP");
+    if (xdg_session && strcmp(xdg_session, "CopyCatOS") == 0) {
+        fprintf(stderr,
+                "[moonrock-lite %d] XDG_SESSION_DESKTOP=CopyCatOS — "
+                "real moonrock owns moonbase.sock; skipping IPC host\n",
+                getpid());
+        return false;
+    }
+    if (socket_path_has_live_server(socket_path)) {
+        fprintf(stderr,
+                "[moonrock-lite %d] live server detected at %s — "
+                "skipping IPC host\n",
+                getpid(), socket_path);
+        return false;
+    }
+    return true;
+}
+
+static void mb_lite_on_event(mb_server_t *s,
+                             const mb_server_event_t *ev,
+                             void *user) {
+    (void)s; (void)user;
+    switch (ev->kind) {
+        case MB_SERVER_EV_CONNECTED:
+            fprintf(stderr,
+                    "[moonrock-lite %d] moonbase client %u connected "
+                    "(bundle=%s version=%s pid=%u api=%u lang=%u)\n",
+                    getpid(), ev->client,
+                    ev->hello.bundle_id      ? ev->hello.bundle_id      : "?",
+                    ev->hello.bundle_version ? ev->hello.bundle_version : "?",
+                    ev->hello.pid, ev->hello.api_version, ev->hello.language);
+            break;
+        case MB_SERVER_EV_FRAME:
+            fprintf(stderr,
+                    "[moonrock-lite %d] moonbase client %u frame "
+                    "kind=0x%04x len=%zu (no-op pre-19.H.2.b)\n",
+                    getpid(), ev->client, ev->frame_kind, ev->frame_body_len);
+            break;
+        case MB_SERVER_EV_DISCONNECTED:
+            fprintf(stderr,
+                    "[moonrock-lite %d] moonbase client %u disconnected "
+                    "(reason=%d)\n",
+                    getpid(), ev->client, ev->disconnect_reason);
+            break;
+    }
+}
+
+// Bring up the IPC server. Returns true on success; false means we
+// declined to bind (live server / CopyCatOS session) or the bind itself
+// failed. Either way the chrome stub keeps running — visual decoration
+// is independent of IPC. mb_server_open MUST be called before the
+// bundle's libmoonbase calls connect(); inside run_chrome we drive this
+// at the very top, before XOpenDisplay, so the bundle wins on its
+// first try even if it races ahead of wait_for_bundle_window.
+static bool start_moonbase_host(void) {
+    g_mb_socket_path = mb_host_default_socket_path();
+    if (!g_mb_socket_path) {
+        fprintf(stderr,
+                "[moonrock-lite %d] XDG_RUNTIME_DIR not set — "
+                "MoonBase IPC disabled\n", getpid());
+        return false;
+    }
+    if (!should_host_moonbase(g_mb_socket_path)) {
+        free(g_mb_socket_path);
+        g_mb_socket_path = NULL;
+        return false;
+    }
+    int rc = mb_server_open(&g_mb_server, g_mb_socket_path,
+                            mb_lite_on_event, NULL);
+    if (rc != 0) {
+        fprintf(stderr,
+                "[moonrock-lite %d] mb_server_open(%s) failed: %d\n",
+                getpid(), g_mb_socket_path, rc);
+        free(g_mb_socket_path);
+        g_mb_socket_path = NULL;
+        g_mb_server      = NULL;
+        return false;
+    }
+    fprintf(stderr,
+            "[moonrock-lite %d] moonbase IPC server bound at %s\n",
+            getpid(), g_mb_socket_path);
+    return true;
+}
+
+static void stop_moonbase_host(void) {
+    if (g_mb_server) {
+        mb_server_close(g_mb_server);
+        g_mb_server = NULL;
+    }
+    free(g_mb_socket_path);
+    g_mb_socket_path = NULL;
+}
 
 // 19.D-β-2b — DBusMenu menu import for the chrome stub.
 //
@@ -166,22 +306,48 @@ static void chrome_stub_rebuild_items(chrome_stub_state_t *s) {
     }
 }
 
-// select(x_fd ∪ glib_fds) — drives both the X connection and the GLib
-// main context that owns appmenu_bridge + DbusMenuClient. Without this
-// the chrome stub would block in XNextEvent and miss every D-Bus reply:
-// the registrar name would never finish acquiring, RegisterWindow would
-// queue indefinitely, and DBusMenu refetches would never land.
+// select(x_fd ∪ glib_fds ∪ mb_server_fds) — drives the X connection, the
+// GLib main context that owns appmenu_bridge + DbusMenuClient, and the
+// MoonBase IPC server when we host one. Without this the chrome stub
+// would block in XNextEvent and miss every D-Bus reply or IPC frame:
+// the registrar name would never finish acquiring, DBusMenu refetches
+// would never land, and bundle clients would hang at HELLO.
 //
-// Returns when X has events ready, glib dispatched at least one source,
-// or `timeout_ms` elapses. Caller drains XPending and rebuilds items[]
-// in response to legacy_dirty before painting.
+// mb_server_get_pollfds returns pollfd[] with POLLIN/POLLOUT events;
+// select() takes separate fd_sets, so we translate: POLLIN → rfds,
+// POLLOUT → wfds. After select returns we copy the readable/writable
+// state back into the pollfd revents and feed mb_server_tick. POLLOUT
+// matters even for HELLO/WELCOME — frame.c keeps a tx queue and only
+// re-flushes when wfds fires, so dropping it would silently stall a
+// fragmented WELCOME on the rare slow-handshake path.
+//
+// Returns when X has events ready, glib dispatched, IPC fds fired, or
+// `timeout_ms` elapses. Caller drains XPending and rebuilds items[] in
+// response to legacy_dirty before painting.
+#define MB_LITE_MAX_POLLFDS 64
+
 static int chrome_stub_select(int x_fd, int timeout_ms) {
-    fd_set rfds;
+    fd_set rfds, wfds;
     FD_ZERO(&rfds);
+    FD_ZERO(&wfds);
     FD_SET(x_fd, &rfds);
     int max_fd = x_fd;
 
     appmenu_bridge_prepare_select(&rfds, &max_fd, &timeout_ms);
+
+    struct pollfd mb_fds[MB_LITE_MAX_POLLFDS];
+    size_t mb_nfds = 0;
+    if (g_mb_server) {
+        mb_nfds = mb_server_get_pollfds(g_mb_server, mb_fds,
+                                        MB_LITE_MAX_POLLFDS);
+        for (size_t i = 0; i < mb_nfds; i++) {
+            int fd = mb_fds[i].fd;
+            if (fd < 0) continue;
+            if (mb_fds[i].events & POLLIN)  FD_SET(fd, &rfds);
+            if (mb_fds[i].events & POLLOUT) FD_SET(fd, &wfds);
+            if (fd > max_fd) max_fd = fd;
+        }
+    }
 
     struct timeval tv;
     struct timeval *ptv = NULL;
@@ -190,9 +356,21 @@ static int chrome_stub_select(int x_fd, int timeout_ms) {
         tv.tv_usec = (timeout_ms % 1000) * 1000;
         ptv = &tv;
     }
-    int n = select(max_fd + 1, &rfds, NULL, NULL, ptv);
+    int n = select(max_fd + 1, &rfds, &wfds, NULL, ptv);
 
     appmenu_bridge_dispatch(&rfds);
+
+    if (g_mb_server) {
+        for (size_t i = 0; i < mb_nfds; i++) {
+            int fd = mb_fds[i].fd;
+            short rev = 0;
+            if (fd >= 0 && FD_ISSET(fd, &rfds)) rev |= POLLIN;
+            if (fd >= 0 && FD_ISSET(fd, &wfds)) rev |= POLLOUT;
+            mb_fds[i].revents = rev;
+        }
+        mb_server_tick(g_mb_server, mb_fds, mb_nfds);
+    }
+
     return n;
 }
 
@@ -856,9 +1034,19 @@ static int run_chrome(const char *bundle_id,
     sigaction(SIGTERM, &sa, NULL);
     sigaction(SIGINT,  &sa, NULL);
 
+    // 19.H.2.a — bind the MoonBase IPC socket BEFORE XOpenDisplay so
+    // the bundle's libmoonbase wins the connect() race on its very
+    // first try. moonbase-launch fork()s and execvp()s into the bundle
+    // in parallel with our X startup; if the bundle reaches connect()
+    // first, libmoonbase fails and the app dies. Bind here; tick the
+    // server inside chrome_stub_select for the rest of run_chrome's
+    // lifetime; close on every exit path below.
+    (void)start_moonbase_host();
+
     Display *dpy = XOpenDisplay(NULL);
     if (!dpy) {
         fprintf(stderr, "[moonrock-lite %d] XOpenDisplay failed\n", getpid());
+        stop_moonbase_host();
         return 1;
     }
     int screen = DefaultScreen(dpy);
@@ -897,6 +1085,7 @@ static int run_chrome(const char *bundle_id,
                     getpid(), bundle_id);
         }
         if (bridge_up) appmenu_bridge_shutdown();
+        stop_moonbase_host();
         XCloseDisplay(dpy);
         return 0;
     }
@@ -910,6 +1099,7 @@ static int run_chrome(const char *bundle_id,
                 "[moonrock-lite %d] XGetWindowAttributes failed; exiting\n",
                 getpid());
         if (bridge_up) appmenu_bridge_shutdown();
+        stop_moonbase_host();
         XCloseDisplay(dpy);
         return 1;
     }
@@ -1482,6 +1672,7 @@ static int run_chrome(const char *bundle_id,
     cairo_surface_destroy(surf);
     menubar_render_cleanup();
     XDestroyWindow(dpy, chrome_win);
+    stop_moonbase_host();
     XCloseDisplay(dpy);
     return 0;
 }

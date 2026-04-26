@@ -78,6 +78,17 @@ moonrock_lite_sources = [
   # 19.H.1.b — shared host_chrome painter so the title strip is
   # bit-identical to moonrock's in-session window decoration.
   '../moonbase/src/host/host_chrome.c',
+  '../moonbase/src/host/host_util.c',
+  # 19.H.2.a — host the MoonBase IPC server when the foreign-distro
+  # session is the bundle's parent (real moonrock isn't running). The
+  # bundle's libmoonbase connects to $XDG_RUNTIME_DIR/moonbase.sock at
+  # startup; without a server bound there it fails to come up. We pull
+  # the same source files moonrock proper compiles in (cbor.c +
+  # frame.c + server.c) rather than linking libmoonbase, mirroring the
+  # pattern in moonrock/meson.build.
+  '../moonbase/src/ipc/cbor.c',
+  '../moonbase/src/ipc/frame.c',
+  '../moonbase/src/server/server.c',
 ]
 
 executable('moonrock-lite',
@@ -86,6 +97,10 @@ executable('moonrock-lite',
     '../menubar/render',
     '../menubar/src',
     '../moonbase/src/host',
+    '../moonbase/include',
+    '../moonbase/src',
+    '../moonbase/src/ipc',
+    '../moonbase/src/server',
   ),
   dependencies: [
     x11_dep, xrandr_dep,
