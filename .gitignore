@@ -50,6 +50,9 @@ screenshotsforkyle/
 wallpaper/
 /fonts/
 **/assets/source/
+# /cursors/ — Snow Leopard XCursor theme drop, deployed at runtime to
+# ~/.icons/SnowLeopard/. Asset cache; never ships per the asset-folder rule.
+/cursors/
 
 # ── Claude / AI config (never ships) ────────────────────────────────
 CLAUDE.md
