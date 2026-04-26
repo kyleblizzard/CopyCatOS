@@ -832,6 +832,7 @@ mb_resize_route = executable(
   'mb-resize-route',
   'tests/resize-route.c',
   include_directories: include_directories('include', 'src'),
+  dependencies: [cairo_dep],
   link_with: [libmoonbase, mb_host_lib],
   install: false,
 )

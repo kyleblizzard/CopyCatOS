@@ -14,12 +14,22 @@
 //   * ev.resize.new_width / new_height match the wire payload 640 / 480,
 //   * post-event, moonbase_window_size() reports 640×480 — the
 //     framework-auto-realloc surface contract from slice 19.H.2.j-β.
+//
+// Slice 19.H.2.j-β cr-drop coverage (task #118): also exercises the
+// underlying surface-realloc path. Before wait_event, child allocates a
+// Cairo frame against the 800×600 window and confirms the surface is
+// sized 800 px wide (scale 1.0). After the resize event delivers, the
+// cached cairo_t and surface have been retired by mb_internal_window_
+// apply_resize → window_release_frame, so the next moonbase_window_cairo
+// allocates a fresh surface — this test asserts that surface reports
+// 640 px wide.
 
 #include "moonbase.h"
 #include "../src/server/server.h"
 #include "../src/host/host_protocol.h"
 #include "moonbase/ipc/kinds.h"
 
+#include <cairo/cairo.h>
 #include <errno.h>
 #include <poll.h>
 #include <stdio.h>
@@ -117,6 +127,21 @@ static int run_client(const char *sock_dir) {
     mb_window_t *win = moonbase_window_create(&desc);
     if (!win) return 21;
 
+    // Force a Cairo frame allocation at the original 800×600 dims. The
+    // resize event has already been queued by the parent (sent in the
+    // same handler as the WINDOW_CREATE_REPLY) but has not yet been
+    // pumped, so the framework's cached width is still REQUESTED_W.
+    cairo_t *cr_before = (cairo_t *)moonbase_window_cairo(win);
+    if (!cr_before) return 28;
+    int w_before_px =
+        cairo_image_surface_get_width(cairo_get_target(cr_before));
+    if (w_before_px != REQUESTED_W) {
+        fprintf(stderr,
+                "child: pre-resize cairo surface width %d (want %d)\n",
+                w_before_px, REQUESTED_W);
+        return 29;
+    }
+
     mb_event_t ev = {0};
     rc = moonbase_wait_event(&ev, 2000);
     if (rc != 1) {
@@ -160,6 +185,21 @@ static int run_client(const char *sock_dir) {
                 "child: moonbase_window_size post-event got %dx%d want %dx%d\n",
                 now_w, now_h, RESIZED_W, RESIZED_H);
         return 27;
+    }
+
+    // Slice 19.H.2.j-β cr-drop assertion: the previously-cached cairo_t
+    // was sized to 800×600 backing pixels. The resize delivery retired
+    // it, so the next moonbase_window_cairo() must allocate a fresh
+    // surface at 640×480 — the size the app will draw against next.
+    cairo_t *cr_after = (cairo_t *)moonbase_window_cairo(win);
+    if (!cr_after) return 30;
+    int w_after_px =
+        cairo_image_surface_get_width(cairo_get_target(cr_after));
+    if (w_after_px != RESIZED_W) {
+        fprintf(stderr,
+                "child: post-resize cairo surface width %d (want %d)\n",
+                w_after_px, RESIZED_W);
+        return 31;
     }
 
     moonbase_window_close(win);
