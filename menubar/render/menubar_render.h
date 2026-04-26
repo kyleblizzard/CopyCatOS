@@ -162,21 +162,6 @@ void menubar_render_hover_highlight(cairo_t *cr, int x, int y, int w, int h,
 void menubar_render_layout_menus(menubar_render_item_t *items, size_t n,
                                  int origin_x, double scale);
 
-// Paint the unified title bar (foreign-distro mode only — the full
-// daemon's chrome is handled inside MoonRock). Lays the traffic lights
-// at SL canonical positions, calls layout_menus right of them, draws
-// the window title centered in the leftover space, paints background.
-//
-// 19.D-prep: traffic-light glyphs and the canonical SL title-bar
-// gradient live in moonbase/src/chrome/moonbase_chrome.c. Extracting
-// those into the shared chrome layer is its own slice. For now this
-// body paints the menubar background + a centered window title only,
-// so the call site is exercisable.
-void menubar_render_paint_title_bar(cairo_t *cr, int width_px, int height_px,
-                                    const char *window_title, bool active,
-                                    menubar_render_theme_t theme,
-                                    double scale);
-
 // Paint a row of menu items already laid out by layout_menus. The
 // slot at hover_index gets the rounded pill; pass -1 to disable hover.
 void menubar_render_paint_menu_bar(cairo_t *cr, int width_px, int height_px,

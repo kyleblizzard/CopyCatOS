@@ -51,6 +51,175 @@ static inline int px(float v) {
 }
 
 // ---------------------------------------------------------------------
+// Static helper: paint title strip
+// ---------------------------------------------------------------------
+//
+// Renders gradient + traffic lights + centered title at the cairo_t's
+// current origin, into a strip (width_px × titlebar_px). No clip, no
+// hairlines — the caller is responsible for any rounded-top clip and
+// for drawing side/bottom borders if the strip is part of a larger
+// chrome rectangle. This is the single source of truth shared between
+// `mb_chrome_repaint` (compositor-internal MoonBase windows) and
+// `mb_chrome_paint_title_strip` (foreign-distro chrome via moonrock-
+// lite blitting into an X drawable).
+
+static void paint_title_strip(cairo_t *cr,
+                              int      width_px,
+                              int      titlebar_px,
+                              float    scale,
+                              const char *title,
+                              bool     active,
+                              bool     buttons_hover,
+                              int      pressed_button,
+                              cairo_surface_t *imgs[3])
+{
+    if (!title || !*title) title = "(Untitled)";
+
+    double w = (double)width_px;
+    double h = (double)titlebar_px;
+
+    // ── Title-bar gradient ──
+    {
+        double hi_r, hi_g, hi_b;
+        double g0_r, g0_g, g0_b;
+        double g1_r, g1_g, g1_b;
+        double dv_r, dv_g, dv_b;
+
+        if (active) {
+            hi_r = hi_g = hi_b = 226/255.0;
+            g0_r = g0_g = g0_b = 208/255.0;
+            g1_r = g1_g = g1_b = 194/255.0;
+            dv_r = dv_g = dv_b = 191/255.0;
+        } else {
+            hi_r = hi_g = hi_b = 244/255.0;
+            g0_r = g0_g = g0_b = 237/255.0;
+            g1_r = g1_g = g1_b = 228/255.0;
+            dv_r = dv_g = dv_b = 208/255.0;
+        }
+
+        cairo_set_source_rgb(cr, hi_r, hi_g, hi_b);
+        cairo_rectangle(cr, 0, 0, w, 1);
+        cairo_fill(cr);
+
+        cairo_pattern_t *grad = cairo_pattern_create_linear(0, 1, 0, h - 1);
+        cairo_pattern_add_color_stop_rgb(grad, 0.0, g0_r, g0_g, g0_b);
+        cairo_pattern_add_color_stop_rgb(grad, 1.0, g1_r, g1_g, g1_b);
+        cairo_set_source(cr, grad);
+        cairo_rectangle(cr, 0, 1, w, h - 1);
+        cairo_fill(cr);
+        cairo_pattern_destroy(grad);
+
+        cairo_set_source_rgb(cr, dv_r, dv_g, dv_b);
+        cairo_rectangle(cr, 0, h - 1, w, 1);
+        cairo_fill(cr);
+    }
+
+    // ── Traffic lights ──
+    int btn_d  = px(MB_CHROME_BUTTON_DIAMETER  * scale);
+    int btn_sp = px(MB_CHROME_BUTTON_SPACING   * scale);
+    int btn_lx = px(MB_CHROME_BUTTON_LEFT_PAD  * scale);
+    int btn_ty = px(MB_CHROME_BUTTON_TOP_PAD   * scale);
+
+    bool show_glyphs = active && (buttons_hover || pressed_button > 0);
+    int bx = btn_lx;
+    int by = btn_ty;
+    for (int i = 0; i < 3; i++) {
+        double cx = bx + btn_d / 2.0;
+        double cy = by + btn_d / 2.0;
+        double r  = btn_d / 2.0;
+
+        if (active && imgs[i]) {
+            int img_w = cairo_image_surface_get_width (imgs[i]);
+            int img_h = cairo_image_surface_get_height(imgs[i]);
+            cairo_save(cr);
+            cairo_translate(cr, bx, by);
+            cairo_scale(cr, (double)btn_d / img_w, (double)btn_d / img_h);
+            cairo_set_source_surface(cr, imgs[i], 0, 0);
+            cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR);
+            cairo_paint(cr);
+            cairo_restore(cr);
+        } else {
+            cairo_arc(cr, cx, cy, r - 0.5, 0, 2 * M_PI);
+            cairo_set_source_rgb(cr, 176/255.0, 176/255.0, 176/255.0);
+            cairo_fill_preserve(cr);
+            cairo_set_source_rgb(cr, 150/255.0, 150/255.0, 150/255.0);
+            cairo_set_line_width(cr, 0.5);
+            cairo_stroke(cr);
+        }
+
+        if (pressed_button == (i + 1) && active) {
+            cairo_save(cr);
+            cairo_arc(cr, cx, cy, r - 0.5, 0, 2 * M_PI);
+            cairo_set_source_rgba(cr, 0, 0, 0, 0.25);
+            cairo_fill(cr);
+            cairo_restore(cr);
+        }
+
+        if (show_glyphs) {
+            double glyph_size = r * 0.55;
+            cairo_save(cr);
+            cairo_set_line_width(cr, 1.2);
+            cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
+            if (i == 0) {
+                cairo_set_source_rgba(cr, 0.25, 0.0, 0.0, 0.9);
+                cairo_move_to(cr, cx - glyph_size, cy - glyph_size);
+                cairo_line_to(cr, cx + glyph_size, cy + glyph_size);
+                cairo_stroke(cr);
+                cairo_move_to(cr, cx + glyph_size, cy - glyph_size);
+                cairo_line_to(cr, cx - glyph_size, cy + glyph_size);
+                cairo_stroke(cr);
+            } else if (i == 1) {
+                cairo_set_source_rgba(cr, 0.25, 0.12, 0.0, 0.9);
+                cairo_move_to(cr, cx - glyph_size, cy);
+                cairo_line_to(cr, cx + glyph_size, cy);
+                cairo_stroke(cr);
+            } else {
+                cairo_set_source_rgba(cr, 0.0, 0.18, 0.0, 0.9);
+                cairo_move_to(cr, cx - glyph_size, cy);
+                cairo_line_to(cr, cx + glyph_size, cy);
+                cairo_stroke(cr);
+                cairo_move_to(cr, cx, cy - glyph_size);
+                cairo_line_to(cr, cx, cy + glyph_size);
+                cairo_stroke(cr);
+            }
+            cairo_restore(cr);
+        }
+
+        bx += btn_d + btn_sp;
+    }
+
+    // ── Title text (centered in the strip) ──
+    PangoLayout *layout = pango_cairo_create_layout(cr);
+    char font_spec[64];
+    int pt_size = (int)(11.0f * scale + 0.5f);
+    if (pt_size < 8) pt_size = 8;
+    snprintf(font_spec, sizeof(font_spec), "%s %d",
+             active ? "Lucida Grande Bold" : "Lucida Grande", pt_size);
+    PangoFontDescription *font = pango_font_description_from_string(font_spec);
+    pango_layout_set_font_description(layout, font);
+    pango_layout_set_text(layout, title, -1);
+
+    int tw = 0, th = 0;
+    pango_layout_get_pixel_size(layout, &tw, &th);
+    double tx = (w - (double)tw) / 2.0;
+    double ty = (h - (double)th) / 2.0;
+
+    cairo_move_to(cr, tx, ty + (double)px(scale));
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, active ? 0.7 : 0.3);
+    pango_cairo_show_layout(cr, layout);
+
+    cairo_move_to(cr, tx, ty);
+    cairo_set_source_rgb(cr,
+        active ?  40/255.0 : 140/255.0,
+        active ?  40/255.0 : 140/255.0,
+        active ?  40/255.0 : 140/255.0);
+    pango_cairo_show_layout(cr, layout);
+
+    pango_font_description_free(font);
+    g_object_unref(layout);
+}
+
+// ---------------------------------------------------------------------
 // Public: repaint
 // ---------------------------------------------------------------------
 
@@ -144,161 +313,15 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
     cairo_close_path(cr);
     cairo_clip(cr);
 
-    // ── Title-bar gradient ──
-    // Values measured from real SL 10.6 reference screenshots (see
-    // comment block at top of this file). Both active and inactive
-    // follow the same three-part recipe: 1-px highlight row, body
-    // gradient, 1-px divider at the bottom edge.
-    {
-        double w = (double)chrome_w;
-        double h = (double)titlebar_px;
-
-        double hi_r, hi_g, hi_b;
-        double g0_r, g0_g, g0_b;
-        double g1_r, g1_g, g1_b;
-        double dv_r, dv_g, dv_b;
-
-        if (active) {
-            hi_r = hi_g = hi_b = 226/255.0;
-            g0_r = g0_g = g0_b = 208/255.0;
-            g1_r = g1_g = g1_b = 194/255.0;
-            dv_r = dv_g = dv_b = 191/255.0;
-        } else {
-            hi_r = hi_g = hi_b = 244/255.0;
-            g0_r = g0_g = g0_b = 237/255.0;
-            g1_r = g1_g = g1_b = 228/255.0;
-            dv_r = dv_g = dv_b = 208/255.0;
-        }
-
-        cairo_set_source_rgb(cr, hi_r, hi_g, hi_b);
-        cairo_rectangle(cr, 0, 0, w, 1);
-        cairo_fill(cr);
-
-        cairo_pattern_t *grad = cairo_pattern_create_linear(0, 1, 0, h - 1);
-        cairo_pattern_add_color_stop_rgb(grad, 0.0, g0_r, g0_g, g0_b);
-        cairo_pattern_add_color_stop_rgb(grad, 1.0, g1_r, g1_g, g1_b);
-        cairo_set_source(cr, grad);
-        cairo_rectangle(cr, 0, 1, w, h - 1);
-        cairo_fill(cr);
-        cairo_pattern_destroy(grad);
-
-        cairo_set_source_rgb(cr, dv_r, dv_g, dv_b);
-        cairo_rectangle(cr, 0, h - 1, w, 1);
-        cairo_fill(cr);
-    }
-
-    // ── Traffic lights ──
-    // Active: caller-supplied PNG asset surfaces (close, minimize, zoom).
-    // Inactive: uniform gray dots with a thin outline — matches real
-    // Snow Leopard.
-    int btn_d  = px(MB_CHROME_BUTTON_DIAMETER  * scale);
-    int btn_sp = px(MB_CHROME_BUTTON_SPACING   * scale);
-    int btn_lx = px(MB_CHROME_BUTTON_LEFT_PAD  * scale);
-    int btn_ty = px(MB_CHROME_BUTTON_TOP_PAD   * scale);
-
+    // ── Title strip (gradient + traffic lights + centered title) ──
+    // Single source of truth shared with mb_chrome_paint_title_strip.
     cairo_surface_t *imgs[3] = {
         btn_imgs ? (cairo_surface_t *)btn_imgs[0] : NULL,
         btn_imgs ? (cairo_surface_t *)btn_imgs[1] : NULL,
         btn_imgs ? (cairo_surface_t *)btn_imgs[2] : NULL,
     };
-
-    bool show_glyphs = active && (buttons_hover || pressed_button > 0);
-    int bx = btn_lx;
-    int by = btn_ty;
-    for (int i = 0; i < 3; i++) {
-        double cx = bx + btn_d / 2.0;
-        double cy = by + btn_d / 2.0;
-        double r  = btn_d / 2.0;
-
-        if (active && imgs[i]) {
-            int img_w = cairo_image_surface_get_width (imgs[i]);
-            int img_h = cairo_image_surface_get_height(imgs[i]);
-            cairo_save(cr);
-            cairo_translate(cr, bx, by);
-            cairo_scale(cr, (double)btn_d / img_w, (double)btn_d / img_h);
-            cairo_set_source_surface(cr, imgs[i], 0, 0);
-            cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR);
-            cairo_paint(cr);
-            cairo_restore(cr);
-        } else {
-            cairo_arc(cr, cx, cy, r - 0.5, 0, 2 * M_PI);
-            cairo_set_source_rgb(cr, 176/255.0, 176/255.0, 176/255.0);
-            cairo_fill_preserve(cr);
-            cairo_set_source_rgb(cr, 150/255.0, 150/255.0, 150/255.0);
-            cairo_set_line_width(cr, 0.5);
-            cairo_stroke(cr);
-        }
-
-        if (pressed_button == (i + 1) && active) {
-            cairo_save(cr);
-            cairo_arc(cr, cx, cy, r - 0.5, 0, 2 * M_PI);
-            cairo_set_source_rgba(cr, 0, 0, 0, 0.25);
-            cairo_fill(cr);
-            cairo_restore(cr);
-        }
-
-        if (show_glyphs) {
-            double glyph_size = r * 0.55;
-            cairo_save(cr);
-            cairo_set_line_width(cr, 1.2);
-            cairo_set_line_cap(cr, CAIRO_LINE_CAP_ROUND);
-            if (i == 0) {
-                cairo_set_source_rgba(cr, 0.25, 0.0, 0.0, 0.9);
-                cairo_move_to(cr, cx - glyph_size, cy - glyph_size);
-                cairo_line_to(cr, cx + glyph_size, cy + glyph_size);
-                cairo_stroke(cr);
-                cairo_move_to(cr, cx + glyph_size, cy - glyph_size);
-                cairo_line_to(cr, cx - glyph_size, cy + glyph_size);
-                cairo_stroke(cr);
-            } else if (i == 1) {
-                cairo_set_source_rgba(cr, 0.25, 0.12, 0.0, 0.9);
-                cairo_move_to(cr, cx - glyph_size, cy);
-                cairo_line_to(cr, cx + glyph_size, cy);
-                cairo_stroke(cr);
-            } else {
-                cairo_set_source_rgba(cr, 0.0, 0.18, 0.0, 0.9);
-                cairo_move_to(cr, cx - glyph_size, cy);
-                cairo_line_to(cr, cx + glyph_size, cy);
-                cairo_stroke(cr);
-                cairo_move_to(cr, cx, cy - glyph_size);
-                cairo_line_to(cr, cx, cy + glyph_size);
-                cairo_stroke(cr);
-            }
-            cairo_restore(cr);
-        }
-
-        bx += btn_d + btn_sp;
-    }
-
-    // ── Title text (centered in the title bar) ──
-    PangoLayout *layout = pango_cairo_create_layout(cr);
-    char font_spec[64];
-    int pt_size = (int)(11.0f * scale + 0.5f);
-    if (pt_size < 8) pt_size = 8;
-    snprintf(font_spec, sizeof(font_spec), "%s %d",
-             active ? "Lucida Grande Bold" : "Lucida Grande", pt_size);
-    PangoFontDescription *font = pango_font_description_from_string(font_spec);
-    pango_layout_set_font_description(layout, font);
-    pango_layout_set_text(layout, title, -1);
-
-    int tw = 0, th = 0;
-    pango_layout_get_pixel_size(layout, &tw, &th);
-    double tx = ((double)chrome_w - (double)tw) / 2.0;
-    double ty = ((double)titlebar_px - (double)th) / 2.0;
-
-    cairo_move_to(cr, tx, ty + (double)px(scale));
-    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, active ? 0.7 : 0.3);
-    pango_cairo_show_layout(cr, layout);
-
-    cairo_move_to(cr, tx, ty);
-    cairo_set_source_rgb(cr,
-        active ?  40/255.0 : 140/255.0,
-        active ?  40/255.0 : 140/255.0,
-        active ?  40/255.0 : 140/255.0);
-    pango_cairo_show_layout(cr, layout);
-
-    pango_font_description_free(font);
-    g_object_unref(layout);
+    paint_title_strip(cr, (int)chrome_w, titlebar_px, scale,
+                      title, active, buttons_hover, pressed_button, imgs);
 
     // ── Side + bottom hairline ──
     double bc = active ? 160/255.0 : 190/255.0;
@@ -337,4 +360,35 @@ void mb_chrome_release(mb_chrome_t *chrome)
         cairo_surface_destroy((cairo_surface_t *)chrome->cairo_surface);
     }
     memset(chrome, 0, sizeof(*chrome));
+}
+
+// ---------------------------------------------------------------------
+// Public: paint title strip into caller's Cairo context
+// ---------------------------------------------------------------------
+//
+// moonrock-lite owns its own cairo_xlib_surface above an X drawable
+// and just needs the pixels of the SL title strip — no rounded-top
+// clip (its background is whatever WM_CLASS_HINT background pixel the
+// override-redirect window was created with), no side/bottom hairlines
+// (those belong to the bundle's own X frame, not the chrome bar).
+
+void mb_chrome_paint_title_strip(void *cr_void,
+                                 int width_px, int height_px,
+                                 float scale,
+                                 const char *title,
+                                 bool active,
+                                 bool buttons_hover,
+                                 int  pressed_button,
+                                 void *const btn_imgs[3])
+{
+    if (!cr_void) return;
+    if (width_px <= 0 || height_px <= 0 || scale <= 0.0f) return;
+
+    cairo_surface_t *imgs[3] = {
+        btn_imgs ? (cairo_surface_t *)btn_imgs[0] : NULL,
+        btn_imgs ? (cairo_surface_t *)btn_imgs[1] : NULL,
+        btn_imgs ? (cairo_surface_t *)btn_imgs[2] : NULL,
+    };
+    paint_title_strip((cairo_t *)cr_void, width_px, height_px, scale,
+                      title, active, buttons_hover, pressed_button, imgs);
 }

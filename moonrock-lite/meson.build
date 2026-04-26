@@ -75,6 +75,9 @@ moonrock_lite_sources = [
   '../menubar/src/menu_model.c',
   '../menubar/src/dbusmenu_client.c',
   '../menubar/src/appmenu_bridge.c',
+  # 19.H.1.b — shared host_chrome painter so the title strip is
+  # bit-identical to moonrock's in-session window decoration.
+  '../moonbase/src/host/host_chrome.c',
 ]
 
 executable('moonrock-lite',

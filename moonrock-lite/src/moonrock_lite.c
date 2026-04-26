@@ -57,6 +57,36 @@
 #include "host_chrome.h"
 
 // ----------------------------------------------------------------------------
+// Traffic-light asset loading
+// ----------------------------------------------------------------------------
+//
+// Real Snow Leopard close/minimize/zoom PNGs ship via install-assets.sh to
+// ~/.local/share/aqua-widgets/. moonrock proper loads them from the same
+// path (see moonrock/src/assets.c); we duplicate the loader here rather
+// than depending on libmoonrock so foreign-distro chrome keeps the no-
+// extra-runtime-deps profile. NULL surfaces are fine — host_chrome's
+// painter falls back to gray dots when the asset is missing, so a foreign
+// distro that hasn't run install-assets.sh still gets working (if plain)
+// chrome instead of a crash.
+
+static cairo_surface_t *chrome_stub_load_button_png(const char *home,
+                                                    const char *name) {
+    char path[512];
+    snprintf(path, sizeof(path),
+             "%s/.local/share/aqua-widgets/%s", home, name);
+    cairo_surface_t *s = cairo_image_surface_create_from_png(path);
+    if (cairo_surface_status(s) != CAIRO_STATUS_SUCCESS) {
+        fprintf(stderr,
+                "[moonrock-lite %d] traffic-light asset missing: %s (%s)\n",
+                getpid(), path,
+                cairo_status_to_string(cairo_surface_status(s)));
+        cairo_surface_destroy(s);
+        return NULL;
+    }
+    return s;
+}
+
+// ----------------------------------------------------------------------------
 // Lifecycle + signals
 // ----------------------------------------------------------------------------
 
@@ -314,10 +344,10 @@ static void set_chrome_window_metadata(Display *dpy, Window chrome,
 // hit_test_button() in moonrock/src/events.c — same constants,
 // same scaling rule, same return convention. Geometry constants come
 // from host_chrome.h (MB_CHROME_BUTTON_*) — single source of truth
-// shared with moonrock's wm.h aliases. Inlined here (rather than
-// extracted into menubar_render) because the SL traffic-light glyphs
-// and gradient still live in moonrock/src/moonbase_chrome.c; pulling
-// both paint and hit-test belongs to slice 19.H.1.b.
+// shared with moonrock's wm.h aliases. Paint-side parity with moonrock
+// is supplied by mb_chrome_paint_title_strip in the same shared header
+// (slice 19.H.1.b) — chrome stub and in-session decoration draw the
+// strip from one painter, hit-test from one rule.
 static int chrome_stub_hit_test_button(int fx, int fy, double scale) {
     int btn_d  = (int)(MB_CHROME_BUTTON_DIAMETER  * scale);
     int btn_sp = (int)(MB_CHROME_BUTTON_SPACING   * scale);
@@ -922,8 +952,13 @@ static int run_chrome(const char *bundle_id,
 
     XSetWindowAttributes wa = {0};
     wa.background_pixel    = WhitePixel(dpy, screen);
+    // EnterWindow / LeaveWindow / PointerMotion: traffic-light hover
+    // state. ButtonRelease: pressed-state release without crossing into
+    // the bundle's input region.
     wa.event_mask          = ExposureMask | StructureNotifyMask
-                           | ButtonPressMask;
+                           | ButtonPressMask | ButtonReleaseMask
+                           | EnterWindowMask | LeaveWindowMask
+                           | PointerMotionMask;
     wa.override_redirect   = True;
 
     Window chrome_win = XCreateWindow(
@@ -988,6 +1023,25 @@ static int run_chrome(const char *bundle_id,
     chrome_stub_rebuild_items(&state);
 
     chrome_stub_dropdown_t dropdown = {0};
+
+    // Load real SL traffic-light PNGs (close/minimize/zoom) so the
+    // chrome bar matches the in-session moonrock window decoration.
+    // NULLs are fine — host_chrome's painter falls back to gray dots.
+    const char *home = getenv("HOME");
+    if (!home) home = "";
+    cairo_surface_t *btn_close    = chrome_stub_load_button_png(
+        home, "sl_close_button.png");
+    cairo_surface_t *btn_minimize = chrome_stub_load_button_png(
+        home, "sl_minimize_button.png");
+    cairo_surface_t *btn_zoom     = chrome_stub_load_button_png(
+        home, "sl_zoom_button.png");
+    void *btn_imgs[3] = { btn_close, btn_minimize, btn_zoom };
+
+    // Hover + pressed state for traffic-light highlights. Repaints
+    // happen only on edge transitions so cursor drift across the title
+    // bar doesn't burn CPU. Pressed maps 1=close, 2=minimize, 3=zoom.
+    bool buttons_hover  = false;
+    int  pressed_button = 0;
 
     int cur_w = chrome_w;
     int cur_h = chrome_h;
@@ -1249,6 +1303,51 @@ static int run_chrome(const char *bundle_id,
                 continue;
             }
 
+            // Traffic-light hover tracking. Only the title-strip Y
+            // band (fy < cur_title_h) is a hover region; below that
+            // is the menu bar, which uses its own hover model in
+            // menubar_render_paint_menu_bar. Repaint only on edge
+            // transitions so cursor drift across the strip doesn't
+            // burn CPU.
+            if ((ev.type == EnterNotify || ev.type == MotionNotify) &&
+                ev.xany.window == chrome_win) {
+                int fx = (ev.type == EnterNotify)
+                    ? ev.xcrossing.x : ev.xmotion.x;
+                int fy = (ev.type == EnterNotify)
+                    ? ev.xcrossing.y : ev.xmotion.y;
+                bool in_strip = (fy >= 0 && fy < cur_title_h);
+                bool over_btn = false;
+                if (in_strip) {
+                    over_btn = chrome_stub_hit_test_button(fx, fy, scale) > 0;
+                }
+                if (over_btn != buttons_hover) {
+                    buttons_hover = over_btn;
+                    need_paint = true;
+                }
+                continue;
+            }
+
+            if (ev.type == LeaveNotify && ev.xany.window == chrome_win) {
+                if (buttons_hover || pressed_button) {
+                    buttons_hover  = false;
+                    pressed_button = 0;
+                    need_paint = true;
+                }
+                continue;
+            }
+
+            // Pressed-state release. ButtonRelease cancels the depressed
+            // glyph so the user sees the button "pop back" before the
+            // bundle responds (or even if the bundle never responds).
+            if (ev.type == ButtonRelease &&
+                ev.xany.window == chrome_win &&
+                ev.xbutton.button == Button1 &&
+                pressed_button != 0) {
+                pressed_button = 0;
+                need_paint = true;
+                continue;
+            }
+
             if (ev.type == ButtonPress &&
                 ev.xbutton.window == chrome_win &&
                 ev.xbutton.button == Button1) {
@@ -1256,6 +1355,10 @@ static int run_chrome(const char *bundle_id,
                 int fy = ev.xbutton.y;
                 if (fy < cur_title_h) {
                     int hit = chrome_stub_hit_test_button(fx, fy, scale);
+                    if (hit > 0 && pressed_button != hit) {
+                        pressed_button = hit;
+                        need_paint = true;
+                    }
                     if (hit == 1) {
                         chrome_stub_send_delete(dpy, bundle_win,
                                                 wm_protocols,
@@ -1341,10 +1444,18 @@ static int run_chrome(const char *bundle_id,
         if (!need_paint || chrome_stub_should_exit) continue;
         need_paint = false;
 
+        // Title strip (gradient + traffic lights + centered title) —
+        // shared painter with moonrock so foreign-distro chrome is
+        // visually identical to in-session chrome. `active=true` is
+        // hard-wired: the chrome window only exists while the bundle
+        // owns the X focus stack, so the strip is always foregrounded.
+        // (Foreign-WM unfocus paints the strip dimmed via the WM's
+        // own client-frame; chrome stays bright above it.)
         cairo_save(cr);
-        menubar_render_paint_title_bar(cr, cur_w, cur_title_h,
-                                       display_name, true,
-                                       theme, scale);
+        mb_chrome_paint_title_strip(cr, cur_w, cur_title_h, (float)scale,
+                                    display_name, /*active=*/true,
+                                    buttons_hover, pressed_button,
+                                    btn_imgs);
         cairo_restore(cr);
 
         cairo_save(cr);
@@ -1364,6 +1475,9 @@ static int run_chrome(const char *bundle_id,
     if (dropdown.open)  chrome_stub_close_dropdown(dpy, &dropdown);
     if (state.dbusmenu) dbusmenu_client_free(state.dbusmenu);
     if (bridge_up)      appmenu_bridge_shutdown();
+    if (btn_close)    cairo_surface_destroy(btn_close);
+    if (btn_minimize) cairo_surface_destroy(btn_minimize);
+    if (btn_zoom)     cairo_surface_destroy(btn_zoom);
     cairo_destroy(cr);
     cairo_surface_destroy(surf);
     menubar_render_cleanup();

@@ -282,32 +282,13 @@ void menubar_render_layout_menus(menubar_render_item_t *items, size_t n,
 }
 
 // ---------------------------------------------------------------------------
-// High-level paint — foreign-distro chrome stub callers only
+// High-level paint
 // ---------------------------------------------------------------------------
-
-void menubar_render_paint_title_bar(cairo_t *cr, int width_px, int height_px,
-                                    const char *window_title, bool active,
-                                    menubar_render_theme_t theme, double scale)
-{
-    // 19.D-prep: traffic-light glyphs and the canonical SL title-bar
-    // gradient live in moonbase/src/chrome/moonbase_chrome.c. Extract
-    // those into the shared chrome layer when 19.D lands. For now we
-    // paint the menubar background + a centered window title, so the
-    // call site is exercisable end-to-end.
-    (void)active;
-    menubar_render_background(cr, width_px, height_px, theme);
-
-    if (window_title && *window_title) {
-        double tw = menubar_render_measure_text(window_title, false, scale);
-        int    ty = menubar_render_text_center_y(window_title, false,
-                                                 height_px, scale);
-        double tx = (width_px - tw) / 2.0;
-        if (tx < 0) tx = 0;
-        // Snow Leopard text primary: #1A1A1A.
-        menubar_render_text(cr, window_title, tx, ty, false,
-                            26/255.0, 26/255.0, 26/255.0, scale);
-    }
-}
+//
+// 19.H.1.b — The title-bar painter that used to live here was a
+// menubar-style placeholder. moonrock-lite (the only caller) now uses
+// mb_chrome_paint_title_strip in moonbase/src/host/host_chrome.c so the
+// SL title strip is bit-identical to moonrock's in-session decoration.
 
 void menubar_render_paint_menu_bar(cairo_t *cr, int width_px, int height_px,
                                    const menubar_render_item_t *items, size_t n,

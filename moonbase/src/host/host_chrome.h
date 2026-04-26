@@ -86,6 +86,30 @@ bool mb_chrome_repaint(mb_chrome_t *chrome,
 // must release those separately. Safe on an all-zero struct.
 void mb_chrome_release(mb_chrome_t *chrome);
 
+// Paint just the title strip (gradient + traffic lights + centered title)
+// directly into the caller's Cairo context, top-left origin (0,0). Used by
+// moonrock-lite, which owns its own X drawable + cairo_xlib_surface and
+// blits the chrome bar above the bundle window — it doesn't need the
+// rounded-top clip or the side/bottom hairlines, just the title strip
+// pixels mb_chrome_repaint already knows how to draw.
+//
+//   width_px / height_px: physical-pixel size of the strip.
+//   scale:                backing scale (1.0, 1.5, ...).
+//   title:                NULL renders as "(Untitled)".
+//   active:               focused state.
+//   buttons_hover:        pointer is in the traffic-light region.
+//   pressed_button:       0/1/2/3 (none/close/minimize/zoom).
+//   btn_imgs[3]:          cairo_surface_t* close/minimize/zoom buttons,
+//                         or {NULL,NULL,NULL} for the gray-dot fallback.
+void mb_chrome_paint_title_strip(void *cr,
+                                 int width_px, int height_px,
+                                 float scale,
+                                 const char *title,
+                                 bool active,
+                                 bool buttons_hover,
+                                 int  pressed_button,
+                                 void *const btn_imgs[3]);
+
 #ifdef __cplusplus
 }
 #endif
