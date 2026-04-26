@@ -55,6 +55,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -97,8 +98,6 @@ typedef struct {
     Window           xwin;            // our managed X window
     cairo_surface_t *xsurf;           // cairo_xlib_surface on xwin
     cairo_t         *xcr;             // context for chrome paint
-    cairo_surface_t *backing;         // cairo_image_surface ARGB32 — the
-                                      // libmoonbase committed-buffer target
     int              chrome_w_px;     // outer window width (= content_w_px)
     int              chrome_h_px;     // outer window height (title + content)
     int              title_h_px;      // chrome strip height in physical px
@@ -108,6 +107,17 @@ typedef struct {
     char            *title;           // owned; from WINDOW_CREATE
     bool             buttons_hover;
     int              pressed_button;  // 1=close, 2=min, 3=zoom, 0=none
+
+    // Latest committed pixel buffer, mmap'd from the bundle's memfd.
+    // We hold the mapping until the next commit (or window teardown) so
+    // that re-expose events can re-blit the same pixels without forcing
+    // libmoonbase to re-render. NULL until the first WINDOW_COMMIT.
+    void            *commit_map;
+    size_t           commit_map_size;
+    int              commit_w_px;     // pixel width  of commit_map
+    int              commit_h_px;     // pixel height of commit_map
+    int              commit_stride;   // bytes per row in commit_map
+    uint64_t         commit_count;    // monotonic frame counter (logging)
 } host_window_t;
 
 static Display    *g_dpy        = NULL;
@@ -355,10 +365,12 @@ static void set_motif_no_decorations(Display *dpy, Window w) {
 // CopyCatOS-session-decorated MoonBase window because both paths share
 // host_chrome.c.
 //
-// Below the title strip we fill the content area white. In 19.H.2.c
-// MB_IPC_WINDOW_COMMIT replaces this with the bundle's actual pixels.
+// paint_title_strip() and paint_content() are split so button-state
+// updates (hover, press) don't touch the content area, and a fresh
+// WINDOW_COMMIT doesn't repaint the title bar. Full repaints call
+// paint_window() which does both.
 
-static void paint_chrome(host_window_t *w) {
+static void paint_title_strip(host_window_t *w) {
     if (!w->alive || !w->xcr) return;
 
     void *btns[3] = { g_btn_close, g_btn_minimize, g_btn_zoom };
@@ -372,19 +384,85 @@ static void paint_chrome(host_window_t *w) {
         w->pressed_button,
         btns);
 
-    // Content area placeholder: white fill until COMMIT_BUFFER lands
-    // (slice 19.H.2.c). cairo_set_operator OVER + opaque white matches
-    // what the WM expects from a normal RGB window.
+    cairo_surface_flush(w->xsurf);
+    XFlush(g_dpy);
+}
+
+// Blit the bundle's latest committed buffer into the content rect at
+// (0, title_h_px). When `dx/dy/dw/dh` describes a sub-rect (in buffer
+// coords), only that region is copied — caller passes the WINDOW_COMMIT
+// damage rect, or zeros for "the whole content".
+//
+// If no commit has arrived yet, fall back to opaque white so the WM
+// doesn't see uninitialised X drawable bytes.
+static void paint_content_rect(host_window_t *w,
+                               int dx, int dy, int dw, int dh) {
+    if (!w->alive || !w->xcr) return;
+
+    // No buffer yet → opaque white placeholder over the whole content
+    // rect. Re-paints come from Expose / ConfigureNotify until the
+    // bundle commits its first frame.
+    if (!w->commit_map) {
+        cairo_save(w->xcr);
+        cairo_rectangle(w->xcr, 0, w->title_h_px,
+                        w->content_w_px, w->content_h_px);
+        cairo_set_source_rgb(w->xcr, 1.0, 1.0, 1.0);
+        cairo_fill(w->xcr);
+        cairo_restore(w->xcr);
+        cairo_surface_flush(w->xsurf);
+        XFlush(g_dpy);
+        return;
+    }
+
+    // Default: full-buffer blit when caller passed zeros.
+    if (dw <= 0 || dh <= 0) {
+        dx = 0;
+        dy = 0;
+        dw = w->commit_w_px;
+        dh = w->commit_h_px;
+    }
+    // Clamp damage rect to the buffer.
+    if (dx < 0) { dw += dx; dx = 0; }
+    if (dy < 0) { dh += dy; dy = 0; }
+    if (dx + dw > w->commit_w_px) dw = w->commit_w_px - dx;
+    if (dy + dh > w->commit_h_px) dh = w->commit_h_px - dy;
+    if (dw <= 0 || dh <= 0) return;
+
+    // Wrap the mmap'd bundle bytes in a no-copy Cairo source surface.
+    // CAIRO_FORMAT_ARGB32 matches libmoonbase's wire format (key 5 = 0
+    // in WINDOW_COMMIT == native-endian premultiplied ARGB32).
+    cairo_surface_t *src = cairo_image_surface_create_for_data(
+        (unsigned char *)w->commit_map,
+        CAIRO_FORMAT_ARGB32,
+        w->commit_w_px, w->commit_h_px,
+        w->commit_stride);
+    if (cairo_surface_status(src) != CAIRO_STATUS_SUCCESS) {
+        fprintf(stderr,
+                "[moonrock-host %d] commit Cairo source failed: %s\n",
+                getpid(),
+                cairo_status_to_string(cairo_surface_status(src)));
+        cairo_surface_destroy(src);
+        return;
+    }
+
     cairo_save(w->xcr);
-    cairo_rectangle(w->xcr,
-                    0, w->title_h_px,
-                    w->content_w_px, w->content_h_px);
-    cairo_set_source_rgb(w->xcr, 1.0, 1.0, 1.0);
+    // Source is positioned so buffer (0,0) lands at (0, title_h_px) on
+    // the X drawable. Damage rect, expressed in buffer coords, is then
+    // a clip rectangle on the same surface offset by title_h_px in y.
+    cairo_set_source_surface(w->xcr, src, 0, w->title_h_px);
+    cairo_set_operator(w->xcr, CAIRO_OPERATOR_SOURCE);
+    cairo_rectangle(w->xcr, dx, dy + w->title_h_px, dw, dh);
     cairo_fill(w->xcr);
     cairo_restore(w->xcr);
 
+    cairo_surface_destroy(src);    // releases the wrapper, mmap stays
     cairo_surface_flush(w->xsurf);
     XFlush(g_dpy);
+}
+
+static void paint_window(host_window_t *w) {
+    paint_title_strip(w);
+    paint_content_rect(w, 0, 0, 0, 0);  // 0/0/0/0 = full content blit
 }
 
 // ----------------------------------------------------------------------------
@@ -500,30 +578,17 @@ static void handle_window_create(mb_client_id_t client,
                                   chrome_w_px, chrome_h_px);
     cairo_t *xcr = cairo_create(xsurf);
 
-    // The backing surface receives MB_IPC_WINDOW_COMMIT pixels in
-    // 19.H.2.c. Allocate now so the size matches the agreed scale and
-    // we don't have to renegotiate on the first commit. ARGB32 — the
-    // format moonbase clients render into when render_mode=Cairo.
-    cairo_surface_t *backing = cairo_image_surface_create(
-        CAIRO_FORMAT_ARGB32, content_w_px, content_h_px);
-    if (cairo_surface_status(backing) != CAIRO_STATUS_SUCCESS) {
-        fprintf(stderr,
-                "[moonrock-host %d] backing image alloc failed (%dx%d)\n",
-                getpid(), content_w_px, content_h_px);
-        cairo_destroy(xcr);
-        cairo_surface_destroy(xsurf);
-        cairo_surface_destroy(backing);
-        XDestroyWindow(g_dpy, xwin);
-        mb_host_window_create_req_free(&req);
-        return;
-    }
+    // The bundle's committed pixel buffer arrives per-frame as a memfd
+    // in WINDOW_COMMIT (slice 19.H.2.c) — we mmap it and wrap it in a
+    // no-copy Cairo source surface, so there's no internal backing
+    // allocation to keep. Pre-commit, paint_content_rect() falls back
+    // to opaque white over the content rect.
 
     g_window.alive          = true;
     g_window.window_id      = g_next_window_id++;
     g_window.xwin           = xwin;
     g_window.xsurf          = xsurf;
     g_window.xcr            = xcr;
-    g_window.backing        = backing;
     g_window.chrome_w_px    = chrome_w_px;
     g_window.chrome_h_px    = chrome_h_px;
     g_window.title_h_px     = title_h_px;
@@ -543,7 +608,7 @@ static void handle_window_create(mb_client_id_t client,
             chrome_w_px, chrome_h_px, scale_d,
             g_window.title ? g_window.title : "(none)");
 
-    paint_chrome(&g_window);
+    paint_window(&g_window);
 
     send_window_create_reply(client, g_window.window_id,
                              /*output_id*/ 0, scale_d,
@@ -557,7 +622,11 @@ static void teardown_window(host_window_t *w) {
     if (!w->alive) return;
     if (w->xcr)     { cairo_destroy(w->xcr);            w->xcr     = NULL; }
     if (w->xsurf)   { cairo_surface_destroy(w->xsurf);  w->xsurf   = NULL; }
-    if (w->backing) { cairo_surface_destroy(w->backing); w->backing = NULL; }
+    if (w->commit_map) {
+        munmap(w->commit_map, w->commit_map_size);
+        w->commit_map      = NULL;
+        w->commit_map_size = 0;
+    }
     if (w->xwin)    { XDestroyWindow(g_dpy, w->xwin);   w->xwin    = None; }
     free(w->title); w->title = NULL;
     w->alive = false;
@@ -589,6 +658,119 @@ static void handle_window_close(mb_client_id_t client,
 }
 
 // ----------------------------------------------------------------------------
+// WINDOW_COMMIT handler — slice 19.H.2.c
+// ----------------------------------------------------------------------------
+//
+// libmoonbase finishes a frame, hands us the memfd over SCM_RIGHTS, and
+// we mmap it for blit. Mirror moonrock proper's lifecycle:
+//
+//   * Validate + map the new fd FIRST (so a malformed frame can't drop
+//     a valid prior frame on the floor).
+//   * Install the new mapping.
+//   * Blit the damage rect into the X drawable's content area.
+//   * munmap the OLD mapping after the new one is wired up — this gives
+//     re-expose a chance to land between two commits without ever seeing
+//     a half-installed surface.
+//
+// fds are owned by the server and closed after this callback returns;
+// mmap holds an independent reference to the memfd's pages, so closing
+// the fd does NOT invalidate the mapping. We stop seeing pages only when
+// we munmap.
+
+static void handle_window_commit(mb_client_id_t client,
+                                 const uint8_t *body, size_t body_len,
+                                 const int *fds, size_t nfds) {
+    mb_host_window_commit_req_t req;
+    if (!mb_host_parse_window_commit(body, body_len, &req)) {
+        fprintf(stderr,
+                "[moonrock-host %d] malformed WINDOW_COMMIT from client %u\n",
+                getpid(), client);
+        return;
+    }
+    if (nfds != 1 || !fds) {
+        fprintf(stderr,
+                "[moonrock-host %d] WINDOW_COMMIT id=%u expected 1 fd, got %zu\n",
+                getpid(), req.window_id, nfds);
+        return;
+    }
+    if (!g_window.alive || g_window.window_id != req.window_id) {
+        fprintf(stderr,
+                "[moonrock-host %d] WINDOW_COMMIT id=%u no match — ignoring\n",
+                getpid(), req.window_id);
+        return;
+    }
+
+    void  *new_map = NULL;
+    size_t new_size = 0;
+    if (!mb_host_validate_and_map_commit_fd(req.stride, req.height_px,
+                                            fds[0], &new_map, &new_size)) {
+        fprintf(stderr,
+                "[moonrock-host %d] WINDOW_COMMIT id=%u: validate/map failed\n",
+                getpid(), req.window_id);
+        return;
+    }
+
+    // Save the old mapping so we can drop it after the new one is in
+    // place and we've blitted at least once. Avoids a window where an
+    // Expose between two commits could re-blit from a freed surface.
+    void  *old_map  = g_window.commit_map;
+    size_t old_size = g_window.commit_map_size;
+
+    // If the bundle's content rect just changed dimensions, resize the
+    // X drawable so chrome wraps the right footprint. First commit also
+    // hits this branch because pre-commit content_*_px reflects what we
+    // *asked* for in WINDOW_CREATE_REPLY, not what the bundle decided
+    // to render at — close in practice (libmoonbase echoes the size),
+    // but we'd rather track reality.
+    bool resized = (g_window.content_w_px != (int)req.width_px ||
+                    g_window.content_h_px != (int)req.height_px);
+    if (resized) {
+        g_window.content_w_px = (int)req.width_px;
+        g_window.content_h_px = (int)req.height_px;
+        g_window.chrome_w_px  = (int)req.width_px;
+        g_window.chrome_h_px  = (int)req.height_px + g_window.title_h_px;
+        XResizeWindow(g_dpy, g_window.xwin,
+                      g_window.chrome_w_px, g_window.chrome_h_px);
+        cairo_xlib_surface_set_size(g_window.xsurf,
+                                    g_window.chrome_w_px,
+                                    g_window.chrome_h_px);
+    }
+
+    g_window.commit_map      = new_map;
+    g_window.commit_map_size = new_size;
+    g_window.commit_w_px     = (int)req.width_px;
+    g_window.commit_h_px     = (int)req.height_px;
+    g_window.commit_stride   = (int)req.stride;
+    g_window.commit_count++;
+
+    // Damage rect is in buffer coords. paint_content_rect clips to the
+    // buffer. dx/dy/dw/dh = 0 means "full content blit" — which is
+    // also what we want on the first commit (have_w/have_h were false)
+    // and on a resize (chrome geometry is fresh).
+    int dx = (int)req.damage_x;
+    int dy = (int)req.damage_y;
+    int dw = (int)req.damage_w;
+    int dh = (int)req.damage_h;
+    if (resized) {
+        // Chrome strip just changed width — repaint it before we drop
+        // the new content into place. Keeps the title centred.
+        paint_title_strip(&g_window);
+        dw = 0;       // force full content blit
+        dh = 0;
+    }
+    paint_content_rect(&g_window, dx, dy, dw, dh);
+
+    if (old_map) munmap(old_map, old_size);
+
+    fprintf(stderr,
+            "[moonrock-host %d] WINDOW_COMMIT id=%u %ux%u stride=%u "
+            "fmt=%u damage=(%d,%d %dx%d) frame#%llu\n",
+            getpid(), req.window_id, req.width_px, req.height_px,
+            req.stride, req.pixel_format, dx, dy, dw, dh,
+            (unsigned long long)g_window.commit_count);
+}
+
+// ----------------------------------------------------------------------------
 // IPC event callback
 // ----------------------------------------------------------------------------
 
@@ -617,12 +799,15 @@ static void on_ipc_event(mb_server_t *s,
                     handle_window_close(ev->client,
                                         ev->frame_body, ev->frame_body_len);
                     break;
-                // WINDOW_COMMIT lands in 19.H.2.c — ignore for now.
+                case MB_IPC_WINDOW_COMMIT:
+                    handle_window_commit(ev->client,
+                                         ev->frame_body, ev->frame_body_len,
+                                         ev->frame_fds, ev->frame_fd_count);
+                    break;
                 default:
                     fprintf(stderr,
                             "[moonrock-host %d] frame kind=0x%04x len=%zu "
-                            "ignored (slice 19.H.2.b handles only "
-                            "WINDOW_CREATE/CLOSE)\n",
+                            "ignored (no handler in this slice)\n",
                             getpid(), ev->frame_kind, ev->frame_body_len);
                     break;
             }
@@ -792,8 +977,11 @@ static void handle_x_event(XEvent *ev) {
 
     switch (ev->type) {
         case Expose:
+            // Re-blit chrome + last-known content. paint_content_rect()
+            // falls back to white if no commit has arrived yet, so this
+            // is safe before the bundle's first frame too.
             if (ev->xexpose.window == g_window.xwin && ev->xexpose.count == 0) {
-                paint_chrome(&g_window);
+                paint_window(&g_window);
             }
             break;
 
@@ -812,7 +1000,7 @@ static void handle_x_event(XEvent *ev) {
                     g_window.chrome_h_px = nh;
                     g_window.content_w_px = nw;
                     g_window.content_h_px = nh - g_window.title_h_px;
-                    paint_chrome(&g_window);
+                    paint_window(&g_window);
                 }
             }
             break;
@@ -839,7 +1027,7 @@ static void handle_x_event(XEvent *ev) {
                                                  g_window.scale);
                 if (hit > 0) {
                     g_window.pressed_button = hit;
-                    paint_chrome(&g_window);
+                    paint_title_strip(&g_window);
                 }
             }
             break;
@@ -855,7 +1043,7 @@ static void handle_x_event(XEvent *ev) {
                                                        g_window.scale)
                               : 0;
                 g_window.pressed_button = 0;
-                paint_chrome(&g_window);
+                paint_title_strip(&g_window);
                 if (rel_hit == press_hit) {
                     switch (press_hit) {
                         case 1: // close
@@ -884,7 +1072,7 @@ static void handle_x_event(XEvent *ev) {
                                             * g_window.scale);
                 if (over != g_window.buttons_hover) {
                     g_window.buttons_hover = over;
-                    paint_chrome(&g_window);
+                    paint_title_strip(&g_window);
                 }
             }
             break;
@@ -893,7 +1081,7 @@ static void handle_x_event(XEvent *ev) {
             if (ev->xcrossing.window == g_window.xwin &&
                 g_window.buttons_hover) {
                 g_window.buttons_hover = false;
-                paint_chrome(&g_window);
+                paint_title_strip(&g_window);
             }
             break;
 
