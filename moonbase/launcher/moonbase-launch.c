@@ -853,6 +853,30 @@ int main(int argc, char **argv) {
         if (push_rc < 0) goto oom;
     }
 
+    // MOONBASE_SOCKET_PATH: per-bundle IPC socket for native bundles
+    // (slice 19.H.2.d). NATIVE bundles on a foreign distro talk to
+    // moonrock-host, which binds at $XDG_RUNTIME_DIR/moonbase/moonbase-
+    // <id>.sock — distinct from the multi-tenant moonbase.sock that
+    // moonrock proper or moonrock-lite would bind. libmoonbase reads
+    // this env in mb_conn_open and connects to it directly; when set,
+    // it does NOT silently fall back to the flat path on failure.
+    //
+    // The runtime-dir bind a few lines up already exposes this path
+    // inside the sandbox; we only need to set the env so libmoonbase
+    // picks it up. Toolkit-wrapped bundles get no setenv and keep
+    // talking to the flat moonbase.sock that moonrock-lite (or the
+    // in-session moonrock) hosts.
+    if (xdg && *xdg && bundle.info.wrap_toolkit == MB_INFO_APPC_WRAP_NATIVE) {
+        char sock_path[768];
+        int n = snprintf(sock_path, sizeof sock_path,
+                         "%s/moonbase/moonbase-%s.sock",
+                         xdg, bundle.info.id);
+        if (n < 0 || (size_t)n >= sizeof sock_path) goto oom;
+        if (argv_push(&bw, "--setenv") < 0) goto oom;
+        if (argv_push(&bw, "MOONBASE_SOCKET_PATH") < 0) goto oom;
+        if (argv_push(&bw, sock_path) < 0) goto oom;
+    }
+
     // Legacy Mode menu-export bootstrap: hand the inner toolkit the env
     // vars that make it export its menu tree on the session bus through
     // com.canonical.AppMenu.Registrar. The chrome stub (or, in a full

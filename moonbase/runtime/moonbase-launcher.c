@@ -70,6 +70,12 @@ typedef struct {
     char icon_relpath[256];          // Contents/Resources/<this>
     bool host_theme_override_present;
     bool host_theme_override_value;
+    // 19.H.2.d — toolkit hint decides chrome sidecar dispatch on a foreign
+    // distro: NATIVE → moonrock-host (active X frontend, owns the window
+    // and paints chrome around a Cairo backing surface the bundle commits
+    // over IPC), anything else → moonrock-lite (passive sidecar over a
+    // toolkit-owned window).
+    mb_info_appc_wrap_toolkit_t toolkit;
 } LauncherManifest;
 
 // ~/.config/copycatos/moonbase.conf — global launcher *defaults* only.
@@ -443,6 +449,8 @@ static bool bundle_manifest_load(const char *bundle_root,
     // Per-bundle theme override field is reserved for slice 19.F.
     out->host_theme_override_present = false;
     out->host_theme_override_value   = false;
+
+    out->toolkit = b.info.wrap_toolkit;
 
     mb_bundle_free(&b);
     return true;
@@ -877,14 +885,27 @@ int main(int argc, char **argv) {
     bool host_theme_on = resolve_host_theme(&cfg, &m, m.bundle_id);
     menubar_render_theme_t theme = resolve_theme(host_theme_on);
 
-    // Fork the chrome sidecar (slice 19.H.1.a) — moonrock-lite is its
-    // own binary now, found via PATH. Pre-exec PR_SET_PDEATHSIG covers
-    // the race window between fork and execvp; moonrock-lite re-arms
-    // it on entry. The sidecar dies when the bundle process (which
-    // becomes our parent's PID after we execvp moonbase-launch) exits.
+    // Fork the chrome sidecar. Two binaries dispatch by Info.appc toolkit
+    // hint (slice 19.H.2.d):
+    //
+    //   - NATIVE  → moonrock-host. Active X frontend: it creates the
+    //     bundle's top-level window itself and binds a per-bundle IPC
+    //     socket the bundle's libmoonbase connects to. No --theme: chrome
+    //     paints from the shared host_chrome painter directly.
+    //
+    //   - QT5/QT6/GTK3/GTK4 → moonrock-lite. Passive sidecar that finds
+    //     the toolkit-owned X window by WM_CLASS and decorates it from
+    //     above. --theme forwards the resolved Aqua/host_breeze/host_adwaita
+    //     selection so chrome blends with the host DE if requested.
+    //
+    // Pre-exec PR_SET_PDEATHSIG covers the race between fork and execvp;
+    // both children re-arm it on entry. The sidecar dies when the bundle
+    // process (our PID after execvp moonbase-launch) exits.
+    bool native = (m.toolkit == MB_INFO_APPC_WRAP_NATIVE);
     pid_t stub = fork();
     if (stub < 0) {
-        perror("[moonbase-launcher] fork moonrock-lite");
+        perror(native ? "[moonbase-launcher] fork moonrock-host"
+                      : "[moonbase-launcher] fork moonrock-lite");
         if (single_file) {
             unmount_single_file_app(mount_path);
             mb_appimg_trailer_free(&trailer);
@@ -893,6 +914,17 @@ int main(int argc, char **argv) {
     }
     if (stub == 0) {
         prctl(PR_SET_PDEATHSIG, SIGTERM);
+        if (native) {
+            char *child_argv[] = {
+                "moonrock-host",
+                "--bundle-id",    (char *)m.bundle_id,
+                "--display-name", (char *)m.display_name,
+                NULL
+            };
+            execvp("moonrock-host", child_argv);
+            perror("[moonbase-launcher] execvp moonrock-host");
+            _exit(127);
+        }
         char theme_buf[16];
         snprintf(theme_buf, sizeof theme_buf, "%d", (int)theme);
         char *child_argv[] = {
@@ -905,6 +937,35 @@ int main(int argc, char **argv) {
         execvp("moonrock-lite", child_argv);
         perror("[moonbase-launcher] execvp moonrock-lite");
         _exit(127);
+    }
+
+    // For NATIVE bundles, wait briefly for moonrock-host to bind the
+    // per-bundle IPC socket before we let moonbase-launch exec the
+    // bundle binary. mb_ipc_frame_connect fails fast (no retry) — if
+    // libmoonbase calls connect() before host has bound, the bundle
+    // exits at startup. host binds before XOpenDisplay, so the gap
+    // is small in practice; cap the wait so a host crash on launch
+    // doesn't hang the whole pipeline. We proceed past the timeout
+    // either way: if the socket truly never appears, the bundle's
+    // own clean exit-on-connect-failure surfaces the error.
+    if (native) {
+        const char *xdg = getenv("XDG_RUNTIME_DIR");
+        if (xdg && *xdg) {
+            char sock_path[768];
+            int n = snprintf(sock_path, sizeof sock_path,
+                             "%s/moonbase/moonbase-%s.sock",
+                             xdg, m.bundle_id);
+            if (n > 0 && (size_t)n < sizeof sock_path) {
+                // Poll ~10 ms × 100 = 1 s max. Stat is cheap; fewer is
+                // better but the launcher is a one-shot dispatcher,
+                // not a hot path.
+                for (int i = 0; i < 100; i++) {
+                    struct stat st;
+                    if (stat(sock_path, &st) == 0 && S_ISSOCK(st.st_mode)) break;
+                    usleep(10 * 1000);
+                }
+            }
+        }
     }
 
     // Unmount BEFORE exec — atexit doesn't fire across execvp, so
