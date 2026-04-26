@@ -108,6 +108,9 @@ typedef struct {
     float            scale;           // effective scale (backing × multiplier)
     int              last_emitted_w_pt;  // last MB_IPC_WINDOW_RESIZED dims in
     int              last_emitted_h_pt;  // points; throttle ConfigureNotify echo
+    bool             focus_emitted;       // true once we've sent any FOCUSED
+    bool             last_emitted_focus;  // last MB_IPC_WINDOW_FOCUSED state;
+                                          //   throttle FocusIn/Out echo
     char            *title;           // owned; from WINDOW_CREATE
     bool             buttons_hover;
     int              pressed_button;  // 1=close, 2=min, 3=zoom, 0=none
@@ -557,7 +560,8 @@ static void handle_window_create(mb_client_id_t client,
                         | ButtonPressMask | ButtonReleaseMask
                         | EnterWindowMask | LeaveWindowMask
                         | PointerMotionMask
-                        | KeyPressMask    | KeyReleaseMask;
+                        | KeyPressMask    | KeyReleaseMask
+                        | FocusChangeMask;
 
     Window xwin = XCreateWindow(
         g_dpy, g_root,
@@ -1140,6 +1144,33 @@ static void send_window_resized_frame(host_window_t *w) {
     w->last_emitted_h_pt = h_pt;
 }
 
+// Emit MB_IPC_WINDOW_FOCUSED to the bundle if the focus state actually
+// changed. X delivers FocusIn/FocusOut for grab transitions too — those
+// are filtered at the call site by mode==NotifyNormal — but even with
+// that filter in place, repeating the same state on a re-grab cycle would
+// be a no-op semantically. The throttle keeps the wire clean.
+static void send_window_focused_frame(host_window_t *w, bool focused) {
+    if (!g_server || !w || !w->alive) return;
+    if (w->focus_emitted && w->last_emitted_focus == focused) return;
+
+    size_t len = 0;
+    uint8_t *body = mb_host_build_window_focused(w->window_id, focused, &len);
+    if (!body) return;
+    int rc = mb_server_send(g_server, w->client,
+                            MB_IPC_WINDOW_FOCUSED,
+                            body, len, NULL, 0);
+    free(body);
+    if (rc != 0) {
+        fprintf(stderr,
+                "[moonrock-host %d] WINDOW_FOCUSED send failed (%d)\n",
+                getpid(), rc);
+        return;
+    }
+
+    w->focus_emitted       = true;
+    w->last_emitted_focus  = focused;
+}
+
 static void handle_x_event(XEvent *ev) {
     if (!g_window.alive) return;
 
@@ -1328,6 +1359,24 @@ static void handle_x_event(XEvent *ev) {
                         "[moonrock-host %d] DestroyNotify on chrome — exiting\n",
                         getpid());
                 g_should_exit = 1;
+            }
+            break;
+
+        // FocusIn/FocusOut: filter to NotifyNormal mode so grab cycles
+        // (NotifyGrab/NotifyUngrab) don't toggle the bundle's focus state.
+        // Bundle's title strip already paints differently when focused —
+        // it just needs the wire frame to know.
+        case FocusIn:
+            if (ev->xfocus.window == g_window.xwin
+                    && ev->xfocus.mode == NotifyNormal) {
+                send_window_focused_frame(&g_window, true);
+            }
+            break;
+
+        case FocusOut:
+            if (ev->xfocus.window == g_window.xwin
+                    && ev->xfocus.mode == NotifyNormal) {
+                send_window_focused_frame(&g_window, false);
             }
             break;
     }
