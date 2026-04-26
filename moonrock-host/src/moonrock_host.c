@@ -576,6 +576,24 @@ static void handle_window_create(mb_client_id_t client,
 
     set_motif_no_decorations(g_dpy, xwin);
 
+    // Lock the chrome size so foreign WMs (KWin, Mutter) won't snap,
+    // tile, or maximize us. Without this, any resize larger than the
+    // requested chrome paints from a too-small Cairo backing surface.
+    // Placeholder until #114 wires MB_IPC_WINDOW_RESIZED end-to-end and
+    // the bundle can opt into resizable.
+    XSizeHints *hints = XAllocSizeHints();
+    if (hints) {
+        hints->flags      = PSize | PMinSize | PMaxSize;
+        hints->width      = chrome_w_px;
+        hints->height     = chrome_h_px;
+        hints->min_width  = chrome_w_px;
+        hints->min_height = chrome_h_px;
+        hints->max_width  = chrome_w_px;
+        hints->max_height = chrome_h_px;
+        XSetWMNormalHints(g_dpy, xwin, hints);
+        XFree(hints);
+    }
+
     XMapWindow(g_dpy, xwin);
     XFlush(g_dpy);
 
