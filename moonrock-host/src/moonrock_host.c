@@ -1038,6 +1038,29 @@ static void send_pointer_frame(uint16_t kind, int x_px, int y_px,
     }
 }
 
+// Send MB_IPC_WINDOW_CLOSED to the bundle so the app's event loop can
+// observe the close request and decide how to respond (save-on-quit,
+// confirmation sheet, etc.). Mirrors moonrock proper's
+// send_window_closed_event in moonrock/src/moonbase_host.c. We do NOT
+// tear the window down here — that waits for the bundle to send back
+// MB_IPC_WINDOW_CLOSE (handle_window_close) or to disconnect
+// (MB_SERVER_EV_DISCONNECTED). Both paths already set g_should_exit.
+static void send_window_closed_event(host_window_t *w) {
+    if (!g_server || !w || !w->alive) return;
+    size_t len = 0;
+    uint8_t *body = mb_host_build_window_closed(w->window_id, &len);
+    if (!body) return;
+    int rc = mb_server_send(g_server, w->client,
+                            MB_IPC_WINDOW_CLOSED,
+                            body, len, NULL, 0);
+    free(body);
+    if (rc != 0) {
+        fprintf(stderr,
+                "[moonrock-host %d] WINDOW_CLOSED send failed (%d)\n",
+                getpid(), rc);
+    }
+}
+
 // Send a KEY_DOWN/KEY_UP frame to the bundle. The keycode field carries
 // the X11 keysym (XK_*), matching how the in-session moonrock host
 // publishes them — libmoonbase apps just see numeric keycodes either
@@ -1106,9 +1129,10 @@ static void handle_x_event(XEvent *ev) {
                 ev->xclient.message_type == A_WM_PROTOCOLS &&
                 (Atom)ev->xclient.data.l[0] == A_WM_DELETE_WINDOW) {
                 fprintf(stderr,
-                        "[moonrock-host %d] WM_DELETE_WINDOW — exiting\n",
+                        "[moonrock-host %d] WM_DELETE_WINDOW — "
+                        "forwarding to bundle\n",
                         getpid());
-                g_should_exit = 1;
+                send_window_closed_event(&g_window);
             }
             break;
 
@@ -1166,8 +1190,8 @@ static void handle_x_event(XEvent *ev) {
                         case 1: // close
                             fprintf(stderr,
                                     "[moonrock-host %d] close button — "
-                                    "exiting\n", getpid());
-                            g_should_exit = 1;
+                                    "forwarding to bundle\n", getpid());
+                            send_window_closed_event(&g_window);
                             break;
                         case 2: // minimize
                             send_minimize_request(g_window.xwin);
