@@ -817,6 +817,28 @@ mb_pointer_route = executable(
 test('pointer-route', mb_pointer_route, timeout: 10)
 
 # ---------------------------------------------------------------------
+# mb-resize-route — slice 19.H.2.j-α resize-event pump test
+# ---------------------------------------------------------------------
+#
+# Companion to pointer-route: parent replies to WINDOW_CREATE at
+# 800×600 then sends one MB_IPC_WINDOW_RESIZED frame at 640×480. Child
+# asserts moonbase_wait_event delivers it as MB_EV_WINDOW_RESIZED with
+# ev.resize.old_* matching 800×600 and ev.resize.new_* matching
+# 640×480. Pins the resize translator added when moonrock-host gained
+# ConfigureNotify-driven resize forwarding for native libmoonbase apps
+# on foreign distros.
+
+mb_resize_route = executable(
+  'mb-resize-route',
+  'tests/resize-route.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: [libmoonbase, mb_host_lib],
+  install: false,
+)
+
+test('resize-route', mb_resize_route, timeout: 10)
+
+# ---------------------------------------------------------------------
 # mb-text-input-route — TEXT_INPUT translator pump test
 # ---------------------------------------------------------------------
 #

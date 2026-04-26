@@ -307,6 +307,58 @@ static void translate_window_focused(const uint8_t *body, size_t body_len) {
     ring_push(&ev);
 }
 
+// WINDOW_RESIZED body: { 1: uint window_id, 2: uint w_points, 3: uint h_points }.
+// Dropped silently if the window_id is unknown (stale reference).
+// Reads the window's current width/height into ev.resize.old_*; #115
+// will mutate the tracked dims so subsequent moonbase_window_size()
+// calls report the new size — this slice locks only the wire and the
+// translator.
+static void translate_window_resized(const uint8_t *body, size_t body_len) {
+    mb_cbor_r_t r;
+    mb_cbor_r_init(&r, body, body_len);
+    uint64_t pairs = 0;
+    if (!mb_cbor_r_map_begin(&r, &pairs)) return;
+
+    uint32_t window_id = 0;
+    uint32_t w_points  = 0, h_points = 0;
+    bool     have_id = false, have_w = false, have_h = false;
+    for (uint64_t i = 0; i < pairs; i++) {
+        uint64_t key = 0;
+        if (!mb_cbor_r_uint(&r, &key)) return;
+        switch (key) {
+            case 1: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                window_id = (uint32_t)v; have_id = true; break; }
+            case 2: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                w_points = (uint32_t)v; have_w = true; break; }
+            case 3: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                h_points = (uint32_t)v; have_h = true; break; }
+            default:
+                if (!mb_cbor_r_skip(&r)) return;
+                break;
+        }
+    }
+    if (!have_id || !have_w || !have_h) return;
+
+    mb_window_t *w = mb_internal_window_find(window_id);
+    if (!w) return;
+
+    int old_w = 0, old_h = 0;
+    moonbase_window_size(w, &old_w, &old_h);
+
+    mb_event_t ev = {0};
+    ev.kind = MB_EV_WINDOW_RESIZED;
+    ev.window = w;
+    ev.timestamp_us = mono_us();
+    ev.resize.old_width  = old_w;
+    ev.resize.old_height = old_h;
+    ev.resize.new_width  = (int)w_points;
+    ev.resize.new_height = (int)h_points;
+    ring_push(&ev);
+}
+
 // KEY_DOWN/KEY_UP body:
 //   { 1: window_id, 2: keycode, 3: modifiers, 4: is_repeat, 5: timestamp_us }
 // Unknown/missing is_repeat defaults to false (schema says optional).
@@ -654,6 +706,9 @@ static void translate_frame(uint16_t kind,
             break;
         case MB_IPC_WINDOW_FOCUSED:
             translate_window_focused(body, body_len);
+            break;
+        case MB_IPC_WINDOW_RESIZED:
+            translate_window_resized(body, body_len);
             break;
         case MB_IPC_KEY_DOWN:
         case MB_IPC_KEY_UP:

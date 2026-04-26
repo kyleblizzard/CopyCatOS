@@ -74,6 +74,16 @@ uint8_t *mb_host_build_window_create_reply(uint32_t window_id,
 uint8_t *mb_host_build_window_focused(uint32_t window_id, bool focused,
                                       size_t *out_len);
 
+// MB_IPC_WINDOW_RESIZED:
+//   { 1: window_id, 2: w_points, 3: h_points }
+// Sizes are in points (chrome pixel size minus title strip, divided by
+// effective scale). Compositor-side throttling is the caller's job —
+// this builder is unconditional.
+uint8_t *mb_host_build_window_resized(uint32_t window_id,
+                                      uint32_t w_points,
+                                      uint32_t h_points,
+                                      size_t  *out_len);
+
 // MB_IPC_WINDOW_CLOSED:
 //   { 1: window_id }
 uint8_t *mb_host_build_window_closed(uint32_t window_id, size_t *out_len);

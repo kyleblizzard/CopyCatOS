@@ -188,6 +188,22 @@ uint8_t *mb_host_build_window_closed(uint32_t window_id, size_t *out_len)
     return mb_cbor_w_finish(&w, out_len);
 }
 
+uint8_t *mb_host_build_window_resized(uint32_t window_id,
+                                      uint32_t w_points,
+                                      uint32_t h_points,
+                                      size_t  *out_len)
+{
+    if (out_len) *out_len = 0;
+    mb_cbor_w_t w;
+    mb_cbor_w_init_grow(&w, 24);
+    mb_cbor_w_map_begin(&w, 3);
+    mb_cbor_w_key(&w, 1); mb_cbor_w_uint(&w, window_id);
+    mb_cbor_w_key(&w, 2); mb_cbor_w_uint(&w, w_points);
+    mb_cbor_w_key(&w, 3); mb_cbor_w_uint(&w, h_points);
+    if (!mb_cbor_w_ok(&w)) { mb_cbor_w_drop(&w); return NULL; }
+    return mb_cbor_w_finish(&w, out_len);
+}
+
 uint8_t *mb_host_build_backing_scale_changed(uint32_t window_id,
                                              float    old_scale,
                                              float    new_scale,
