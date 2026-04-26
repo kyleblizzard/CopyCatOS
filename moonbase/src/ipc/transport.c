@@ -124,20 +124,39 @@ int mb_conn_open(const char *socket_path) {
         return MB_EINVAL;
     }
 
-    // Resolve the default path when the caller passes NULL.
+    // Path resolution, in priority order:
+    //
+    //   1. Explicit `socket_path` arg — caller wins, no env override.
+    //   2. MOONBASE_SOCKET_PATH env — moonbase-launch sets this when
+    //      it spawns a per-bundle host (moonrock-host listens at
+    //      $XDG_RUNTIME_DIR/moonbase/moonbase-<bundle-id>.sock, not
+    //      the flat session socket). When the env is set we DO NOT
+    //      fall back to the flat path on connect failure — silent
+    //      fallback would land a native-libmoonbase bundle on
+    //      whatever stale server happened to be bound at the flat
+    //      path, which is a debugging nightmare. The launcher told
+    //      us where to go; honor it or fail.
+    //   3. Default — $XDG_RUNTIME_DIR/moonbase.sock (in-session
+    //      moonrock proper, or moonrock-lite hosting foreign-toolkit
+    //      apps on a foreign distro).
     char   default_path[512];
     const char *path = socket_path;
     if (!path) {
-        const char *xdg = getenv("XDG_RUNTIME_DIR");
-        if (!xdg || !*xdg) {
-            return MB_EINVAL;
+        const char *envp = getenv("MOONBASE_SOCKET_PATH");
+        if (envp && *envp) {
+            path = envp;
+        } else {
+            const char *xdg = getenv("XDG_RUNTIME_DIR");
+            if (!xdg || !*xdg) {
+                return MB_EINVAL;
+            }
+            int n = snprintf(default_path, sizeof(default_path),
+                             "%s/moonbase.sock", xdg);
+            if (n < 0 || (size_t)n >= sizeof(default_path)) {
+                return MB_EINVAL;
+            }
+            path = default_path;
         }
-        int n = snprintf(default_path, sizeof(default_path),
-                         "%s/moonbase.sock", xdg);
-        if (n < 0 || (size_t)n >= sizeof(default_path)) {
-            return MB_EINVAL;
-        }
-        path = default_path;
     }
 
     int fd = mb_ipc_frame_connect(path);
