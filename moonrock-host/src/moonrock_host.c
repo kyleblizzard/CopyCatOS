@@ -106,6 +106,8 @@ typedef struct {
     int              content_w_px;
     int              content_h_px;
     float            scale;           // effective scale (backing × multiplier)
+    int              last_emitted_w_pt;  // last MB_IPC_WINDOW_RESIZED dims in
+    int              last_emitted_h_pt;  // points; throttle ConfigureNotify echo
     char            *title;           // owned; from WINDOW_CREATE
     bool             buttons_hover;
     int              pressed_button;  // 1=close, 2=min, 3=zoom, 0=none
@@ -576,24 +578,12 @@ static void handle_window_create(mb_client_id_t client,
 
     set_motif_no_decorations(g_dpy, xwin);
 
-    // Lock the chrome size so foreign WMs (KWin, Mutter) won't snap,
-    // tile, or maximize us. Without this, any resize larger than the
-    // requested chrome paints from a too-small Cairo backing surface.
-    // Placeholder until #114 wires MB_IPC_WINDOW_RESIZED end-to-end and
-    // the bundle can opt into resizable.
-    XSizeHints *hints = XAllocSizeHints();
-    if (hints) {
-        hints->flags      = PSize | PMinSize | PMaxSize;
-        hints->width      = chrome_w_px;
-        hints->height     = chrome_h_px;
-        hints->min_width  = chrome_w_px;
-        hints->min_height = chrome_h_px;
-        hints->max_width  = chrome_w_px;
-        hints->max_height = chrome_h_px;
-        XSetWMNormalHints(g_dpy, xwin, hints);
-        XFree(hints);
-    }
-
+    // No WM_NORMAL_HINTS lock: with #114/#115 in place the wire is
+    // end-to-end, so the foreign WM (KWin, Mutter, …) is free to snap,
+    // tile, or drag-resize. ConfigureNotify catches the new geometry,
+    // resizes our cairo_xlib_surface in place, and sends the bundle
+    // MB_IPC_WINDOW_RESIZED — libmoonbase auto-realloc takes it from
+    // there. Bundle-declared min/max passthrough is a follow-up.
     XMapWindow(g_dpy, xwin);
     XFlush(g_dpy);
 
@@ -625,6 +615,11 @@ static void handle_window_create(mb_client_id_t client,
     g_window.buttons_hover    = false;
     g_window.pressed_button   = 0;
     g_window.pointer_btn_down = 0;
+    // Bundle's first known content size = what it requested + we
+    // confirmed in WINDOW_CREATE_REPLY. Throttle initialized here so
+    // a redundant first ConfigureNotify (same dims) is a no-op.
+    g_window.last_emitted_w_pt = (int)req.width_points;
+    g_window.last_emitted_h_pt = (int)req.height_points;
 
     fprintf(stderr,
             "[moonrock-host %d] WINDOW_CREATE id=%u %dx%dpt -> "
@@ -1107,6 +1102,44 @@ static void send_key_frame(uint16_t kind, XKeyEvent *xk) {
     }
 }
 
+// Convert the current chrome geometry to content-points and, if the
+// dims actually changed since the last frame we sent, emit
+// MB_IPC_WINDOW_RESIZED to the bundle. Foreign WMs (KWin, Mutter) fire
+// ConfigureNotify per drag tick during interactive resize, so the
+// throttle is mandatory — without it we'd spam a frame every X event,
+// burning IPC for no surface change.
+static void send_window_resized_frame(host_window_t *w) {
+    if (!g_server || !w || !w->alive) return;
+
+    float scale = w->scale > 0.0f ? w->scale : 1.0f;
+    int w_pt = (int)(w->content_w_px / scale + 0.5f);
+    int h_pt = (int)(w->content_h_px / scale + 0.5f);
+    if (w_pt < 1) w_pt = 1;
+    if (h_pt < 1) h_pt = 1;
+    if (w_pt == w->last_emitted_w_pt && h_pt == w->last_emitted_h_pt) {
+        return;
+    }
+
+    size_t len = 0;
+    uint8_t *body = mb_host_build_window_resized(w->window_id,
+                                                 (uint32_t)w_pt,
+                                                 (uint32_t)h_pt, &len);
+    if (!body) return;
+    int rc = mb_server_send(g_server, w->client,
+                            MB_IPC_WINDOW_RESIZED,
+                            body, len, NULL, 0);
+    free(body);
+    if (rc != 0) {
+        fprintf(stderr,
+                "[moonrock-host %d] WINDOW_RESIZED send failed (%d)\n",
+                getpid(), rc);
+        return;
+    }
+
+    w->last_emitted_w_pt = w_pt;
+    w->last_emitted_h_pt = h_pt;
+}
+
 static void handle_x_event(XEvent *ev) {
     if (!g_window.alive) return;
 
@@ -1121,11 +1154,12 @@ static void handle_x_event(XEvent *ev) {
             break;
 
         case ConfigureNotify:
-            // Foreign WMs may resize our window (snapping, tiling).
-            // Slice 19.H.2.b keeps the size we asked for; later slices
-            // will resize the backing surface and emit WINDOW_RESIZED.
-            // Accept the geometry as-is for now and just repaint chrome
-            // at the new width.
+            // Foreign WMs (KWin, Mutter) drag-resize our window through
+            // ConfigureNotify. Resize the cairo_xlib_surface in place,
+            // recompute the content rect, then notify the bundle so
+            // libmoonbase's auto-realloc contract (#115) kicks in and
+            // the next moonbase_window_cairo() returns a fresh surface
+            // at the new size.
             if (ev->xconfigure.window == g_window.xwin) {
                 int nw = ev->xconfigure.width;
                 int nh = ev->xconfigure.height;
@@ -1136,6 +1170,7 @@ static void handle_x_event(XEvent *ev) {
                     g_window.content_w_px = nw;
                     g_window.content_h_px = nh - g_window.title_h_px;
                     paint_window(&g_window);
+                    send_window_resized_frame(&g_window);
                 }
             }
             break;
