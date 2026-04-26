@@ -1343,9 +1343,17 @@ foreach spec : example_specs
   # when swapping a placeholder icon.
   example_icon = meson.current_source_dir() / 'examples' / name / 'Resources' / 'AppIcon.png'
 
+  # Drop freshly-built MoonBase next to the example exe so the bundle's
+  # $ORIGIN/ rpath resolves to *this* build's framework, not whatever
+  # stale `MoonBase` happens to live in /usr/local/lib64/MoonBase.framework/.
+  # Without this, every iterative MoonBase change would be invisible to a
+  # bundle launched out of the build tree until the dev re-installed
+  # system-wide. moonbase_framework_binary already produces a bare
+  # `MoonBase` filename (no .so suffix) — exactly what DT_NEEDED=MoonBase
+  # resolves against — so a plain copy is all we need.
   appdev_target = custom_target(name + '-appdev',
     output: name + '.appdev',
-    input: [spec['info'], example_exe],
+    input: [spec['info'], example_exe, moonbase_framework_binary],
     command: [
       find_program('sh'), '-c',
       'set -eu; '
@@ -1354,8 +1362,10 @@ foreach spec : example_specs
       + 'cp "$1" "$0/Contents/Info.appc"; '
       + 'cp "$2" "$0/Contents/CopyCatOS/$3"; '
       + 'chmod 0755 "$0/Contents/CopyCatOS/$3"; '
+      + 'cp "$5" "$0/Contents/CopyCatOS/MoonBase"; '
+      + 'chmod 0755 "$0/Contents/CopyCatOS/MoonBase"; '
       + 'if [ -f "$4" ]; then cp "$4" "$0/Contents/Resources/AppIcon.png"; fi',
-      '@OUTPUT0@', '@INPUT0@', '@INPUT1@', name, example_icon,
+      '@OUTPUT0@', '@INPUT0@', '@INPUT1@', name, example_icon, '@INPUT2@',
     ],
     build_by_default: true,
   )
