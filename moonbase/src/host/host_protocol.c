@@ -297,3 +297,25 @@ uint8_t *mb_host_build_text_input(uint32_t    window_id,
     if (!mb_cbor_w_ok(&w)) { mb_cbor_w_drop(&w); return NULL; }
     return mb_cbor_w_finish(&w, out_len);
 }
+
+uint8_t *mb_host_build_pointer_event(uint32_t window_id,
+                                     int      x_points,
+                                     int      y_points,
+                                     uint32_t button,
+                                     uint32_t modifiers,
+                                     uint64_t ts_us,
+                                     size_t  *out_len)
+{
+    if (out_len) *out_len = 0;
+    mb_cbor_w_t w;
+    mb_cbor_w_init_grow(&w, 32);
+    mb_cbor_w_map_begin(&w, 6);
+    mb_cbor_w_key(&w, 1); mb_cbor_w_uint(&w, window_id);
+    mb_cbor_w_key(&w, 2); mb_cbor_w_int (&w, (int64_t)x_points);
+    mb_cbor_w_key(&w, 3); mb_cbor_w_int (&w, (int64_t)y_points);
+    mb_cbor_w_key(&w, 4); mb_cbor_w_uint(&w, button);
+    mb_cbor_w_key(&w, 5); mb_cbor_w_uint(&w, modifiers);
+    mb_cbor_w_key(&w, 6); mb_cbor_w_uint(&w, ts_us);
+    if (!mb_cbor_w_ok(&w)) { mb_cbor_w_drop(&w); return NULL; }
+    return mb_cbor_w_finish(&w, out_len);
+}

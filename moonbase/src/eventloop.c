@@ -361,6 +361,71 @@ static void translate_key(uint16_t kind,
     ring_push(&ev);
 }
 
+// POINTER_MOVE / POINTER_DOWN / POINTER_UP body:
+//   { 1: window_id, 2: int x_points, 3: int y_points,
+//     4: button (MB_BUTTON_*; 0 on MOVE), 5: modifiers, 6: timestamp_us }
+// Coords arrive in points, content-rect-relative — the host already
+// stripped the chrome titlebar height and divided by backing scale.
+// Stale window_ids are dropped silently (the app already closed locally).
+static void translate_pointer(uint16_t kind,
+                              const uint8_t *body, size_t body_len) {
+    mb_cbor_r_t r;
+    mb_cbor_r_init(&r, body, body_len);
+    uint64_t pairs = 0;
+    if (!mb_cbor_r_map_begin(&r, &pairs)) return;
+
+    uint32_t window_id = 0;
+    int64_t  x = 0, y = 0;
+    uint32_t button = 0;
+    uint32_t modifiers = 0;
+    uint64_t timestamp_us = 0;
+    bool     have_id = false;
+    for (uint64_t i = 0; i < pairs; i++) {
+        uint64_t key = 0;
+        if (!mb_cbor_r_uint(&r, &key)) return;
+        switch (key) {
+            case 1: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                window_id = (uint32_t)v; have_id = true; break; }
+            case 2: { int64_t v = 0;
+                if (!mb_cbor_r_int(&r, &v)) return;
+                x = v; break; }
+            case 3: { int64_t v = 0;
+                if (!mb_cbor_r_int(&r, &v)) return;
+                y = v; break; }
+            case 4: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                button = (uint32_t)v; break; }
+            case 5: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                modifiers = (uint32_t)v; break; }
+            case 6: { uint64_t v = 0;
+                if (!mb_cbor_r_uint(&r, &v)) return;
+                timestamp_us = v; break; }
+            default:
+                if (!mb_cbor_r_skip(&r)) return;
+                break;
+        }
+    }
+    if (!have_id) return;
+
+    mb_event_t ev = {0};
+    switch (kind) {
+        case MB_IPC_POINTER_MOVE: ev.kind = MB_EV_POINTER_MOVE; break;
+        case MB_IPC_POINTER_DOWN: ev.kind = MB_EV_POINTER_DOWN; break;
+        case MB_IPC_POINTER_UP:   ev.kind = MB_EV_POINTER_UP;   break;
+        default: return;
+    }
+    ev.window = mb_internal_window_find(window_id);
+    if (!ev.window) return;
+    ev.timestamp_us = timestamp_us ? timestamp_us : mono_us();
+    ev.pointer.x         = (int)x;
+    ev.pointer.y         = (int)y;
+    ev.pointer.button    = button;
+    ev.pointer.modifiers = modifiers;
+    ring_push(&ev);
+}
+
 // TEXT_INPUT body:
 //   { 1: window_id, 2: tstr text, 3: timestamp_us }
 // Tier 1: the server only emits printable ASCII. UTF-8 beyond ASCII
@@ -596,6 +661,11 @@ static void translate_frame(uint16_t kind,
             break;
         case MB_IPC_TEXT_INPUT:
             translate_text_input(body, body_len);
+            break;
+        case MB_IPC_POINTER_MOVE:
+        case MB_IPC_POINTER_DOWN:
+        case MB_IPC_POINTER_UP:
+            translate_pointer(kind, body, body_len);
             break;
         case MB_IPC_BACKING_SCALE_CHANGED:
             translate_backing_scale_changed(body, body_len);

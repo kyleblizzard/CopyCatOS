@@ -72,6 +72,7 @@
 #include "host_chrome.h"
 #include "host_protocol.h"
 #include "host_util.h"
+#include "moonbase.h"                      // MB_MOD_*, MB_BUTTON_*
 #include "moonbase/ipc/kinds.h"
 #include "server.h"
 
@@ -95,6 +96,7 @@ static void on_sigterm(int sig) { (void)sig; g_should_exit = 1; }
 typedef struct {
     bool             alive;
     uint32_t         window_id;       // u32 id we hand back in REPLY
+    mb_client_id_t   client;          // bundle's IPC client id (for input frames)
     Window           xwin;            // our managed X window
     cairo_surface_t *xsurf;           // cairo_xlib_surface on xwin
     cairo_t         *xcr;             // context for chrome paint
@@ -107,6 +109,9 @@ typedef struct {
     char            *title;           // owned; from WINDOW_CREATE
     bool             buttons_hover;
     int              pressed_button;  // 1=close, 2=min, 3=zoom, 0=none
+    int              pointer_btn_down;// MB_BUTTON_* currently held in content
+                                      //   rect (0=none); used to bind a press
+                                      //   to its release/move stream.
 
     // Latest committed pixel buffer, mmap'd from the bundle's memfd.
     // We hold the mapping until the next commit (or window teardown) so
@@ -549,7 +554,8 @@ static void handle_window_create(mb_client_id_t client,
     wa.event_mask       = ExposureMask | StructureNotifyMask
                         | ButtonPressMask | ButtonReleaseMask
                         | EnterWindowMask | LeaveWindowMask
-                        | PointerMotionMask;
+                        | PointerMotionMask
+                        | KeyPressMask    | KeyReleaseMask;
 
     Window xwin = XCreateWindow(
         g_dpy, g_root,
@@ -586,6 +592,7 @@ static void handle_window_create(mb_client_id_t client,
 
     g_window.alive          = true;
     g_window.window_id      = g_next_window_id++;
+    g_window.client         = client;
     g_window.xwin           = xwin;
     g_window.xsurf          = xsurf;
     g_window.xcr            = xcr;
@@ -597,8 +604,9 @@ static void handle_window_create(mb_client_id_t client,
     g_window.scale          = scale;
     g_window.title          = req.title;        // take ownership
     req.title               = NULL;             // skip the free below
-    g_window.buttons_hover  = false;
-    g_window.pressed_button = 0;
+    g_window.buttons_hover    = false;
+    g_window.pressed_button   = 0;
+    g_window.pointer_btn_down = 0;
 
     fprintf(stderr,
             "[moonrock-host %d] WINDOW_CREATE id=%u %dx%dpt -> "
@@ -972,6 +980,92 @@ static void send_minimize_request(Window w) {
                SubstructureRedirectMask | SubstructureNotifyMask, &ev);
 }
 
+// X11 event-state bits → MB_MOD_* bitmask. Apple-flavoured, matching
+// the in-session moonrock translator: Mod1 (Alt) → OPTION, Mod4
+// (Super) → COMMAND. Mod5/Fn isn't reliable across foreign WMs and is
+// left unset until inputd grows a real Fn-key path.
+static uint32_t x_mods_to_mb(unsigned int state) {
+    uint32_t mods = 0;
+    if (state & ShiftMask)   mods |= MB_MOD_SHIFT;
+    if (state & ControlMask) mods |= MB_MOD_CONTROL;
+    if (state & Mod1Mask)    mods |= MB_MOD_OPTION;
+    if (state & Mod4Mask)    mods |= MB_MOD_COMMAND;
+    if (state & LockMask)    mods |= MB_MOD_CAPSLOCK;
+    return mods;
+}
+
+// X11 button number → MB_BUTTON_*. X numbers 1=left, 2=middle, 3=right;
+// MoonBase has LEFT=1, RIGHT=2, MIDDLE=3 (matches Apple HIG/AppKit).
+// Returns 0 for unsupported buttons (4-7 are wheel; SCROLL is deferred
+// to a later slice — see CLAUDE.md MoonBase invariant 5).
+static uint32_t x_button_to_mb(unsigned int button) {
+    switch (button) {
+        case Button1: return MB_BUTTON_LEFT;
+        case Button2: return MB_BUTTON_MIDDLE;
+        case Button3: return MB_BUTTON_RIGHT;
+        default:      return 0;
+    }
+}
+
+// Send a POINTER_MOVE/DOWN/UP frame to the bundle. Coords are in points,
+// content-rect-relative — we strip the chrome titlebar height before
+// dividing by scale, matching the IPC.md §5.4 contract. Drops silently
+// if the bundle isn't connected (no client_id captured yet) — apps that
+// vanish mid-event-pump don't need a noisy log.
+static void send_pointer_frame(uint16_t kind, int x_px, int y_px,
+                               uint32_t button, unsigned int x_state) {
+    if (!g_server || !g_window.alive) return;
+
+    float scale = g_window.scale > 0.0f ? g_window.scale : 1.0f;
+    int   content_y_px = y_px - g_window.title_h_px;
+    int   x_pts = (int)(x_px / scale);
+    int   y_pts = (int)(content_y_px / scale);
+
+    size_t len = 0;
+    uint8_t *body = mb_host_build_pointer_event(g_window.window_id,
+                                                x_pts, y_pts,
+                                                button,
+                                                x_mods_to_mb(x_state),
+                                                mb_host_ts_us(), &len);
+    if (!body) return;
+    int rc = mb_server_send(g_server, g_window.client, kind,
+                            body, len, NULL, 0);
+    free(body);
+    if (rc != 0) {
+        fprintf(stderr,
+                "[moonrock-host %d] POINTER frame send failed (%d)\n",
+                getpid(), rc);
+    }
+}
+
+// Send a KEY_DOWN/KEY_UP frame to the bundle. The keycode field carries
+// the X11 keysym (XK_*), matching how the in-session moonrock host
+// publishes them — libmoonbase apps just see numeric keycodes either
+// way. is_repeat is left false in this slice; XKB auto-repeat
+// detection across foreign WMs needs XInput2 raw keys, which we'll
+// add when text input lands.
+static void send_key_frame(uint16_t kind, XKeyEvent *xk) {
+    if (!g_server || !g_window.alive) return;
+
+    KeySym sym = XLookupKeysym(xk, 0);
+
+    size_t len = 0;
+    uint8_t *body = mb_host_build_key_event(g_window.window_id,
+                                            (uint32_t)sym,
+                                            x_mods_to_mb(xk->state),
+                                            /*is_repeat*/ false,
+                                            mb_host_ts_us(), &len);
+    if (!body) return;
+    int rc = mb_server_send(g_server, g_window.client, kind,
+                            body, len, NULL, 0);
+    free(body);
+    if (rc != 0) {
+        fprintf(stderr,
+                "[moonrock-host %d] KEY frame send failed (%d)\n",
+                getpid(), rc);
+    }
+}
+
 static void handle_x_event(XEvent *ev) {
     if (!g_window.alive) return;
 
@@ -1019,22 +1113,45 @@ static void handle_x_event(XEvent *ev) {
             break;
 
         case ButtonPress:
-            if (ev->xbutton.window == g_window.xwin &&
-                ev->xbutton.button == Button1 &&
-                ev->xbutton.y < g_window.title_h_px) {
-                int hit = hit_test_traffic_light(ev->xbutton.x,
-                                                 ev->xbutton.y,
-                                                 g_window.scale);
-                if (hit > 0) {
-                    g_window.pressed_button = hit;
-                    paint_title_strip(&g_window);
+            if (ev->xbutton.window != g_window.xwin) break;
+
+            // Title-strip button1: traffic-light tracking. Title-strip
+            // button2/3 are dropped on the floor in this slice — window
+            // drag + secondary-click menus land later.
+            if (ev->xbutton.y < g_window.title_h_px) {
+                if (ev->xbutton.button == Button1) {
+                    int hit = hit_test_traffic_light(ev->xbutton.x,
+                                                     ev->xbutton.y,
+                                                     g_window.scale);
+                    if (hit > 0) {
+                        g_window.pressed_button = hit;
+                        paint_title_strip(&g_window);
+                    }
                 }
+                break;
+            }
+
+            // Content-rect press → forward to bundle. Wheel buttons
+            // (Button4/5 + horizontal Button6/7) become SCROLL frames in
+            // a later slice; for now we drop them so the bundle isn't
+            // mistaken about a phantom click.
+            {
+                uint32_t mb_btn = x_button_to_mb(ev->xbutton.button);
+                if (mb_btn == 0) break;
+                g_window.pointer_btn_down = (int)mb_btn;
+                send_pointer_frame(MB_IPC_POINTER_DOWN,
+                                   ev->xbutton.x, ev->xbutton.y,
+                                   mb_btn, ev->xbutton.state);
             }
             break;
 
         case ButtonRelease:
-            if (ev->xbutton.window == g_window.xwin &&
-                ev->xbutton.button == Button1 &&
+            if (ev->xbutton.window != g_window.xwin) break;
+
+            // Traffic-light release path: only fires if a press was
+            // tracked; the y check at release time decides whether the
+            // user is still over the same button.
+            if (ev->xbutton.button == Button1 &&
                 g_window.pressed_button > 0) {
                 int press_hit = g_window.pressed_button;
                 int rel_hit   = (ev->xbutton.y < g_window.title_h_px)
@@ -1060,11 +1177,30 @@ static void handle_x_event(XEvent *ev) {
                             break;
                     }
                 }
+                break;
+            }
+
+            // Content-rect release (or release that drifted into the
+            // title strip from a content-rect press). We only emit
+            // POINTER_UP when there's a tracked press to bind it to —
+            // mirrors AppKit's mouseDown/mouseUp pairing.
+            {
+                uint32_t mb_btn = x_button_to_mb(ev->xbutton.button);
+                if (mb_btn == 0) break;
+                if (g_window.pointer_btn_down == (int)mb_btn) {
+                    send_pointer_frame(MB_IPC_POINTER_UP,
+                                       ev->xbutton.x, ev->xbutton.y,
+                                       mb_btn, ev->xbutton.state);
+                    g_window.pointer_btn_down = 0;
+                }
             }
             break;
 
         case MotionNotify:
-            if (ev->xmotion.window == g_window.xwin) {
+            if (ev->xmotion.window != g_window.xwin) break;
+
+            // Title-strip hover state for the traffic lights.
+            {
                 bool over = (ev->xmotion.y < g_window.title_h_px) &&
                             (ev->xmotion.x < (int)(MB_CHROME_BUTTON_LEFT_PAD
                                                 + 3 * MB_CHROME_BUTTON_DIAMETER
@@ -1074,6 +1210,30 @@ static void handle_x_event(XEvent *ev) {
                     g_window.buttons_hover = over;
                     paint_title_strip(&g_window);
                 }
+            }
+
+            // POINTER_MOVE to the bundle. Always forward when the user
+            // is dragging (pointer_btn_down) so the app sees the full
+            // press→drag→release sequence even when the pointer
+            // wanders out of the content rect; otherwise only forward
+            // motion that lies inside the content area.
+            if (g_window.pointer_btn_down != 0 ||
+                ev->xmotion.y >= g_window.title_h_px) {
+                send_pointer_frame(MB_IPC_POINTER_MOVE,
+                                   ev->xmotion.x, ev->xmotion.y,
+                                   /*button*/ 0, ev->xmotion.state);
+            }
+            break;
+
+        case KeyPress:
+            if (ev->xkey.window == g_window.xwin) {
+                send_key_frame(MB_IPC_KEY_DOWN, &ev->xkey);
+            }
+            break;
+
+        case KeyRelease:
+            if (ev->xkey.window == g_window.xwin) {
+                send_key_frame(MB_IPC_KEY_UP, &ev->xkey);
             }
             break;
 

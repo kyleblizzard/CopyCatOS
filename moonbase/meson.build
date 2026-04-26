@@ -796,6 +796,27 @@ mb_input_route = executable(
 test('input-route', mb_input_route, timeout: 10)
 
 # ---------------------------------------------------------------------
+# mb-pointer-route — slice 19.H.2.e pointer-event pump test
+# ---------------------------------------------------------------------
+#
+# Companion to input-route: parent replies to WINDOW_CREATE then sends
+# POINTER_DOWN, POINTER_MOVE, POINTER_UP frames. Child asserts
+# moonbase_wait_event delivers them as MB_EV_POINTER_{DOWN,MOVE,UP}
+# with the right ev.pointer.{x,y,button,modifiers} fields. Pins the
+# pointer-routing translator added when moonrock-host gained X11 input
+# forwarding for native libmoonbase apps on foreign distros.
+
+mb_pointer_route = executable(
+  'mb-pointer-route',
+  'tests/pointer-route.c',
+  include_directories: include_directories('include', 'src'),
+  link_with: libmoonbase,
+  install: false,
+)
+
+test('pointer-route', mb_pointer_route, timeout: 10)
+
+# ---------------------------------------------------------------------
 # mb-text-input-route — TEXT_INPUT translator pump test
 # ---------------------------------------------------------------------
 #

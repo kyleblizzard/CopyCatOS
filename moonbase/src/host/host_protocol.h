@@ -123,6 +123,20 @@ uint8_t *mb_host_build_text_input(uint32_t    window_id,
                                   uint64_t    ts_us,
                                   size_t     *out_len);
 
+// MB_IPC_POINTER_MOVE / MB_IPC_POINTER_DOWN / MB_IPC_POINTER_UP body:
+//   { 1: window_id, 2: int x_points, 3: int y_points,
+//     4: button (MB_BUTTON_*; 0 on MOVE), 5: modifiers, 6: ts_us }
+// x/y are signed because a pointer dragged outside the content rect can
+// legitimately go negative; the kind itself (MOVE vs DOWN vs UP) is the
+// caller's choice — mb_server_send takes the kind separately.
+uint8_t *mb_host_build_pointer_event(uint32_t window_id,
+                                     int      x_points,
+                                     int      y_points,
+                                     uint32_t button,
+                                     uint32_t modifiers,
+                                     uint64_t ts_us,
+                                     size_t  *out_len);
+
 #ifdef __cplusplus
 }
 #endif
