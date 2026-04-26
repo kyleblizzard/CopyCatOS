@@ -1,6 +1,6 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// resize-route.c — slice 19.H.2.j-α resize-event pump test.
+// resize-route.c — slice 19.H.2.j-α/β resize-event pump test.
 //
 // Companion to pointer-route.c. Parent stands up an mb_server_t,
 // replies to the child's MB_IPC_WINDOW_CREATE at 800×600, then sends
@@ -11,12 +11,9 @@
 //   * ev.resize.old_width / old_height match the originally-requested
 //     800 / 600 (the framework reads them from mb_window_t before the
 //     event is delivered),
-//   * ev.resize.new_width / new_height match the wire payload 640 / 480.
-//
-// This slice locks only the wire format and the framework decode path.
-// Whether moonbase_window_size() reports the new dims after the event
-// is the contract decided in slice 19.H.2.j-β (#115); this test does
-// not assert that.
+//   * ev.resize.new_width / new_height match the wire payload 640 / 480,
+//   * post-event, moonbase_window_size() reports 640×480 — the
+//     framework-auto-realloc surface contract from slice 19.H.2.j-β.
 
 #include "moonbase.h"
 #include "../src/server/server.h"
@@ -151,6 +148,18 @@ static int run_client(const char *sock_dir) {
                 ev.resize.new_width, ev.resize.new_height,
                 RESIZED_W, RESIZED_H);
         return 26;
+    }
+
+    // Slice 19.H.2.j-β surface contract: framework auto-applies the new
+    // dims before delivering the event, so the public size accessor
+    // must already report the new size.
+    int now_w = 0, now_h = 0;
+    moonbase_window_size(win, &now_w, &now_h);
+    if (now_w != RESIZED_W || now_h != RESIZED_H) {
+        fprintf(stderr,
+                "child: moonbase_window_size post-event got %dx%d want %dx%d\n",
+                now_w, now_h, RESIZED_W, RESIZED_H);
+        return 27;
     }
 
     moonbase_window_close(win);

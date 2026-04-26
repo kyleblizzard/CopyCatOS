@@ -343,6 +343,25 @@ void mb_internal_window_apply_backing_scale(mb_window_t *w,
     window_release_gl(w);
 }
 
+void mb_internal_window_apply_resize(mb_window_t *w,
+                                     int new_width_points,
+                                     int new_height_points) {
+    if (!w || new_width_points <= 0 || new_height_points <= 0) return;
+    if (w->width_points == new_width_points
+            && w->height_points == new_height_points) return;
+
+    w->width_points  = new_width_points;
+    w->height_points = new_height_points;
+
+    // Any pending Cairo frame was sized to the old dims. Drop it so the
+    // app's next moonbase_window_cairo() allocates at the new size — the
+    // app sees MB_EV_WINDOW_RESIZED and redraws.
+    window_release_frame(w);
+
+    // Same reasoning for the GL pbuffer.
+    window_release_gl(w);
+}
+
 void moonbase_window_close(mb_window_t *w) {
     if (!w) {
         mb_internal_set_last_error(MB_EINVAL);

@@ -309,10 +309,12 @@ static void translate_window_focused(const uint8_t *body, size_t body_len) {
 
 // WINDOW_RESIZED body: { 1: uint window_id, 2: uint w_points, 3: uint h_points }.
 // Dropped silently if the window_id is unknown (stale reference).
-// Reads the window's current width/height into ev.resize.old_*; #115
-// will mutate the tracked dims so subsequent moonbase_window_size()
-// calls report the new size — this slice locks only the wire and the
-// translator.
+// Reads the window's current width/height into ev.resize.old_*, then
+// applies the new dims via mb_internal_window_apply_resize before the
+// event is ring_push'd — that way moonbase_window_size() reports the
+// new size when the app handles the event, and any pending Cairo frame
+// or GL pbuffer sized to the old dims is dropped so the next allocation
+// hits the new size.
 static void translate_window_resized(const uint8_t *body, size_t body_len) {
     mb_cbor_r_t r;
     mb_cbor_r_init(&r, body, body_len);
@@ -347,6 +349,8 @@ static void translate_window_resized(const uint8_t *body, size_t body_len) {
 
     int old_w = 0, old_h = 0;
     moonbase_window_size(w, &old_w, &old_h);
+
+    mb_internal_window_apply_resize(w, (int)w_points, (int)h_points);
 
     mb_event_t ev = {0};
     ev.kind = MB_EV_WINDOW_RESIZED;

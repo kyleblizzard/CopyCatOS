@@ -34,6 +34,17 @@ void mb_internal_window_apply_backing_scale(mb_window_t *w,
                                             float new_scale,
                                             uint32_t new_output_id);
 
+// Apply a new content size (in points) to a window handle. Called by
+// the event pump when MB_IPC_WINDOW_RESIZED arrives, before the event
+// is delivered to the app. Retires any pending uncommitted Cairo frame
+// (which was sized against the old dims) and any GL pbuffer so the
+// next moonbase_window_cairo() / make_current allocates at the new
+// size. Subsequent moonbase_window_size() calls report the new dims.
+// Does nothing when the dims already match.
+void mb_internal_window_apply_resize(mb_window_t *w,
+                                     int new_width_points,
+                                     int new_height_points);
+
 // Event-loop hooks called by init / quit. `shutdown` flushes the queue
 // and resets the quit latch so the next process (or embedded re-init)
 // starts with an empty slate.
