@@ -160,16 +160,9 @@ const char *moonbase_bundle_version(void) {
     return NULL;
 }
 
-const char *moonbase_bundle_path(void) {
-    nosys();
-    return NULL;
-}
-
-char *moonbase_bundle_resource_path(const char *relative) {
-    (void)relative;
-    nosys();
-    return NULL;
-}
+// moonbase_bundle_path and moonbase_bundle_resource_path are
+// implemented in init.c — they read MOONBASE_BUNDLE_PATH which the
+// launcher exports into the bwrap sandbox.
 
 // ---------------------------------------------------------------------
 // Per-app data paths

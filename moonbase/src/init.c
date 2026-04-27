@@ -17,7 +17,9 @@
 #include "internal.h"
 #include "ipc/transport.h"
 
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 int moonbase_init(int argc, char **argv) {
     (void)argc;
@@ -56,3 +58,61 @@ int moonbase_init(int argc, char **argv) {
 
 // moonbase_quit lives in eventloop.c — it posts MB_EV_APP_WILL_QUIT
 // before tearing the connection down.
+
+// ---------------------------------------------------------------------
+// Bundle path accessors
+// ---------------------------------------------------------------------
+//
+// moonbase-launch exports MOONBASE_BUNDLE_PATH inside the bwrap
+// sandbox; native.profile ro-binds the host bundle path to itself, so
+// the same string is valid on both sides. The env value is cached on
+// first read — env can mutate (or be cleared by an embedding host),
+// and the bundle path is conceptually a constant for the process'
+// lifetime.
+
+static const char *g_bundle_path_cached = NULL;
+static int g_bundle_path_resolved = 0;
+
+const char *moonbase_bundle_path(void) {
+    if (!g_bundle_path_resolved) {
+        const char *p = getenv("MOONBASE_BUNDLE_PATH");
+        if (p && *p) {
+            g_bundle_path_cached = p;
+        }
+        g_bundle_path_resolved = 1;
+    }
+    if (!g_bundle_path_cached) {
+        mb_internal_set_last_error(MB_ENOTFOUND);
+        return NULL;
+    }
+    return g_bundle_path_cached;
+}
+
+char *moonbase_bundle_resource_path(const char *relative) {
+    if (!relative || !*relative) {
+        mb_internal_set_last_error(MB_EINVAL);
+        return NULL;
+    }
+    const char *base = moonbase_bundle_path();
+    if (!base) {
+        // last_error already set by moonbase_bundle_path
+        return NULL;
+    }
+    // <base>/Contents/Resources/<relative>. Locale fallback (en.lproj
+    // etc.) is a future slice — for now this is a flat resolver, which
+    // is what slice 19.H.3-α and the other early reference apps need.
+    size_t need = strlen(base) + strlen("/Contents/Resources/")
+                + strlen(relative) + 1;
+    char *buf = malloc(need);
+    if (!buf) {
+        mb_internal_set_last_error(MB_ENOMEM);
+        return NULL;
+    }
+    int n = snprintf(buf, need, "%s/Contents/Resources/%s", base, relative);
+    if (n < 0 || (size_t)n >= need) {
+        free(buf);
+        mb_internal_set_last_error(MB_EINVAL);
+        return NULL;
+    }
+    return buf;
+}

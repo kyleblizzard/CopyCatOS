@@ -837,6 +837,15 @@ int main(int argc, char **argv) {
     if (argv_push(&bw, "MOONBASE_BUNDLE_ID") < 0) goto oom;
     if (argv_push(&bw, bundle.info.id) < 0) goto oom;
 
+    // MOONBASE_BUNDLE_PATH: absolute path to the bundle root inside the
+    // sandbox. native.profile ro-binds the host bundle path to itself,
+    // so the same string is valid on both sides of the bwrap. Apps read
+    // this through moonbase_bundle_path() / moonbase_bundle_resource_path()
+    // to resolve PNGs, .lproj/, and other Contents/Resources/ assets.
+    if (argv_push(&bw, "--setenv") < 0) goto oom;
+    if (argv_push(&bw, "MOONBASE_BUNDLE_PATH") < 0) goto oom;
+    if (argv_push(&bw, bundle.bundle_path) < 0) goto oom;
+
     // MOONBASE_ENTITLEMENTS: declared entitlement set from Info.appc.
     // libmoonbase reads this once and gates privileged APIs with
     // MB_EPERM when the matching permission wasn't declared. --clearenv
