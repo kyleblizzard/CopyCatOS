@@ -854,27 +854,37 @@ int main(int argc, char **argv) {
     }
 
     // MOONBASE_SOCKET_PATH: per-bundle IPC socket for native bundles
-    // (slice 19.H.2.d). NATIVE bundles on a foreign distro talk to
-    // moonrock-host, which binds at $XDG_RUNTIME_DIR/moonbase/moonbase-
-    // <id>.sock — distinct from the multi-tenant moonbase.sock that
-    // moonrock proper or moonrock-lite would bind. libmoonbase reads
-    // this env in mb_conn_open and connects to it directly; when set,
-    // it does NOT silently fall back to the flat path on failure.
+    // running on a foreign distro under moonrock-host (slice 19.H.2.d).
+    // moonrock-host binds at $XDG_RUNTIME_DIR/moonbase/moonbase-<id>.sock
+    // — distinct from the multi-tenant moonbase.sock that moonrock proper
+    // (or moonrock-lite) binds. libmoonbase reads this env in
+    // mb_conn_open and connects to it directly; when set, it does NOT
+    // silently fall back to the flat path on failure.
     //
-    // The runtime-dir bind a few lines up already exposes this path
-    // inside the sandbox; we only need to set the env so libmoonbase
-    // picks it up. Toolkit-wrapped bundles get no setenv and keep
-    // talking to the flat moonbase.sock that moonrock-lite (or the
-    // in-session moonrock) hosts.
+    // Only set this when we know moonrock proper is NOT hosting the
+    // bundle. The signal we use is the same one moonrock-host itself
+    // uses to refuse binding: XDG_SESSION_DESKTOP. Inside a real
+    // CopyCatOS session, moonrock owns the flat moonbase.sock and the
+    // launcher must leave the env unset so libmoonbase reaches that
+    // path. Mirroring moonrock-host's check (moonrock_host.c
+    // should_host_moonbase) keeps the two ends of the dispatch in sync
+    // — see slice 19.H.2.k.
+    //
+    // Toolkit-wrapped bundles always go through the chrome stub and
+    // never get this setenv regardless of session.
     if (xdg && *xdg && bundle.info.wrap_toolkit == MB_INFO_APPC_WRAP_NATIVE) {
-        char sock_path[768];
-        int n = snprintf(sock_path, sizeof sock_path,
-                         "%s/moonbase/moonbase-%s.sock",
-                         xdg, bundle.info.id);
-        if (n < 0 || (size_t)n >= sizeof sock_path) goto oom;
-        if (argv_push(&bw, "--setenv") < 0) goto oom;
-        if (argv_push(&bw, "MOONBASE_SOCKET_PATH") < 0) goto oom;
-        if (argv_push(&bw, sock_path) < 0) goto oom;
+        const char *xdg_session = getenv("XDG_SESSION_DESKTOP");
+        bool in_session = xdg_session && strcmp(xdg_session, "CopyCatOS") == 0;
+        if (!in_session) {
+            char sock_path[768];
+            int n = snprintf(sock_path, sizeof sock_path,
+                             "%s/moonbase/moonbase-%s.sock",
+                             xdg, bundle.info.id);
+            if (n < 0 || (size_t)n >= sizeof sock_path) goto oom;
+            if (argv_push(&bw, "--setenv") < 0) goto oom;
+            if (argv_push(&bw, "MOONBASE_SOCKET_PATH") < 0) goto oom;
+            if (argv_push(&bw, sock_path) < 0) goto oom;
+        }
     }
 
     // Legacy Mode menu-export bootstrap: hand the inner toolkit the env
