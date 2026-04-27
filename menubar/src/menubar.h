@@ -25,6 +25,7 @@
 #include <stdbool.h>
 
 #include "dbusmenu_client.h"
+#include "moonrock_scale.h"  // MOONROCK_SCALE_MAX_OUTPUTS
 
 // Default height matching macOS Snow Leopard. Configurable 22-88 via
 // ~/.config/copycatos/desktop.conf [menubar] section.
@@ -197,13 +198,25 @@ typedef struct {
 
     // Index of the pane hosting the focused application — the one that shows
     // the non-dimmed menus and receives dropdown clicks on the first press.
-    // Sourced from _MOONROCK_ACTIVE_OUTPUT via the scale-table row index.
-    // A non-focused pane requires one promoting click (which retargets
-    // _NET_ACTIVE_WINDOW to that output's frontmost) before a second click
-    // can open a dropdown. Clamped to 0 in Classic mode where only one pane
-    // exists. Stays valid across reconciler runs — reseeded when the host
-    // pane's output disappears.
+    // Sourced from _MOONROCK_ACTIVE_OUTPUT via the scale-table row index,
+    // remapped through `row_to_pane` to handle mirror mode (multiple rows
+    // collapse to one pane). A non-focused pane requires one promoting
+    // click (which retargets _NET_ACTIVE_WINDOW to that output's frontmost)
+    // before a second click can open a dropdown. Clamped to 0 in Classic
+    // mode where only one pane exists. Stays valid across reconciler runs
+    // — reseeded when the host pane's output disappears.
     int         focused_pane_idx;
+
+    // OUTPUT_SCALES row index → pane index translation, populated by the
+    // reconciler. In extended-desktop mode it's identity (row N → pane N).
+    // In mirror mode (multiple outputs sharing the same (x,y) origin) every
+    // mirrored row maps to the SAME pane so the bar isn't drawn twice in
+    // the same place — the second draw was painting at non-focus alpha
+    // over the first and dimming the whole bar. Indexed by row, value is
+    // pane index in [0, pane_count) or -1 if the row didn't map. Length
+    // matches MOONROCK_SCALE_MAX_OUTPUTS so a stale index from a prior
+    // reconcile can't run off the end.
+    int         row_to_pane[MOONROCK_SCALE_MAX_OUTPUTS];
 
     // X11 atoms — pre-interned for performance.
     // Atoms are unique identifiers for property names in X11. We look them

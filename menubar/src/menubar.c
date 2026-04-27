@@ -407,6 +407,13 @@ static bool reconcile_panes_to_outputs(MenuBar *mb)
 
     int next_count = 0;
 
+    // Reset row→pane translation. Any row not assigned by the population
+    // loop below stays at -1, which the active-output seeder reads as
+    // "no pane for this row" (falls back to pane 0).
+    int row_to_pane_local[MOONROCK_SCALE_MAX_OUTPUTS];
+    for (int i = 0; i < MOONROCK_SCALE_MAX_OUTPUTS; i++)
+        row_to_pane_local[i] = -1;
+
     if (mb->menubar_mode == MENUBAR_MODE_CLASSIC) {
         // Single pane on the primary output. Falls back to (0,0) with the
         // virtual-root width when MoonRock hasn't published a primary
@@ -433,17 +440,54 @@ static bool reconcile_panes_to_outputs(MenuBar *mb)
             recompute_pane_scale(&next[0]);
         }
     } else {
-        // Modern: one pane per connected output, aligned with scale-
-        // table row order. If the table is empty (MoonRock not running
-        // yet), fall back to a single pane covering the virtual root so
-        // the bar is still visible — matches Classic's empty-table path.
+        // Modern: one pane per UNIQUE output viewport. Mirror mode (two
+        // outputs sharing the same (x,y) origin) collapses to one pane —
+        // creating a pane per row in that case made the second pane paint
+        // dimmed (non-focus alpha) on top of the first, greying the whole
+        // bar on every physical display. The dedup is keyed by (x,y) only
+        // because mirrored outputs always share their origin, even when
+        // their pixel sizes differ (one feeds a smaller panel, the other a
+        // larger external). Within a mirror group we prefer the primary
+        // output's row so the pane carries the user-chosen primary's name
+        // and width. row_to_pane is filled so the active-output seeder can
+        // map a CARDINAL row index to the surviving pane.
+        //
+        // If the scale table is empty (MoonRock not running yet), fall
+        // back to a single pane covering the virtual root so the bar is
+        // still visible — matches Classic's empty-table path.
         if (g_output_scales.valid && g_output_scales.count > 0) {
-            next_count = g_output_scales.count;
-            if (next_count > MENUBAR_MAX_PANES)
-                next_count = MENUBAR_MAX_PANES;
-            for (int i = 0; i < next_count; i++) {
-                populate_pane_from_row(&next[i],
-                                       &g_output_scales.outputs[i]);
+            int row_count = g_output_scales.count;
+            if (row_count > MOONROCK_SCALE_MAX_OUTPUTS)
+                row_count = MOONROCK_SCALE_MAX_OUTPUTS;
+
+            // Pass over rows twice: primary rows first (priority 1),
+            // non-primary rows second (priority 0). On each row, find any
+            // already-created pane at the same (x,y); if one exists, this
+            // row joins that mirror group. Otherwise it gets a fresh pane.
+            for (int pri = 1; pri >= 0; pri--) {
+                for (int i = 0; i < row_count; i++) {
+                    const MoonRockOutputScale *row =
+                        &g_output_scales.outputs[i];
+                    int row_pri = row->primary ? 1 : 0;
+                    if (row_pri != pri) continue;
+                    if (row_to_pane_local[i] >= 0) continue;
+
+                    int merge_into = -1;
+                    for (int p = 0; p < next_count; p++) {
+                        if (next[p].screen_x == row->x &&
+                            next[p].screen_y == row->y) {
+                            merge_into = p;
+                            break;
+                        }
+                    }
+                    if (merge_into >= 0) {
+                        row_to_pane_local[i] = merge_into;
+                    } else if (next_count < MENUBAR_MAX_PANES) {
+                        populate_pane_from_row(&next[next_count], row);
+                        row_to_pane_local[i] = next_count;
+                        next_count++;
+                    }
+                }
             }
         } else {
             next_count = 1;
@@ -572,7 +616,26 @@ static bool reconcile_panes_to_outputs(MenuBar *mb)
         mb->focused_pane_idx = (mb->pane_count > 0) ? 0 : -1;
     }
 
+    // 7. Publish row→pane translation so the active-output seeder can
+    //    remap a CARDINAL row index that was collapsed into a mirror
+    //    group. Outside Modern mode every entry stays -1; the seeder
+    //    has its own Classic-mode shortcut so the table is unused there.
+    memcpy(mb->row_to_pane, row_to_pane_local, sizeof(mb->row_to_pane));
+
     return changed;
+}
+
+// Translate a _MOONROCK_ACTIVE_OUTPUT row index into a pane index. Returns
+// the pane index in [0, pane_count) on success, or -1 when the row didn't
+// resolve (no pane for that row, or a stale row index from a prior
+// reconcile). Callers should treat -1 as "no focus pane" — the dim logic
+// then leaves every pane bright (count > 1 + idx >= 0 guard fails).
+static int row_to_pane_index(const MenuBar *mb, int row)
+{
+    if (row < 0 || row >= MOONROCK_SCALE_MAX_OUTPUTS) return -1;
+    int pane = mb->row_to_pane[row];
+    if (pane < 0 || pane >= mb->pane_count) return -1;
+    return pane;
 }
 
 // Populate the pane-local layout anchors (apple_x/w, appname_x, menus_x).
@@ -786,15 +849,17 @@ bool menubar_init(MenuBar *mb)
 
     // Seed focused_pane_idx from MoonRock's _MOONROCK_ACTIVE_OUTPUT. In
     // Classic mode there's only one pane, so it collapses to 0. In
-    // Modern mode this picks the pane whose output currently hosts
-    // _NET_ACTIVE_WINDOW. -1 from the helper (no active output) falls
-    // back to pane 0 so some pane always shows undimmed menus.
+    // Modern mode the row index is translated through row_to_pane so
+    // mirror groups (multiple rows → one pane) collapse correctly. -1
+    // from either lookup falls back to pane 0 so some pane always shows
+    // undimmed menus.
     {
         int idx = moonrock_active_output_index(mb->dpy);
+        int pane_idx = row_to_pane_index(mb, idx);
         if (mb->menubar_mode == MENUBAR_MODE_CLASSIC) {
             mb->focused_pane_idx = (mb->pane_count > 0) ? 0 : -1;
-        } else if (idx >= 0 && idx < mb->pane_count) {
-            mb->focused_pane_idx = idx;
+        } else if (pane_idx >= 0) {
+            mb->focused_pane_idx = pane_idx;
         } else {
             mb->focused_pane_idx = (mb->pane_count > 0) ? 0 : -1;
         }
@@ -1430,11 +1495,12 @@ void menubar_run(MenuBar *mb)
                         // corrects us.
                         {
                             int idx = moonrock_active_output_index(mb->dpy);
+                            int pane_idx = row_to_pane_index(mb, idx);
                             if (mb->menubar_mode == MENUBAR_MODE_CLASSIC) {
                                 mb->focused_pane_idx =
                                     (mb->pane_count > 0) ? 0 : -1;
-                            } else if (idx >= 0 && idx < mb->pane_count) {
-                                mb->focused_pane_idx = idx;
+                            } else if (pane_idx >= 0) {
+                                mb->focused_pane_idx = pane_idx;
                             } else {
                                 mb->focused_pane_idx =
                                     (mb->pane_count > 0) ? 0 : -1;
@@ -1452,11 +1518,12 @@ void menubar_run(MenuBar *mb)
                     // In Classic mode only one pane exists; we pin to 0
                     // so the dim toggle can still key off the invariant.
                     int idx = moonrock_active_output_index(mb->dpy);
+                    int pane_idx = row_to_pane_index(mb, idx);
                     int new_focus;
                     if (mb->menubar_mode == MENUBAR_MODE_CLASSIC) {
                         new_focus = (mb->pane_count > 0) ? 0 : -1;
-                    } else if (idx >= 0 && idx < mb->pane_count) {
-                        new_focus = idx;
+                    } else if (pane_idx >= 0) {
+                        new_focus = pane_idx;
                     } else {
                         new_focus = (mb->pane_count > 0) ? 0 : -1;
                     }

@@ -32,6 +32,7 @@
 #include <cairo/cairo-xlib.h>
 #include <pango/pangocairo.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
@@ -51,6 +52,14 @@ void decor_paint(CCWM *wm, Client *c)
     int chrome_w = c->w + 2 * BORDER_WIDTH;
     int chrome_h = c->h + TITLEBAR_HEIGHT + BORDER_WIDTH;
     bool active = c->focused;
+
+    // Diagnostic: surface c->focused so we can tell whether a "grey-dots
+    // even when foreground" report is a focus-tracking bug or an asset bug.
+    if (getenv("AURA_DEBUG")) {
+        fprintf(stderr, "[moonrock decor] paint '%s' focused=%d wm_focused=%d\n",
+                c->title, (int)c->focused,
+                (int)(wm->focused == c));
+    }
 
     // Shadow padding — when compositor is active, the frame is larger
     // than the chrome to make room for the transparent shadow region
