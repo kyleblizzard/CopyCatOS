@@ -1448,3 +1448,131 @@ foreach spec : example_specs
     )
   endif
 endforeach
+
+# ---------------------------------------------------------------------
+# aqua-demo — canonical Aqua widget showcase. Built outside the shared
+# example loop because it's the only bundle that ships real Snow
+# Leopard HITheme PNGs from snowleopardaura/MacAssets/ inside its
+# Resources/. Per-slice the widget list grows; today (slice α) it's
+# the push-button regular family.
+# ---------------------------------------------------------------------
+
+aqua_demo_exe = executable(
+  'aqua-demo',
+  files('examples/aqua-demo/main.c'),
+  include_directories: include_directories('include'),
+  dependencies: [cairo_dep],
+  link_with: libmoonbase,
+  install: false,
+)
+
+# Source root for SL HITheme renders. Two candidates:
+#   1. snowleopardaura/MacAssets/SnowReverseOutput/ — Kyle's local Mac
+#      where the raw asset library lives (511 MB, never pushed).
+#   2. ~/.local/share/aqua-widgets/controls/ — runtime-deployed mirror
+#      that install-assets.sh writes on Legion. Same directory layout,
+#      so a relative path like "buttons/push_active_regular.png"
+#      resolves identically against either root.
+# We pick the first one that exists at configure time. Build machines
+# without either path get a clear error instead of a silent skip — the
+# demo is a flagship deliverable, not optional.
+fs = import('fs')
+aqua_demo_search_paths = [
+  meson.project_source_root() / '..' / 'snowleopardaura' \
+      / 'MacAssets' / 'SnowReverseOutput',
+  run_command('sh', '-c', 'echo "$HOME"', check: true).stdout().strip() \
+      / '.local' / 'share' / 'aqua-widgets' / 'controls',
+]
+aqua_demo_assets_root = ''
+foreach candidate : aqua_demo_search_paths
+  if fs.is_dir(candidate)
+    aqua_demo_assets_root = candidate
+    break
+  endif
+endforeach
+if aqua_demo_assets_root == ''
+  error('aqua-demo: cannot find Snow Leopard widget assets. ' \
+      + 'Searched: ' + ', '.join(aqua_demo_search_paths))
+endif
+message('aqua-demo: using widget assets from ' + aqua_demo_assets_root)
+
+# Slice α — push button regular family (3 states: normal/pressed/disabled).
+# Inactive (window-unfocused) lives in a later slice; promote it here once
+# the focus-change event surface lands. Future slices append tracks/,
+# segments/, frames/, misc/, tabs/ entries as widgets come online. Listed
+# as relative paths under aqua_demo_assets_root so the staging command can
+# reproduce the directory layout 1:1 inside the bundle's Resources/widgets/.
+aqua_demo_widget_files = [
+  'buttons/push_active_regular.png',
+  'buttons/push_pressed_regular.png',
+  'buttons/push_disabled_regular.png',
+]
+
+# Resolve the widget files into absolute paths and into a comma-
+# separated string of relative paths. The shell command iterates the
+# rel-list and copies each one from <root>/<rel> → Resources/widgets/<rel>.
+# Passing absolute paths via files()-equivalent input would force meson
+# to bring them under its dependency graph, but these are read-only
+# source assets — touching them shouldn't trigger a rebuild of the
+# whole framework. A plain string list is fine; touching a PNG and
+# wanting the bundle to refresh just needs `meson compile --clean`.
+aqua_demo_widget_rels = ','.join(aqua_demo_widget_files)
+
+aqua_demo_appdev = custom_target('aqua-demo-appdev',
+  output: 'aqua-demo.appdev',
+  input: [
+    files('examples/aqua-demo/Info.appc'),
+    aqua_demo_exe,
+    moonbase_framework_binary,
+  ],
+  command: [
+    find_program('sh'), '-c',
+    'set -eu; '
+    + 'rm -rf "$0"; '
+    + 'mkdir -p "$0/Contents/CopyCatOS" "$0/Contents/Resources"; '
+    + 'cp "$1" "$0/Contents/Info.appc"; '
+    + 'cp "$2" "$0/Contents/CopyCatOS/aqua-demo"; '
+    + 'chmod 0755 "$0/Contents/CopyCatOS/aqua-demo"; '
+    + 'cp "$3" "$0/Contents/CopyCatOS/MoonBase"; '
+    + 'chmod 0755 "$0/Contents/CopyCatOS/MoonBase"; '
+    # Stage widget PNGs. $4 is the absolute SL asset root, $5 is the
+    # comma-separated relative-path manifest. We split on commas and
+    # mirror the source layout under Contents/Resources/widgets/.
+    + 'IFS=","; for rel in $5; do '
+    +   'src="$4/$rel"; '
+    +   'dst="$0/Contents/Resources/widgets/$rel"; '
+    +   'if [ ! -f "$src" ]; then '
+    +     'echo "aqua-demo: missing asset: $src" >&2; exit 1; '
+    +   'fi; '
+    +   'mkdir -p "$(dirname "$dst")"; '
+    +   'cp "$src" "$dst"; '
+    + 'done',
+    '@OUTPUT0@', '@INPUT0@', '@INPUT1@', '@INPUT2@',
+    aqua_demo_assets_root, aqua_demo_widget_rels,
+  ],
+  build_by_default: true,
+)
+
+if mksquashfs_prog.found()
+  custom_target('aqua-demo-app',
+    output: 'aqua-demo.app',
+    input: [aqua_demo_appdev, moonbase_pack, moonbase_app_stub],
+    command: [
+      find_program('sh'), '-c',
+      'set -eu; rm -f "$3"; exec "./$1" --stub "$2" "$0" "$3"',
+      '@INPUT0@', '@INPUT1@', '@INPUT2@', '@OUTPUT0@',
+    ],
+    build_by_default: true,
+  )
+else
+  custom_target('aqua-demo-app',
+    output: 'aqua-demo.app',
+    input: aqua_demo_appdev,
+    command: [
+      find_program('sh'), '-c',
+      'set -eu; rm -f "$1"; ln -s "$(basename "$0")" "$1"',
+      '@INPUT0@', '@OUTPUT0@',
+    ],
+    build_by_default: true,
+  )
+endif
