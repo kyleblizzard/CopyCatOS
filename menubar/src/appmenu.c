@@ -1198,6 +1198,30 @@ static void hide_others_for_active_pane(MenuBar *mb)
     XFlush(mb->dpy);
 }
 
+// Active-pane "Quit" — close every top-level X client whose WM_CLASS
+// matches the pane's active class, mirroring macOS Cmd-Q. We send
+// _NET_CLOSE_WINDOW (via send_close) so each window's app gets the
+// graceful close path — including any unsaved-changes prompt the app
+// itself shows. Apps that have a single window collapse to "close that
+// window"; multi-window apps shut all of them down. The pane's
+// active_class is already lower-cased by update_pane_from_wid.
+static void quit_all_for_active_pane(MenuBar *mb)
+{
+    if (mb->active_pane < 0 || mb->active_pane >= mb->pane_count) return;
+    const char *cls = mb->panes[mb->active_pane].active_class;
+    if (!cls || !*cls) return;
+
+    Window *list = NULL;
+    int n = read_net_client_list(mb, &list);
+    for (int i = 0; i < n; i++) {
+        if (window_class_matches(mb, list[i], cls)) {
+            send_close(mb, list[i]);
+        }
+    }
+    if (list) XFree(list);
+    XFlush(mb->dpy);
+}
+
 // "Show All" — re-activate every top-level on the client list. Sending
 // _NET_ACTIVE_WINDOW to each one nudges the WM to take them out of the
 // IconicState the previous Hide / Hide Others set. The last window in
@@ -1255,11 +1279,12 @@ static void dispatch_native_by_label(MenuBar *mb, const char *label)
         hide_all_for_active_pane(mb);
 
     } else if (strncmp(label, "Quit ", 5) == 0) {
-        // "Quit [App]" — close the active window. Multi-window quit
-        // (close every window with the matching WM_CLASS) is a follow-up;
-        // for v1 the active window is enough to validate the path.
-        send_close(mb, active);
-        XFlush(mb->dpy);
+        // "Quit [App]" — close every top-level window of the focused
+        // app's WM_CLASS, matching macOS Cmd-Q. Each window goes
+        // through send_close (_NET_CLOSE_WINDOW), so apps that prompt
+        // for unsaved changes still do. Single-window apps collapse
+        // to one close request; multi-window apps shut down fully.
+        quit_all_for_active_pane(mb);
 
     } else if (strncmp(label, "About ", 6) == 0 ||
                strcmp(label, "Settings\xe2\x80\xa6") == 0 ||  // "Settings…"
