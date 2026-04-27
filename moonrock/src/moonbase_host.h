@@ -56,25 +56,35 @@ bool mb_host_has_focus(void);
 // Handle an X ButtonPress that may have landed on a MoonBase surface's
 // input proxy. `win` is the XButtonEvent.window; `x` and `y` are the
 // proxy-relative click coordinates; `button` is the X button number
-// (1 = left). Returns true if the click was consumed by the MoonBase
-// host (focus-on-click, close / minimize / zoom press, title drag,
-// content click passthrough). When this returns true the caller must
-// not dispatch the event to any other handler.
-bool mb_host_handle_button_press(Window win, int x, int y, unsigned int button);
+// (1 = left); `mb_modifiers` is the MB_MOD_* mask the caller has
+// already translated from the XButtonEvent state. Returns true if the
+// click was consumed by the MoonBase host (focus-on-click, close /
+// minimize / zoom press, title drag, content pointer routing). When
+// this returns true the caller must not dispatch the event to any
+// other handler.
+bool mb_host_handle_button_press(Window win, int x, int y,
+                                 unsigned int button,
+                                 uint32_t mb_modifiers);
 
 // ButtonRelease companion to mb_host_handle_button_press. Fires the
 // traffic-light action (close/minimize/zoom) when the release lands
 // on the same disc that was originally pressed; otherwise the click
-// is cancelled. Drops the pointer grab set by the press. Returns
-// true if `win` is a live MoonBase proxy.
+// is cancelled. Emits MB_IPC_POINTER_UP for content-rect releases when
+// a matching content press is open. Drops the pointer grab set by the
+// press. Returns true if `win` is a live MoonBase proxy.
 bool mb_host_handle_button_release(Window win, int x, int y,
-                                   unsigned int button);
+                                   unsigned int button,
+                                   uint32_t mb_modifiers);
 
 // MotionNotify routed to the MoonBase host. Tracks the traffic-light
 // hover region so the ×/−/+ glyphs appear/disappear as the pointer
-// crosses in and out. Returns true if `win` is a live MoonBase proxy
-// (in which case the caller must not dispatch the event elsewhere).
-bool mb_host_handle_motion(Window win, int x, int y);
+// crosses in and out, and forwards MB_IPC_POINTER_MOVE frames for the
+// content rect (and for the entire proxy while a content press is open
+// so drags off the window still produce MOVE frames). Returns true if
+// `win` is a live MoonBase proxy (in which case the caller must not
+// dispatch the event elsewhere).
+bool mb_host_handle_motion(Window win, int x, int y,
+                           uint32_t mb_modifiers);
 
 // LeaveNotify routed to the MoonBase host. Clears the traffic-light
 // hover state so glyphs disappear when the pointer exits the proxy

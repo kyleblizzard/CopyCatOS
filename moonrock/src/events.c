@@ -448,6 +448,12 @@ static bool in_button_region(int fx, int fy)
     return fx >= region_left && fx <= region_right;
 }
 
+// Forward decl — translate_x_mods is defined further down (next to the
+// key-event handlers it grew up alongside) but the MoonBase pointer
+// path needs the same translation here. Keeping a single helper avoids
+// drift between the keyboard and pointer modifier maps.
+static uint32_t translate_x_mods(unsigned int state);
+
 static void on_button_press(CCWM *wm, XEvent *e)
 {
     Window w = e->xbutton.window;
@@ -457,7 +463,8 @@ static void on_button_press(CCWM *wm, XEvent *e)
     // close button, etc.) and we must not fall through to the X-client
     // dispatch below.
     if (mb_host_handle_button_press(w, e->xbutton.x, e->xbutton.y,
-                                    e->xbutton.button)) {
+                                    e->xbutton.button,
+                                    translate_x_mods(e->xbutton.state))) {
         return;
     }
 
@@ -530,7 +537,8 @@ static void on_button_release(CCWM *wm, XEvent *e)
     // drop its grab before the X-client path runs.
     if (mb_host_handle_button_release(e->xbutton.window,
                                       e->xbutton.x, e->xbutton.y,
-                                      e->xbutton.button)) {
+                                      e->xbutton.button,
+                                      translate_x_mods(e->xbutton.state))) {
         return;
     }
 
@@ -604,7 +612,8 @@ static void on_motion_notify(CCWM *wm, XEvent *e)
     // traffic-light hover glyphs follow the pointer, and don't fall
     // through to the X-client drag/resize logic below.
     if (mb_host_handle_motion(e->xmotion.window,
-                              e->xmotion.x, e->xmotion.y)) {
+                              e->xmotion.x, e->xmotion.y,
+                              translate_x_mods(e->xmotion.state))) {
         return;
     }
 

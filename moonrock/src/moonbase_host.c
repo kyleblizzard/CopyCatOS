@@ -14,6 +14,7 @@
 
 #include "moonbase_host.h"
 
+#include "moonbase.h"         // MB_MOD_*, MB_BUTTON_*
 #include "server.h"
 #include "consent_responder.h"
 #include "moonbase/ipc/kinds.h"
@@ -149,6 +150,14 @@ typedef struct {
     // cause a chrome re-raster when they change.
     bool           buttons_hover;
     int            pressed_button;
+
+    // Content-rect pointer press tracking. 0 == no content press in
+    // flight; otherwise the MB_BUTTON_* value of the button currently
+    // held down so the matching POINTER_UP fires for the same button
+    // even if the user drags off the proxy before releasing. Last-write-
+    // wins — the host only tracks one concurrent button per surface for
+    // now (Apple HIG: chord clicks are not first-class anyway).
+    int            pointer_btn_down;
 } mb_surface_t;
 
 static mb_surface_t g_surfaces[MB_MAX_SURFACES];
@@ -854,7 +863,56 @@ static mb_surface_t *surface_find_by_proxy(Window win) {
     return NULL;
 }
 
-bool mb_host_handle_button_press(Window win, int x, int y, unsigned int button) {
+// X11 button number → MB_BUTTON_*. X numbers 1=left, 2=middle, 3=right;
+// MoonBase has LEFT=1, RIGHT=2, MIDDLE=3 (matches Apple HIG/AppKit).
+// Returns 0 for buttons we don't route (4–7 are wheel; SCROLL is a
+// separate IPC verb that lands in a later slice).
+static uint32_t x_button_to_mb(unsigned int button) {
+    switch (button) {
+        case Button1: return MB_BUTTON_LEFT;
+        case Button2: return MB_BUTTON_MIDDLE;
+        case Button3: return MB_BUTTON_RIGHT;
+        default:      return 0;
+    }
+}
+
+// Send a content-rect POINTER_MOVE/DOWN/UP frame to the surface's owning
+// client. `x_px`, `y_px` are proxy-relative physical pixels — we strip
+// the title-strip height and divide by the surface's backing scale to
+// match the IPC contract (content-local points; signed because a drag
+// off the window can legitimately produce negatives). Drops silently if
+// the IPC encode fails — apps observe missed frames as missed events.
+static void send_pointer_frame(mb_surface_t *surf, uint16_t kind,
+                               int x_px, int y_px,
+                               uint32_t button, uint32_t mb_modifiers) {
+    if (!surf || !g_server) return;
+    float scale = surf->scale > 0.0f ? surf->scale : 1.0f;
+    int   titlebar_px   = (int)(TITLEBAR_HEIGHT * scale + 0.5f);
+    int   content_y_px  = y_px - titlebar_px;
+    int   x_pts = (int)(x_px / scale);
+    int   y_pts = (int)(content_y_px / scale);
+
+    size_t len = 0;
+    uint8_t *body = mb_host_build_pointer_event(surf->window_id,
+                                                x_pts, y_pts,
+                                                button,
+                                                mb_modifiers,
+                                                mb_host_ts_us(),
+                                                &len);
+    if (!body) return;
+    int rc = mb_server_send(g_server, surf->client, kind,
+                            body, len, NULL, 0);
+    free(body);
+    if (rc != 0) {
+        fprintf(stderr,
+                "[moonrock] moonbase POINTER frame send failed (%d)\n",
+                rc);
+    }
+}
+
+bool mb_host_handle_button_press(Window win, int x, int y,
+                                 unsigned int button,
+                                 uint32_t mb_modifiers) {
     mb_surface_t *surf = surface_find_by_proxy(win);
     if (!surf) return false;
 
@@ -863,83 +921,123 @@ bool mb_host_handle_button_press(Window win, int x, int y, unsigned int button) 
     // clients, which also run through wm_focus_client in on_button_press.
     focus_set(surf->window_id);
 
-    // Left-click only for button-dispatch in this slice. Other buttons
-    // on the chrome are a no-op but still counted as consumed so the WM
-    // doesn't double-handle them.
-    if (button != Button1) return true;
+    // Split title-strip vs content rect by y pixel against the chrome's
+    // titlebar height (TITLEBAR_HEIGHT is in points, scale-multiplied
+    // here). Title-strip handles only the traffic-light hit-tests; the
+    // rest of the strip (drag region) is consumed-without-routing for
+    // now. Content rect always forwards to the bundle.
+    int titlebar_px = (int)(TITLEBAR_HEIGHT * surf->scale + 0.5f);
+    if (y < titlebar_px) {
+        // Left-click only for traffic-light dispatch — other buttons in
+        // the title strip are a no-op but still consumed so the WM
+        // doesn't double-handle them.
+        if (button != Button1) return true;
 
-    int btn = mb_host_chrome_hit_button(x, y, surf->scale);
-    if (btn > 0) {
-        // Press feedback — set pressed_button, show hover glyphs on all
-        // three, re-raster chrome. Grab the pointer so we still get the
-        // ButtonRelease even if the user drags off the window before
-        // letting go (matches decor.c's on_button_press grab).
-        surf->pressed_button = btn;
-        surf->buttons_hover  = true;
-        surf->chrome_stale   = true;
+        int btn = mb_host_chrome_hit_button(x, y, surf->scale);
+        if (btn > 0) {
+            // Press feedback — set pressed_button, show hover glyphs on
+            // all three, re-raster chrome. Grab the pointer so we still
+            // get the ButtonRelease even if the user drags off the
+            // window before letting go (matches decor.c's grab).
+            surf->pressed_button = btn;
+            surf->buttons_hover  = true;
+            surf->chrome_stale   = true;
 
-        if (g_dpy && surf->input_proxy) {
-            XGrabPointer(g_dpy, surf->input_proxy, True,
-                         PointerMotionMask | ButtonReleaseMask |
-                         LeaveWindowMask,
-                         GrabModeAsync, GrabModeAsync,
-                         None, None, CurrentTime);
+            if (g_dpy && surf->input_proxy) {
+                XGrabPointer(g_dpy, surf->input_proxy, True,
+                             PointerMotionMask | ButtonReleaseMask |
+                             LeaveWindowMask,
+                             GrabModeAsync, GrabModeAsync,
+                             None, None, CurrentTime);
+            }
         }
         return true;
     }
 
-    // Rest of chrome / content is consumed-without-routing in this
-    // slice. Drag-to-move and content pointer events land in later
-    // slices.
-    return true;
-}
+    // Content rect — forward to bundle as a POINTER_DOWN. Track which
+    // MB_BUTTON_* is held so the matching UP fires for the same button
+    // even after a drag off the proxy. Symmetric XGrabPointer keeps
+    // motion + release flowing while the press is open.
+    uint32_t mb_btn = x_button_to_mb(button);
+    if (mb_btn == 0) return true;
 
-bool mb_host_handle_button_release(Window win, int x, int y,
-                                   unsigned int button) {
-    mb_surface_t *surf = surface_find_by_proxy(win);
-    if (!surf) return false;
-    if (button != Button1) return true;
-    if (surf->pressed_button == 0) return true;
+    surf->pointer_btn_down = (int)mb_btn;
+    send_pointer_frame(surf, MB_IPC_POINTER_DOWN, x, y, mb_btn, mb_modifiers);
 
-    int pressed = surf->pressed_button;
-    int over    = mb_host_chrome_hit_button(x, y, surf->scale);
-
-    surf->pressed_button = 0;
-    surf->chrome_stale   = true;
-
-    if (g_dpy) XUngrabPointer(g_dpy, CurrentTime);
-
-    // Update hover after the grab ends — if the release happened inside
-    // the button region, glyphs should keep showing; if the user dragged
-    // off, clear. mb_host_chrome_hit_button_region does the correct test.
-    surf->buttons_hover = mb_host_chrome_hit_button_region(x, y, surf->scale);
-
-    // Fire the action only if the release was on the SAME button that
-    // was originally pressed — matches SL 10.6 click-and-release.
-    if (over == pressed) {
-        switch (pressed) {
-        case 1:  // close
-            fprintf(stderr,
-                    "[moonrock] moonbase close on window_id=%u\n",
-                    surf->window_id);
-            send_window_closed_event(surf);
-            break;
-        case 2:  // minimize — no IPC verb yet; press feedback only
-            fprintf(stderr,
-                    "[moonrock] moonbase minimize on window_id=%u "
-                    "(no action wired)\n", surf->window_id);
-            break;
-        case 3:  // zoom — no IPC verb yet; press feedback only
-            fprintf(stderr,
-                    "[moonrock] moonbase zoom on window_id=%u "
-                    "(no action wired)\n", surf->window_id);
-            break;
-        }
+    if (g_dpy && surf->input_proxy) {
+        XGrabPointer(g_dpy, surf->input_proxy, True,
+                     PointerMotionMask | ButtonReleaseMask |
+                     LeaveWindowMask,
+                     GrabModeAsync, GrabModeAsync,
+                     None, None, CurrentTime);
     }
     return true;
 }
 
-bool mb_host_handle_motion(Window win, int x, int y) {
+bool mb_host_handle_button_release(Window win, int x, int y,
+                                   unsigned int button,
+                                   uint32_t mb_modifiers) {
+    mb_surface_t *surf = surface_find_by_proxy(win);
+    if (!surf) return false;
+
+    // Chrome traffic-light release path: only meaningful for Button1
+    // and only when a chrome press is currently open.
+    if (button == Button1 && surf->pressed_button != 0) {
+        int pressed = surf->pressed_button;
+        int over    = mb_host_chrome_hit_button(x, y, surf->scale);
+
+        surf->pressed_button = 0;
+        surf->chrome_stale   = true;
+
+        if (g_dpy) XUngrabPointer(g_dpy, CurrentTime);
+
+        // Update hover after the grab ends — keep glyphs lit if release
+        // landed inside the button region, clear if user dragged off.
+        surf->buttons_hover =
+            mb_host_chrome_hit_button_region(x, y, surf->scale);
+
+        // Fire the action only if the release was on the SAME button
+        // that was originally pressed — matches SL 10.6 click-and-release.
+        if (over == pressed) {
+            switch (pressed) {
+            case 1:  // close
+                fprintf(stderr,
+                        "[moonrock] moonbase close on window_id=%u\n",
+                        surf->window_id);
+                send_window_closed_event(surf);
+                break;
+            case 2:  // minimize — no IPC verb yet; press feedback only
+                fprintf(stderr,
+                        "[moonrock] moonbase minimize on window_id=%u "
+                        "(no action wired)\n", surf->window_id);
+                break;
+            case 3:  // zoom — no IPC verb yet; press feedback only
+                fprintf(stderr,
+                        "[moonrock] moonbase zoom on window_id=%u "
+                        "(no action wired)\n", surf->window_id);
+                break;
+            }
+        }
+        return true;
+    }
+
+    // Content-rect release path. Match against pointer_btn_down so a
+    // press that began on content but ended outside still produces an
+    // UP — and so a release with no matching DOWN (e.g. a chrome press
+    // that didn't hit a traffic light) is silently dropped instead of
+    // synthesizing a phantom UP frame.
+    uint32_t mb_btn = x_button_to_mb(button);
+    if (mb_btn != 0 && surf->pointer_btn_down == (int)mb_btn) {
+        send_pointer_frame(surf, MB_IPC_POINTER_UP, x, y, mb_btn,
+                           mb_modifiers);
+        surf->pointer_btn_down = 0;
+        if (g_dpy) XUngrabPointer(g_dpy, CurrentTime);
+    }
+    return true;
+}
+
+bool mb_host_handle_motion(Window win, int x, int y,
+                           uint32_t mb_modifiers) {
     mb_surface_t *surf = surface_find_by_proxy(win);
     if (!surf) return false;
 
@@ -955,6 +1053,17 @@ bool mb_host_handle_motion(Window win, int x, int y) {
     // pointer crosses the button boundary during the press.
     if (surf->pressed_button > 0) {
         surf->chrome_stale = true;
+    }
+
+    // Forward POINTER_MOVE for the content rect. While a content press
+    // is open we forward every motion frame (so drags that cross out of
+    // the proxy keep producing MOVEs against the grabbed surface);
+    // otherwise we only forward when the pointer is actually over the
+    // content rect.
+    int titlebar_px = (int)(TITLEBAR_HEIGHT * surf->scale + 0.5f);
+    bool in_content = (y >= titlebar_px);
+    if (surf->pointer_btn_down != 0 || in_content) {
+        send_pointer_frame(surf, MB_IPC_POINTER_MOVE, x, y, 0, mb_modifiers);
     }
     return true;
 }
