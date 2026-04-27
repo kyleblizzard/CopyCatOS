@@ -773,6 +773,310 @@ static bool save_multiplier_overrides(void)
 }
 
 
+// ── display-positions.conf: per-EDID virtual-screen position ──────────
+//
+// Persists each EDID's (x, y) origin in virtual-screen coordinates so a
+// dock/undock cycle restores the user's layout. Mirror mode is implicit:
+// two EDIDs at the same (x, y) describe overlapping CRTCs, the same shape
+// xrandr's --same-as / --pos produces.
+//
+// File: ~/.local/share/moonrock/display-positions.conf
+//
+//   # MoonRock per-display position overrides (EDID hash -> x,y)
+//   a1b2c3d4e5f60718=0,0
+//   deadbeefcafebabe=1920,0
+//
+// Same shape as the scale / rotation / multiplier persistence files: hex
+// EDID hash, '=', value, newline. Hand-editable, atomic rewrite via
+// .tmp + rename.
+#define MAX_POSITION_OVERRIDES 64
+
+typedef struct {
+    uint8_t edid_hash[8];
+    int     x, y;
+} PositionOverride;
+
+static PositionOverride position_overrides[MAX_POSITION_OVERRIDES];
+static int  position_override_count  = 0;
+static bool position_overrides_loaded = false;
+
+static bool position_override_path(char *out, size_t out_len)
+{
+    const char *xdg = getenv("XDG_DATA_HOME");
+    if (xdg && *xdg) {
+        int n = snprintf(out, out_len,
+                         "%s/moonrock/display-positions.conf", xdg);
+        return n > 0 && (size_t)n < out_len;
+    }
+    const char *home = getenv("HOME");
+    if (!home || !*home) {
+        struct passwd *pw = getpwuid(getuid());
+        if (!pw || !pw->pw_dir) return false;
+        home = pw->pw_dir;
+    }
+    int n = snprintf(out, out_len,
+                     "%s/.local/share/moonrock/display-positions.conf", home);
+    return n > 0 && (size_t)n < out_len;
+}
+
+// One-shot loader, same model as the scale/rotation/multiplier loaders:
+// in-memory state is the source of truth after startup so a hotplug
+// re-enumeration never re-reads from disk and clobbers a pending change.
+static void load_position_overrides_once(void)
+{
+    if (position_overrides_loaded) return;
+    position_overrides_loaded = true;
+    position_override_count = 0;
+
+    char path[512];
+    if (!position_override_path(path, sizeof(path))) return;
+
+    FILE *fp = fopen(path, "r");
+    if (!fp) return;
+
+    char line[128];
+    while (fgets(line, sizeof(line), fp)
+        && position_override_count < MAX_POSITION_OVERRIDES) {
+        char *p = line;
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p == '#' || *p == '\n' || *p == '\0') continue;
+
+        // Format: 16 hex chars, '=', "<x>,<y>", newline.
+        if (strlen(p) < 18 || p[16] != '=') continue;
+        uint8_t hash[8];
+        if (!hex_to_hash(p, hash)) continue;
+
+        const char *v = p + 17;
+        char *comma = strchr(v, ',');
+        if (!comma) continue;
+        *comma = '\0';
+        int x = (int)strtol(v, NULL, 10);
+        int y = (int)strtol(comma + 1, NULL, 10);
+
+        PositionOverride *o = &position_overrides[position_override_count++];
+        memcpy(o->edid_hash, hash, 8);
+        o->x = x;
+        o->y = y;
+    }
+    fclose(fp);
+    fprintf(stderr,
+            "[display] Loaded %d position override(s) from %s\n",
+            position_override_count, path);
+}
+
+// Look up a persisted (x, y) for the given EDID. Returns false when no
+// override exists; *ox / *oy are then untouched.
+static bool find_override_position(const uint8_t edid_hash[8],
+                                   int *ox, int *oy)
+{
+    for (int i = 0; i < position_override_count; i++) {
+        if (memcmp(position_overrides[i].edid_hash, edid_hash, 8) == 0) {
+            if (ox) *ox = position_overrides[i].x;
+            if (oy) *oy = position_overrides[i].y;
+            return true;
+        }
+    }
+    return false;
+}
+
+// Atomic rewrite. Mirrors save_scale_overrides() error handling.
+static bool save_position_overrides(void)
+{
+    char path[512];
+    if (!position_override_path(path, sizeof(path))) return false;
+    ensure_parent_dir(path);
+
+    char tmp[576];
+    int n = snprintf(tmp, sizeof(tmp), "%s.tmp", path);
+    if (n <= 0 || (size_t)n >= sizeof(tmp)) return false;
+
+    FILE *fp = fopen(tmp, "w");
+    if (!fp) {
+        fprintf(stderr,
+                "[display] save position overrides: fopen(%s): %s\n",
+                tmp, strerror(errno));
+        return false;
+    }
+    fprintf(fp,
+            "# MoonRock per-display position overrides (EDID hash -> x,y)\n"
+            "# Written by MoonRock. Hand-edit at your own risk.\n");
+    for (int i = 0; i < position_override_count; i++) {
+        char hex[17];
+        hash_to_hex(position_overrides[i].edid_hash, hex);
+        fprintf(fp, "%s=%d,%d\n", hex,
+                position_overrides[i].x, position_overrides[i].y);
+    }
+    if (fflush(fp) != 0 || fclose(fp) != 0) {
+        fprintf(stderr,
+                "[display] save position overrides: write failed\n");
+        unlink(tmp);
+        return false;
+    }
+    if (rename(tmp, path) != 0) {
+        fprintf(stderr,
+                "[display] save position overrides: rename(%s,%s): %s\n",
+                tmp, path, strerror(errno));
+        unlink(tmp);
+        return false;
+    }
+    return true;
+}
+
+// Upsert the current (x, y) of every connected output into the in-memory
+// override table. EDIDs absent this enumeration pass are left alone — the
+// undocked monitor's persisted position survives until the user explicitly
+// changes it on a future dock-in.
+static void upsert_current_positions(void)
+{
+    for (int i = 0; i < output_count; i++) {
+        bool has_edid = false;
+        for (int j = 0; j < 8; j++) {
+            if (outputs[i].edid_hash[j] != 0) { has_edid = true; break; }
+        }
+        if (!has_edid) continue;
+
+        bool found = false;
+        for (int j = 0; j < position_override_count; j++) {
+            if (memcmp(position_overrides[j].edid_hash,
+                       outputs[i].edid_hash, 8) == 0) {
+                position_overrides[j].x = outputs[i].x;
+                position_overrides[j].y = outputs[i].y;
+                found = true;
+                break;
+            }
+        }
+        if (found) continue;
+
+        if (position_override_count >= MAX_POSITION_OVERRIDES) {
+            fprintf(stderr,
+                    "[display] Position override table full (%d) — "
+                    "dropping oldest\n",
+                    MAX_POSITION_OVERRIDES);
+            for (int j = 0; j < position_override_count - 1; j++) {
+                position_overrides[j] = position_overrides[j + 1];
+            }
+            position_override_count--;
+        }
+        PositionOverride *o = &position_overrides[position_override_count++];
+        memcpy(o->edid_hash, outputs[i].edid_hash, 8);
+        o->x = outputs[i].x;
+        o->y = outputs[i].y;
+    }
+}
+
+// Move an output's CRTC to (x, y). Preserves the current mode, rotation,
+// and bound output list — only the origin changes. Grows the virtual
+// screen first if needed (XRRSetCrtcConfig silently paints black past the
+// current screen edge). Returns true on success.
+//
+// Same shape as display_set_rotation_for_output: cheap when the requested
+// origin already matches, so the apply-persisted block in display_init
+// can call this idempotently without feedback-looping through the
+// synthesized RandR event.
+static bool display_set_position_for_output(MROutput *output, int x, int y)
+{
+    if (!output || !display_dpy || display_root == None) return false;
+    if (output->crtc_id == 0) return false;
+    if (output->x == x && output->y == y) return true;
+
+    XRRScreenResources *res =
+        XRRGetScreenResourcesCurrent(display_dpy, display_root);
+    if (!res) {
+        fprintf(stderr,
+                "[display] position %s: screen resources unavailable\n",
+                output->name);
+        return false;
+    }
+
+    XRRCrtcInfo *ci = XRRGetCrtcInfo(display_dpy, res,
+                                     (RRCrtc)output->crtc_id);
+    if (!ci) {
+        fprintf(stderr,
+                "[display] position %s: no CRTC info\n", output->name);
+        XRRFreeScreenResources(res);
+        return false;
+    }
+
+    // Compute the virtual-screen extent we'll need after the move. Walk
+    // every active CRTC, substituting the new (x, y) for the one we're
+    // about to reconfigure. Mirrors the calculation in
+    // display_set_rotation_for_output() so the two paths grow the screen
+    // identically.
+    int want_w = 0, want_h = 0;
+    for (int i = 0; i < res->ncrtc; i++) {
+        XRRCrtcInfo *other = XRRGetCrtcInfo(display_dpy, res,
+                                            res->crtcs[i]);
+        if (!other) continue;
+        if (other->noutput > 0 && other->mode != None) {
+            int rx = (int)other->x;
+            int ry = (int)other->y;
+            int rw = (int)other->width;
+            int rh = (int)other->height;
+            if (res->crtcs[i] == (RRCrtc)output->crtc_id) {
+                rx = x;
+                ry = y;
+            }
+            int r = rx + rw;
+            int b = ry + rh;
+            if (r > want_w) want_w = r;
+            if (b > want_h) want_h = b;
+        }
+        XRRFreeCrtcInfo(other);
+    }
+
+    int screen_w    = DisplayWidth(display_dpy, display_screen);
+    int screen_h    = DisplayHeight(display_dpy, display_screen);
+    int screen_mm_w = DisplayWidthMM(display_dpy, display_screen);
+    int screen_mm_h = DisplayHeightMM(display_dpy, display_screen);
+    if (want_w > screen_w || want_h > screen_h) {
+        int new_w = want_w > screen_w ? want_w : screen_w;
+        int new_h = want_h > screen_h ? want_h : screen_h;
+        int new_mm_w = screen_w > 0
+                         ? (int)((double)screen_mm_w * new_w / screen_w)
+                         : new_w;
+        int new_mm_h = screen_h > 0
+                         ? (int)((double)screen_mm_h * new_h / screen_h)
+                         : new_h;
+        XRRSetScreenSize(display_dpy, display_root,
+                         new_w, new_h, new_mm_w, new_mm_h);
+    }
+
+    RROutput outs_buf[MAX_OUTPUTS];
+    int nout = ci->noutput;
+    if (nout > MAX_OUTPUTS) nout = MAX_OUTPUTS;
+    for (int i = 0; i < nout; i++) outs_buf[i] = ci->outputs[i];
+
+    Status st = XRRSetCrtcConfig(display_dpy, res,
+                                 (RRCrtc)output->crtc_id,
+                                 res->configTimestamp,
+                                 x, y,
+                                 ci->mode, ci->rotation,
+                                 outs_buf, nout);
+    XRRFreeCrtcInfo(ci);
+    XRRFreeScreenResources(res);
+
+    if (st != RRSetConfigSuccess) {
+        fprintf(stderr,
+                "[display] position %s: XRRSetCrtcConfig failed (status=%d)\n",
+                output->name, (int)st);
+        return false;
+    }
+
+    // Reflect the move locally — every enumerated entry sharing this EDID
+    // (same panel re-enumerated under a different port, or a clone CRTC)
+    // tracks the new origin so the next publish/upsert sees consistent
+    // state without waiting for the RandR re-enumeration to land.
+    for (int i = 0; i < output_count; i++) {
+        if (memcmp(outputs[i].edid_hash, output->edid_hash, 8) == 0) {
+            outputs[i].x = x;
+            outputs[i].y = y;
+        }
+    }
+    fprintf(stderr, "[display] Position: %s → +%d+%d\n", output->name, x, y);
+    return true;
+}
+
+
 // ── display-config.conf: primary EDID persistence ─────────────────────
 //
 // Resolve the non-scale config file path. Honors XDG_DATA_HOME, falling
@@ -1210,6 +1514,24 @@ bool display_init(Display *dpy, int screen)
     // is backing × multiplier, both resolved during the output walk
     // further down.
     load_multiplier_overrides_once();
+
+    // Load persisted per-display position overrides. Used by the post-
+    // enumeration restore pass below to put a freshly-docked monitor back
+    // at its last-seen origin (mirror layout falls out naturally — two
+    // EDIDs at identical (x, y) describe overlapping CRTCs).
+    load_position_overrides_once();
+
+    // Snapshot the EDIDs we knew about going into this enumeration. The
+    // restore pass at the tail uses this to gate "newly connected this
+    // pass" — without it, a manual xrandr move or any layout-change RR
+    // event would re-enter display_init and clobber the user's change
+    // by force-restoring to the persisted origin.
+    uint8_t prior_edids[MAX_OUTPUTS][8];
+    int prior_edid_count = output_count;
+    if (prior_edid_count > MAX_OUTPUTS) prior_edid_count = MAX_OUTPUTS;
+    for (int i = 0; i < prior_edid_count; i++) {
+        memcpy(prior_edids[i], outputs[i].edid_hash, 8);
+    }
 
     // Startup pre-pass A — undock: tear down any CRTC that is still
     // driving a now-disconnected output. RandR does NOT auto-disable a
@@ -1748,6 +2070,52 @@ bool display_init(Display *dpy, int screen)
                 outputs[i].name, persisted);
         display_set_rotation_for_output(&outputs[i], persisted);
     }
+
+    // Apply persisted position overrides — restore each output's last-seen
+    // origin so dock/undock cycles keep the user's layout (mirror included,
+    // since two EDIDs at the same (x,y) overlap by definition). Gated to
+    // EDIDs that were NOT in the prior enumeration: a freshly plugged-in
+    // monitor lands at its persisted origin, but an output that was already
+    // there (e.g. the user just moved it via xrandr) is left alone so we
+    // don't fight the user's manual changes.
+    for (int i = 0; i < output_count; i++) {
+        bool has_edid = false;
+        for (int j = 0; j < 8; j++) {
+            if (outputs[i].edid_hash[j] != 0) { has_edid = true; break; }
+        }
+        if (!has_edid) continue;
+
+        bool was_present = false;
+        for (int p = 0; p < prior_edid_count; p++) {
+            bool prior_has_edid = false;
+            for (int j = 0; j < 8; j++) {
+                if (prior_edids[p][j] != 0) { prior_has_edid = true; break; }
+            }
+            if (!prior_has_edid) continue;
+            if (memcmp(prior_edids[p], outputs[i].edid_hash, 8) == 0) {
+                was_present = true;
+                break;
+            }
+        }
+        if (was_present) continue;
+
+        int px = 0, py = 0;
+        if (!find_override_position(outputs[i].edid_hash, &px, &py)) continue;
+        if (outputs[i].x == px && outputs[i].y == py) continue;
+
+        fprintf(stderr,
+                "[display] Restoring persisted position: %s → +%d+%d\n",
+                outputs[i].name, px, py);
+        display_set_position_for_output(&outputs[i], px, py);
+    }
+
+    // Capture the current layout for every connected EDID. This is the
+    // user-visible save trigger: whatever positions the layout settled on
+    // after this enumeration become the persisted layout for the next
+    // dock-in. Absent EDIDs keep their stored records — undocking a
+    // monitor doesn't erase its remembered position.
+    upsert_current_positions();
+    save_position_overrides();
 
     // Initialize the frame metrics with sensible defaults.
     MROutput *primary = display_get_primary();
