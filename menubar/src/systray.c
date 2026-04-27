@@ -55,14 +55,12 @@ static cairo_surface_t *bluetooth_icons[3];  // 0=off, 1=idle, 2=connected
 static cairo_surface_t *battery_icons[3];    // 0=charging, 1=charged, 2=empty
 static cairo_surface_t *spotlight_icon;
 
-// Last painted Spotlight glyph bounding box, in menubar-window coords.
-// Updated every systray_paint; consumed by systray_hit_spotlight for
-// ButtonPress dispatch. Padded slightly so the hit-target matches the
-// visible cursor-pointer feel rather than the 14-point icon's tight box.
-static int spotlight_hit_x0 = -1;
-static int spotlight_hit_y0 = -1;
-static int spotlight_hit_x1 = -1;
-static int spotlight_hit_y1 = -1;
+// Spotlight bbox state moved to MenuBarPane (per-pane). The static
+// globals here would track only the last-painted pane, so a click on
+// a secondary bar would either miss (its bbox was overwritten) or
+// fire from the wrong pane's coordinates. systray_paint now writes
+// pane->spotlight_hit_*; systray_hit_spotlight reads from the pane
+// the click landed on.
 
 // ============================================================================
 //  Cached system readings
@@ -289,15 +287,17 @@ int systray_paint(MenuBar *mb, MenuBarPane *pane, cairo_t *cr)
         spot_w = S(14);
     }
 
-    // Record a generous hit-rect: the full menubar height vertically
-    // (so flicks near the top/bottom edge still land), and a small
-    // horizontal pad so the 14-point glyph feels like a comfortable
-    // button target under fingertip / cursor alike.
+    // Record a generous hit-rect on this pane: the full menubar height
+    // vertically (so flicks near the top/bottom edge still land), and a
+    // small horizontal pad so the 14-point glyph feels like a comfortable
+    // button target under fingertip / cursor alike. Per-pane, so a click
+    // on a secondary bar tests against that pane's own geometry — not a
+    // last-painted-pane snapshot in module-static state.
     int pad = S(4);
-    spotlight_hit_x0 = spot_x - pad;
-    spotlight_hit_x1 = spot_x + spot_w + pad;
-    spotlight_hit_y0 = 0;
-    spotlight_hit_y1 = MENUBAR_HEIGHT;
+    pane->spotlight_hit_x0 = spot_x - pad;
+    pane->spotlight_hit_x1 = spot_x + spot_w + pad;
+    pane->spotlight_hit_y0 = 0;
+    pane->spotlight_hit_y1 = MENUBAR_HEIGHT;
 
     cursor -= S(12); // Gap
 
@@ -440,11 +440,14 @@ void systray_update(MenuBar *mb)
     }
 }
 
-bool systray_hit_spotlight(int mx, int my)
+bool systray_hit_spotlight(const MenuBarPane *pane, int mx, int my)
 {
-    if (spotlight_hit_x0 < 0) return false;  // never painted
-    return mx >= spotlight_hit_x0 && mx < spotlight_hit_x1 &&
-           my >= spotlight_hit_y0 && my < spotlight_hit_y1;
+    // Degenerate rect (memset-zero init or no paint yet) reads as
+    // false naturally: mx >= 0 && mx < 0 is false for any mx.
+    if (!pane) return false;
+    if (pane->spotlight_hit_x0 >= pane->spotlight_hit_x1) return false;
+    return mx >= pane->spotlight_hit_x0 && mx < pane->spotlight_hit_x1 &&
+           my >= pane->spotlight_hit_y0 && my < pane->spotlight_hit_y1;
 }
 
 void systray_cleanup(void)

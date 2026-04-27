@@ -35,9 +35,13 @@ int systray_paint(MenuBar *mb, MenuBarPane *pane, cairo_t *cr);
 // event loop so the display stays current without constant polling.
 void systray_update(MenuBar *mb);
 
-// Hit-test: true if (mx, my) falls inside the Spotlight glyph's last
-// painted bbox. Returns false until systray_paint has run at least once.
-bool systray_hit_spotlight(int mx, int my);
+// Hit-test: true if (mx, my) — pane-local coordinates — falls inside
+// this pane's Spotlight glyph hit-rect. Each pane owns its own rect
+// (written by systray_paint into MenuBarPane), so a click on a
+// secondary bar's Spotlight always tests against that pane's geometry,
+// not whichever pane painted last. Returns false on a pane that hasn't
+// been painted yet (degenerate rect from memset-zero init).
+bool systray_hit_spotlight(const MenuBarPane *pane, int mx, int my);
 
 // Clean up any resources.
 void systray_cleanup(void);

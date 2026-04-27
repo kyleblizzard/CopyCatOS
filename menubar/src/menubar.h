@@ -170,6 +170,15 @@ typedef struct {
     // existing pane teardown — appmenu_pane_destroyed frees it. NULL
     // when the pane has no resolved app name yet.
     MenuNode       *app_menu_root;
+
+    // Last painted Spotlight glyph hit-rect in this pane's window-local
+    // coordinates. Written by systray_paint, read by systray_hit_spotlight.
+    // Per-pane so a click on a secondary bar's Spotlight fires the
+    // overlay against this pane's geometry — not the rect cached from
+    // whichever pane painted last. memset-zero init reads as a degenerate
+    // rect (x0==x1==0) so an early click before first paint misses safely.
+    int spotlight_hit_x0, spotlight_hit_y0;
+    int spotlight_hit_x1, spotlight_hit_y1;
 } MenuBarPane;
 
 // Core state for the entire menu bar.

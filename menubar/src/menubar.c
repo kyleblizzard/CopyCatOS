@@ -1412,7 +1412,7 @@ void menubar_run(MenuBar *mb)
                 // Spotlight lives in the systray on every pane and is
                 // independent of focused_pane_idx — a click there always
                 // fires the overlay, regardless of which pane hosts it.
-                if (systray_hit_spotlight(mx, my)) {
+                if (systray_hit_spotlight(pane, mx, my)) {
                     fire_spotlight(mb);
                     leave_pane_scale(_saved_scale);
                     break;
