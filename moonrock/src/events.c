@@ -33,6 +33,7 @@ static void on_motion_notify(CCWM *wm, XEvent *e);
 static void on_property_notify(CCWM *wm, XEvent *e);
 static void on_client_message(CCWM *wm, XEvent *e);
 static void on_focus_in(CCWM *wm, XEvent *e);
+static void on_focus_out(CCWM *wm, XEvent *e);
 static void on_key_press(CCWM *wm, XEvent *e);
 static void on_key_release(CCWM *wm, XEvent *e);
 static void on_expose(CCWM *wm, XEvent *e);
@@ -57,6 +58,7 @@ static void init_handlers(void)
     handlers[PropertyNotify]   = on_property_notify;
     handlers[ClientMessage]    = on_client_message;
     handlers[FocusIn]          = on_focus_in;
+    handlers[FocusOut]         = on_focus_out;
     handlers[KeyPress]         = on_key_press;
     handlers[KeyRelease]       = on_key_release;
     handlers[Expose]           = on_expose;
@@ -827,11 +829,26 @@ static void on_client_message(CCWM *wm, XEvent *e)
 static void on_focus_in(CCWM *wm, XEvent *e)
 {
     Window w = e->xfocus.window;
+    // MoonBase proxy windows are not in the X-client tree — try the
+    // host first so its focus state stays in sync with X.
+    if (mb_host_handle_focus_change(w, FocusIn, e->xfocus.mode)) {
+        return;
+    }
     Client *c = wm_find_client(wm, w);
     if (c && c != wm->focused) {
         wm_focus_client(wm, c);
         frame_redraw_decor(wm, c);
     }
+}
+
+static void on_focus_out(CCWM *wm, XEvent *e)
+{
+    (void)wm;
+    // Only the MoonBase host cares about FocusOut today — X clients
+    // get re-focused via wm_focus_client whenever a new client takes
+    // over, so there's nothing to do for them here.
+    Window w = e->xfocus.window;
+    mb_host_handle_focus_change(w, FocusOut, e->xfocus.mode);
 }
 
 // Translate X11 event-state bits to MoonBase modifier flags. The MB

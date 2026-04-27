@@ -91,6 +91,16 @@ bool mb_host_handle_motion(Window win, int x, int y,
 // entirely. Returns true if `win` is a live MoonBase proxy.
 bool mb_host_handle_leave(Window win);
 
+// FocusIn / FocusOut routed to the MoonBase host. `win` is the X
+// FocusChangeEvent.window; `type` is FocusIn or FocusOut; `mode` is
+// the X focus mode (NotifyNormal, NotifyGrab, etc.). The host filters
+// NotifyNormal — pointer-grab focus glitches and hierarchy reshuffles
+// are ignored. FocusIn syncs g_focused_window_id to the surface;
+// FocusOut clears it (only if that surface still owns focus). Returns
+// true if `win` is a live MoonBase proxy (the caller must not dispatch
+// the event elsewhere in that case).
+bool mb_host_handle_focus_change(Window win, int type, int mode);
+
 // Snapshot of the per-surface state that XDND needs in order to convert
 // root-relative pointer coordinates into window-local points. All sizes
 // are in physical pixels; `scale` is the backing scale. `content_*`

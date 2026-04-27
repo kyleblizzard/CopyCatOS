@@ -251,9 +251,14 @@ static Window create_input_proxy(int screen_x, int screen_y,
     // Motion + Leave are needed for traffic-light hover glyphs; the
     // proxy is the only window receiving pointer events in the
     // MoonBase-chrome region. Button Press/Release route to
-    // mb_host_handle_button_press / _release.
+    // mb_host_handle_button_press / _release. Key + FocusChange let X
+    // deliver keystrokes to the focused MoonBase surface — without these
+    // KeyPress on root never gets re-routed here, and FocusOut never
+    // syncs g_focused_window_id back to 0 when X moves focus away.
     attr.event_mask        = ButtonPressMask | ButtonReleaseMask
-                           | PointerMotionMask | LeaveWindowMask;
+                           | PointerMotionMask | LeaveWindowMask
+                           | KeyPressMask    | KeyReleaseMask
+                           | FocusChangeMask;
     // override_redirect keeps the WM's MapRequest handler from framing
     // this as a client window. It is a helper, not a client.
     attr.override_redirect = True;
@@ -920,6 +925,14 @@ bool mb_host_handle_button_press(Window win, int x, int y,
     // to that surface — matches X click-to-focus behavior on reparented
     // clients, which also run through wm_focus_client in on_button_press.
     focus_set(surf->window_id);
+    // Hand X focus to the proxy so KeyPress events route here next.
+    // Done at the press site (not in focus_set) because focus_set is
+    // also called by IPC and lifecycle paths where we don't want to
+    // grab the X focus.
+    if (g_dpy && surf->input_proxy) {
+        XSetInputFocus(g_dpy, surf->input_proxy, RevertToParent,
+                       CurrentTime);
+    }
 
     // Split title-strip vs content rect by y pixel against the chrome's
     // titlebar height (TITLEBAR_HEIGHT is in points, scale-multiplied
@@ -1075,6 +1088,29 @@ bool mb_host_handle_leave(Window win) {
     if (surf->buttons_hover) {
         surf->buttons_hover = false;
         surf->chrome_stale  = true;
+    }
+    return true;
+}
+
+bool mb_host_handle_focus_change(Window win, int type, int mode) {
+    mb_surface_t *surf = surface_find_by_proxy(win);
+    if (!surf) return false;
+
+    // Only honor focus changes that come from real user / WM intent.
+    // NotifyGrab / NotifyUngrab fire on every XGrabPointer pair (the
+    // press handler grabs to track drag-off), and NotifyVirtual /
+    // NotifyInferior fire on hierarchy reshuffles — none of those mean
+    // the user actually moved focus. Filtering to NotifyNormal here
+    // prevents traffic-light press/release cycles from flickering
+    // g_focused_window_id back to 0 mid-click.
+    if (mode != NotifyNormal) return true;
+
+    if (type == FocusIn) {
+        focus_set(surf->window_id);
+    } else if (type == FocusOut) {
+        if (g_focused_window_id == surf->window_id) {
+            focus_set(0);
+        }
     }
     return true;
 }
