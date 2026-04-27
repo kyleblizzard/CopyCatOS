@@ -78,6 +78,15 @@ void appmenu_pane_destroyed(MenuBar *mb, MenuBarPane *pane);
 void appmenu_show_dropdown(MenuBar *mb, int menu_index,
                            int root_x, int root_y);
 
+// Show the synthesized "Application menu" — the bold-app-name dropdown
+// that holds About / Settings / Services / Hide / Hide Others / Show All
+// / Quit. Anchored under the bold app-name region of mb->active_pane
+// (caller sets active_pane right before this call, mirroring open_menu_at
+// for the regular per-app titles). Rebuilds the pane's app_menu_root if
+// it's stale relative to the current active_app, so the labels always
+// embed the right name.
+void appmenu_show_app_menu(MenuBar *mb, int root_x, int root_y);
+
 // Dismiss every open dropdown in the submenu stack.
 void appmenu_dismiss(MenuBar *mb);
 

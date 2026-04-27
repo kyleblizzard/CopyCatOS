@@ -25,6 +25,7 @@
 #include <stdbool.h>
 
 #include "dbusmenu_client.h"
+#include "menu_model.h"      // MenuNode (forward usage on MenuBarPane)
 #include "moonrock_scale.h"  // MOONROCK_SCALE_MAX_OUTPUTS
 
 // Default height matching macOS Snow Leopard. Configurable 22-88 via
@@ -159,6 +160,16 @@ typedef struct {
     // at the active pane's correct scale without churning the macro
     // signatures.
     double          scale;
+
+    // Synthesized "Application menu" — the bold-app-name dropdown that
+    // sits between the Apple logo and the per-app titles (About [App],
+    // Settings…, Services▶, Hide [App], Hide Others, Show All, Quit
+    // [App]). Built per-pane because the labels embed the pane's
+    // active_app, and rebuilt whenever active_app changes. Owned here
+    // (not in appmenu.c) so the cleanup path is symmetric with the
+    // existing pane teardown — appmenu_pane_destroyed frees it. NULL
+    // when the pane has no resolved app name yet.
+    MenuNode       *app_menu_root;
 } MenuBarPane;
 
 // Core state for the entire menu bar.

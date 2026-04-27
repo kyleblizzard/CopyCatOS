@@ -365,6 +365,75 @@ static const MenuNode *builtin_root_for_class(const char *app_class)
     return builtin_default_root;
 }
 
+// ── Application menu (bold-app-name dropdown) ──────────────────────
+// Synthesized per-pane: About [App], Settings…, Services▶, Hide [App],
+// Hide Others, Show All, Quit [App]. Rebuilt whenever the pane's
+// active_app changes so the labels stay in sync. The root itself is a
+// labelless parent (same shape as builtin_*_root) — its children are
+// the dropdown's rows.
+
+static MenuNode *build_app_menu_root(const char *app_name)
+{
+    if (!app_name || !*app_name) app_name = "Application";
+
+    MenuNode *root = menu_node_new_item(NULL);
+
+    char buf[160];
+
+    // About [App]
+    snprintf(buf, sizeof(buf), "About %s", app_name);
+    menu_node_add_child(root, mk_item(buf, NULL));
+
+    menu_node_add_child(root, menu_node_new_separator());
+
+    // Settings… (Snow Leopard's name was "Preferences…"; we follow the
+    // modern Apple wording per CLAUDE.md UI direction).
+    menu_node_add_child(root, mk_item("Settings\xe2\x80\xa6", GLYPH_CMD ","));
+
+    menu_node_add_child(root, menu_node_new_separator());
+
+    // Services ▸ — empty submenu for now; the entry exists for visual
+    // fidelity. Wiring the Snow Leopard Services tree comes with the
+    // moonbase_services.h companion header.
+    {
+        MenuNode *services = menu_node_new_item("Services");
+        services->is_submenu = true;
+        menu_node_add_child(services, mk_item("No Services Available", NULL));
+        // Disable the placeholder — visually grey, not clickable.
+        services->children[0]->enabled = false;
+        menu_node_add_child(root, services);
+    }
+
+    menu_node_add_child(root, menu_node_new_separator());
+
+    snprintf(buf, sizeof(buf), "Hide %s", app_name);
+    menu_node_add_child(root, mk_item(buf, GLYPH_CMD "H"));
+    menu_node_add_child(root, mk_item("Hide Others", GLYPH_OPT GLYPH_CMD "H"));
+    menu_node_add_child(root, mk_item("Show All", NULL));
+
+    menu_node_add_child(root, menu_node_new_separator());
+
+    snprintf(buf, sizeof(buf), "Quit %s", app_name);
+    menu_node_add_child(root, mk_item(buf, GLYPH_CMD "Q"));
+
+    return root;
+}
+
+static void rebuild_app_menu_for_pane(MenuBarPane *pane)
+{
+    if (!pane) return;
+    if (pane->app_menu_root) {
+        menu_node_free(pane->app_menu_root);
+        pane->app_menu_root = NULL;
+    }
+    pane->app_menu_root = build_app_menu_root(pane->active_app);
+}
+
+// appmenu_show_app_menu is defined further down — it touches the
+// dropdown stack (push_level / dismiss_all_dropdowns) which the
+// dropdown-rendering section sets up; defining it here would force a
+// pile of forward declarations.
+
 // ── Legacy lifecycle ────────────────────────────────────────────────
 // When a pane's frontmost window is registered on the AppMenu.Registrar
 // bus, spin up a DbusMenuClient pointed at that endpoint. Its imported
@@ -983,6 +1052,168 @@ static Window get_active_window(MenuBar *mb)
     return w;
 }
 
+// Send a "minimize" (ICCCM IconicState) ClientMessage to a window.
+static void send_minimize(MenuBar *mb, Window target)
+{
+    if (target == None) return;
+    XEvent ev = {0};
+    ev.type                 = ClientMessage;
+    ev.xclient.window       = target;
+    ev.xclient.message_type = mb->atom_wm_change_state;
+    ev.xclient.format       = 32;
+    ev.xclient.data.l[0]    = 3; // IconicState
+    XSendEvent(mb->dpy, mb->root, False,
+               SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+}
+
+// Send a _NET_CLOSE_WINDOW ClientMessage to a window.
+static void send_close(MenuBar *mb, Window target)
+{
+    if (target == None) return;
+    XEvent ev = {0};
+    ev.type                 = ClientMessage;
+    ev.xclient.window       = target;
+    ev.xclient.message_type = mb->atom_net_close_window;
+    ev.xclient.format       = 32;
+    ev.xclient.data.l[0]    = 0;
+    ev.xclient.data.l[1]    = 0;
+    XSendEvent(mb->dpy, mb->root, False,
+               SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+}
+
+// Send a _NET_ACTIVE_WINDOW raise to a window (used as Show-All restore).
+static void send_activate(MenuBar *mb, Window target)
+{
+    if (target == None) return;
+    XEvent ev = {0};
+    ev.type                 = ClientMessage;
+    ev.xclient.window       = target;
+    ev.xclient.message_type = mb->atom_net_active_window;
+    ev.xclient.format       = 32;
+    ev.xclient.data.l[0]    = 2;
+    XSendEvent(mb->dpy, mb->root, False,
+               SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+}
+
+// Read _NET_CLIENT_LIST off the root. Caller must XFree() *out_list when
+// returned count > 0. Returns 0 on no clients (or on failure).
+static int read_net_client_list(MenuBar *mb, Window **out_list)
+{
+    *out_list = NULL;
+    Atom atom_client_list = XInternAtom(mb->dpy, "_NET_CLIENT_LIST", False);
+
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *data = NULL;
+
+    int status = XGetWindowProperty(
+        mb->dpy, mb->root, atom_client_list,
+        0, 1024, False, XA_WINDOW,
+        &actual_type, &actual_format,
+        &nitems, &bytes_after, &data);
+
+    if (status != Success || nitems == 0 || !data) {
+        if (data) XFree(data);
+        return 0;
+    }
+    *out_list = (Window *)data;
+    return (int)nitems;
+}
+
+// True iff `w`'s WM_CLASS instance/class matches `class_lower`
+// (case-insensitive on either field). Used by Hide-Others / Show-All so
+// we operate on the right grouping.
+static bool window_class_matches(MenuBar *mb, Window w, const char *class_lower)
+{
+    if (!class_lower || !*class_lower) return false;
+
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *data = NULL;
+
+    int status = XGetWindowProperty(
+        mb->dpy, w, mb->atom_wm_class,
+        0, 256, False, XA_STRING,
+        &actual_type, &actual_format,
+        &nitems, &bytes_after, &data);
+
+    if (status != Success || nitems == 0 || !data) {
+        if (data) XFree(data);
+        return false;
+    }
+
+    const char *instance = (const char *)data;
+    const char *classname = instance;
+    size_t len = strlen(instance);
+    if (len + 1 < nitems) classname = instance + len + 1;
+
+    bool match = (strcasecmp(instance,  class_lower) == 0) ||
+                 (strcasecmp(classname, class_lower) == 0);
+    XFree(data);
+    return match;
+}
+
+// Active-pane "Hide all my windows" — minimize every top-level X client
+// whose WM_CLASS matches the pane's active class. The pane's active_class
+// is already lower-cased by update_pane_from_wid.
+static void hide_all_for_active_pane(MenuBar *mb)
+{
+    if (mb->active_pane < 0 || mb->active_pane >= mb->pane_count) return;
+    const char *cls = mb->panes[mb->active_pane].active_class;
+    if (!cls || !*cls) return;
+
+    Window *list = NULL;
+    int n = read_net_client_list(mb, &list);
+    for (int i = 0; i < n; i++) {
+        if (window_class_matches(mb, list[i], cls)) {
+            send_minimize(mb, list[i]);
+        }
+    }
+    if (list) XFree(list);
+    XFlush(mb->dpy);
+}
+
+// "Hide Others" — minimize every top-level whose WM_CLASS doesn't match
+// the focused app. The dock/menubar/desktop helpers stay up: they're
+// dock-type windows the WM keeps off this list, but we still skip the
+// active window and any window without WM_CLASS as a belt-and-braces.
+static void hide_others_for_active_pane(MenuBar *mb)
+{
+    if (mb->active_pane < 0 || mb->active_pane >= mb->pane_count) return;
+    const char *cls = mb->panes[mb->active_pane].active_class;
+    if (!cls || !*cls) return;
+
+    Window active = get_active_window(mb);
+
+    Window *list = NULL;
+    int n = read_net_client_list(mb, &list);
+    for (int i = 0; i < n; i++) {
+        if (list[i] == active) continue;
+        if (window_class_matches(mb, list[i], cls)) continue;
+        send_minimize(mb, list[i]);
+    }
+    if (list) XFree(list);
+    XFlush(mb->dpy);
+}
+
+// "Show All" — re-activate every top-level on the client list. Sending
+// _NET_ACTIVE_WINDOW to each one nudges the WM to take them out of the
+// IconicState the previous Hide / Hide Others set. The last window in
+// the list ends up frontmost — fine for v1, matches the Snow Leopard
+// "everything is visible again" contract.
+static void show_all(MenuBar *mb)
+{
+    Window *list = NULL;
+    int n = read_net_client_list(mb, &list);
+    for (int i = 0; i < n; i++) {
+        send_activate(mb, list[i]);
+    }
+    if (list) XFree(list);
+    XFlush(mb->dpy);
+}
+
 // Built-in items dispatch by label: the handful of items whose Snow
 // Leopard semantics map onto a standard ICCCM/EWMH ClientMessage to
 // the WM. Everything else is still informational until native apps
@@ -994,47 +1225,48 @@ static void dispatch_native_by_label(MenuBar *mb, const char *label)
     Window active = get_active_window(mb);
 
     if (strcmp(label, "Minimize") == 0) {
-        if (active == None) return;
-        XEvent ev = {0};
-        ev.type                 = ClientMessage;
-        ev.xclient.window       = active;
-        ev.xclient.message_type = mb->atom_wm_change_state;
-        ev.xclient.format       = 32;
-        ev.xclient.data.l[0]    = 3; // IconicState
-        XSendEvent(mb->dpy, mb->root, False,
-                   SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+        send_minimize(mb, active);
         XFlush(mb->dpy);
 
     } else if (strcmp(label, "Close Window") == 0 ||
                strcmp(label, "Close Tab") == 0) {
-        if (active == None) return;
-        XEvent ev = {0};
-        ev.type                 = ClientMessage;
-        ev.xclient.window       = active;
-        ev.xclient.message_type = mb->atom_net_close_window;
-        ev.xclient.format       = 32;
-        ev.xclient.data.l[0]    = 0;
-        ev.xclient.data.l[1]    = 0;
-        XSendEvent(mb->dpy, mb->root, False,
-                   SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+        send_close(mb, active);
         XFlush(mb->dpy);
 
     } else if (strcmp(label, "Zoom") == 0) {
-        if (active == None) return;
-        XEvent ev = {0};
-        ev.type                 = ClientMessage;
-        ev.xclient.window       = active;
-        ev.xclient.message_type = mb->atom_net_active_window;
-        ev.xclient.format       = 32;
-        ev.xclient.data.l[0]    = 2;
-        XSendEvent(mb->dpy, mb->root, False,
-                   SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+        send_activate(mb, active);
         XFlush(mb->dpy);
 
     } else if (strcmp(label, "Bring All to Front") == 0) {
         if (active == None) return;
         XRaiseWindow(mb->dpy, active);
         XFlush(mb->dpy);
+
+    } else if (strcmp(label, "Hide Others") == 0) {
+        hide_others_for_active_pane(mb);
+
+    } else if (strcmp(label, "Show All") == 0) {
+        show_all(mb);
+
+    } else if (strncmp(label, "Hide ", 5) == 0) {
+        // "Hide [App]" — minimize every window of the active app. The
+        // exact-match "Hide Others" is handled above and never reaches
+        // this branch.
+        hide_all_for_active_pane(mb);
+
+    } else if (strncmp(label, "Quit ", 5) == 0) {
+        // "Quit [App]" — close the active window. Multi-window quit
+        // (close every window with the matching WM_CLASS) is a follow-up;
+        // for v1 the active window is enough to validate the path.
+        send_close(mb, active);
+        XFlush(mb->dpy);
+
+    } else if (strncmp(label, "About ", 6) == 0 ||
+               strcmp(label, "Settings\xe2\x80\xa6") == 0 ||  // "Settings…"
+               strcmp(label, "Services") == 0) {
+        // No-op stubs until the MoonBase IPC + SysPrefs hooks land.
+        // Logging here so a click is visibly traced during dev.
+        fprintf(stderr, "[menubar] app-menu stub: %s\n", label);
     }
     // Other labels (File items, Go, Help, etc.) are informational —
     // native menus are a stub until the MoonBase IPC layer is wired.
@@ -1059,6 +1291,15 @@ static void dispatch_menu_item(MenuBar *mb, const MenuNode *node)
 
 // ── Active window tracking ──────────────────────────────────────────
 
+// Cache the active_app on entry so we know when to rebuild the
+// synthesized Application menu — its labels embed the app name, so the
+// tree is stale the moment that string changes.
+static bool active_app_changed(MenuBarPane *pane, const char *prior_app)
+{
+    return strncmp(pane->active_app, prior_app,
+                   sizeof(pane->active_app)) != 0;
+}
+
 // Apply the Finder/dolphin fallback to a pane. Used whenever a pane has
 // no real frontmost window (None entry in _MOONROCK_FRONTMOST_PER_OUTPUT,
 // missing WM_CLASS, etc.) — the pane keeps showing the Finder menus
@@ -1079,8 +1320,14 @@ static void apply_finder_default(MenuBar *mb, MenuBarPane *pane, Window active)
 // app_names[], otherwise capitalize the class.
 static void update_pane_from_wid(MenuBar *mb, MenuBarPane *pane, Window active)
 {
+    char prior_app[128];
+    snprintf(prior_app, sizeof(prior_app), "%s", pane->active_app);
+
     if (active == None || active == 0) {
         apply_finder_default(mb, pane, None);
+        if (active_app_changed(pane, prior_app)) {
+            rebuild_app_menu_for_pane(pane);
+        }
         return;
     }
 
@@ -1099,6 +1346,9 @@ static void update_pane_from_wid(MenuBar *mb, MenuBarPane *pane, Window active)
     if (status != Success || nitems == 0 || !data) {
         if (data) XFree(data);
         apply_finder_default(mb, pane, active);
+        if (active_app_changed(pane, prior_app)) {
+            rebuild_app_menu_for_pane(pane);
+        }
         return;
     }
 
@@ -1140,6 +1390,13 @@ static void update_pane_from_wid(MenuBar *mb, MenuBarPane *pane, Window active)
     XFree(data);
 
     update_legacy_client(mb, pane, active);
+
+    // Rebuild the synthesized Application menu only when the user-visible
+    // app name actually changed. Stable focus across redraws keeps the
+    // existing tree (and its pointers, which appmenu popups may hold).
+    if (active_app_changed(pane, prior_app)) {
+        rebuild_app_menu_for_pane(pane);
+    }
 }
 
 // Read _NET_ACTIVE_WINDOW off the root. Returns None if the property is
@@ -1233,6 +1490,14 @@ void appmenu_pane_destroyed(MenuBar *mb, MenuBarPane *pane)
     pane->legacy_wid            = None;
     pane->legacy_is_loading     = false;
     pane->last_seen_legacy_root = NULL;
+
+    // Free the synthesized Application menu — same dangling-pointer
+    // hazard if a dropdown anchored to this pane is open. The dismiss
+    // above already covers that case.
+    if (pane->app_menu_root) {
+        menu_node_free(pane->app_menu_root);
+        pane->app_menu_root = NULL;
+    }
 }
 
 Window appmenu_get_dropdown_win(void)
@@ -1287,6 +1552,26 @@ void appmenu_show_dropdown(MenuBar *mb, int menu_index,
     }
 
     push_level(mb, menu, root_x, root_y);
+}
+
+void appmenu_show_app_menu(MenuBar *mb, int root_x, int root_y)
+{
+    dismiss_all_dropdowns(mb);
+    if (!mb || mb->active_pane < 0 || mb->active_pane >= mb->pane_count) return;
+
+    MenuBarPane *pane = &mb->panes[mb->active_pane];
+
+    // Rebuild lazily if the cached tree is missing — update_pane_from_wid
+    // rebuilds on every active_app change, but the very first paint of a
+    // pane lands here before that callback has fired (or the pane sits in
+    // the Finder-default state and we never bothered to allocate). Cheap
+    // — a handful of menu_node_new_items.
+    if (!pane->app_menu_root) {
+        rebuild_app_menu_for_pane(pane);
+    }
+    if (!pane->app_menu_root || pane->app_menu_root->n_children == 0) return;
+
+    push_level(mb, pane->app_menu_root, root_x, root_y);
 }
 
 void appmenu_dismiss(MenuBar *mb)
@@ -1419,6 +1704,11 @@ void appmenu_cleanup(MenuBar *mb)
             p->legacy_wid            = None;
             p->legacy_is_loading     = false;
             p->last_seen_legacy_root = NULL;
+
+            if (p->app_menu_root) {
+                menu_node_free(p->app_menu_root);
+                p->app_menu_root = NULL;
+            }
         }
     }
 

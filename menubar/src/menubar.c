@@ -43,6 +43,25 @@
 // its hosting output.
 #include "moonrock_scale.h"
 
+// Sentinel stored in mb->open_menu when the synthesized Application menu
+// (the bold-app-name dropdown) is the live dropdown. -1 still means "no
+// menu open"; 0 still means Apple; 1+ still means a per-app title. The
+// synthesized menu lives in the same appmenu dropdown stack as 1+, so
+// the helper macros below treat both as "the appmenu stack is open."
+#define HIT_APPMENU (-2)
+
+// "Any menu/dropdown is open" — Apple, an app-title submenu, or the
+// synthesized Application menu. Replaces the older `>= 0` checks that
+// implicitly assumed the only sentinels were -1 and 0/1+.
+#define MENU_IS_OPEN(mb)         ((mb)->open_menu != -1)
+
+// "An appmenu-stack dropdown is open" — either a per-app menu title or
+// the synthesized Application menu. Both share appmenu's popup stack
+// (push_level, dismiss_all_dropdowns), so any code routing events into
+// the stack uses this predicate.
+#define MENU_IS_APPDROPDOWN(mb)  ((mb)->open_menu > 0 || \
+                                  (mb)->open_menu == HIT_APPMENU)
+
 // Logical bar height in points, from ~/.config/copycatos/desktop.conf.
 // Default 22 (Snow Leopard baseline), range 22–88 for handheld devices.
 int menubar_height = DEFAULT_MENUBAR_HEIGHT;
@@ -395,7 +414,7 @@ static bool reconcile_panes_to_outputs(MenuBar *mb)
 {
     // 1. Dismiss any live dropdown before mutating the pane set — the
     //    host pane may be torn down in this pass.
-    if (mb->open_menu >= 0) {
+    if (MENU_IS_OPEN(mb)) {
         dismiss_open_menu(mb);
     }
 
@@ -942,7 +961,10 @@ static void dismiss_open_menu(MenuBar *mb)
 
     if (mb->open_menu == 0) {
         apple_dismiss(mb);
-    } else if (mb->open_menu > 0) {
+    } else if (mb->open_menu > 0 || mb->open_menu == HIT_APPMENU) {
+        // Both the regular per-app menu titles and the synthesized
+        // Application menu (HIT_APPMENU) live in the appmenu dropdown
+        // stack — same teardown.
         appmenu_dismiss(mb);
     }
     mb->open_menu   = -1;
@@ -968,8 +990,15 @@ static PaneScaleSaved enter_active_dropdown_scale(MenuBar *mb)
 }
 
 // ── Helper: figure out which menu title was clicked ─────────────────
-// Returns: -1 = nothing, 0 = Apple logo, 1+ = menu title index.
+// Returns: -1 = nothing, HIT_APPMENU (-2) = bold app-name region,
+// 0 = Apple logo, 1+ = menu title index.
 // `mx` is pane-local (relative to pane->win left edge).
+//
+// HIT_APPMENU lives in the negative space so we don't have to renumber
+// every other branch. The "mouse below the bar" path at the top of the
+// MotionNotify handler still does `hover_index != -1` and harmlessly
+// resets a -2 to -1; paint-time highlight checks for specific positive
+// indices and `== HIT_APPMENU` separately.
 
 static int hit_test_menu(MenuBar *mb, MenuBarPane *pane, int mx)
 {
@@ -980,6 +1009,16 @@ static int hit_test_menu(MenuBar *mb, MenuBarPane *pane, int mx)
     // Check Apple logo region
     if (mx >= pane->apple_x && mx < pane->apple_x + pane->apple_w) {
         result = 0;
+        goto done;
+    }
+
+    // Check the bold app-name region. Width is cached by paint_pane on
+    // its last draw (pane->appname_w); zero/missing means the label
+    // hasn't been painted yet — fall through to the menu titles.
+    if (pane->appname_w > 0 &&
+        mx >= pane->appname_x &&
+        mx < pane->appname_x + pane->appname_w) {
+        result = HIT_APPMENU;
         goto done;
     }
 
@@ -1037,7 +1076,8 @@ static void fire_spotlight(MenuBar *mb)
 }
 
 // ── Helper: open a specific menu by index ───────────────────────────
-// index 0 = Apple, 1+ = app menus. `pane` is the pane that spawned the
+// index 0 = Apple, 1+ = app menus, HIT_APPMENU = synthesized Application
+// menu (bold-app-name dropdown). `pane` is the pane that spawned the
 // click; it becomes mb->active_pane for the lifetime of the dropdown.
 
 static void open_menu_at(MenuBar *mb, MenuBarPane *pane, int index)
@@ -1051,6 +1091,13 @@ static void open_menu_at(MenuBar *mb, MenuBarPane *pane, int index)
         // apple_show_menu reads mb->active_pane to anchor the popup in
         // root-absolute coordinates under the Apple logo of that pane.
         apple_show_menu(mb);
+    } else if (index == HIT_APPMENU) {
+        // Synthesized Application menu — anchor under the bold app-name
+        // region. paint_pane caches appname_x; appname_w is read inside
+        // the dropdown's measure path.
+        int root_x = pane->screen_x + pane->appname_x;
+        int root_y = pane->screen_y + MENUBAR_HEIGHT;
+        appmenu_show_app_menu(mb, root_x, root_y);
     } else {
         // Walk the MenuNode titles to reach the same X offset the
         // paint path used when it laid them out. `dx` is pane-local
@@ -1104,7 +1151,7 @@ void menubar_run(MenuBar *mb)
             // and submenu spawn — load the host pane's scale into the
             // globals so a 1.5× dropdown doesn't get mis-measured against
             // a 1.0× active pane (or vice versa).
-            if (mb->open_menu > 0) {
+            if (MENU_IS_APPDROPDOWN(mb)) {
                 bool should_dismiss = false;
                 PaneScaleSaved _saved = enter_active_dropdown_scale(mb);
                 bool consumed =
@@ -1132,7 +1179,7 @@ void menubar_run(MenuBar *mb)
                 // so we get root coordinates. Convert to pane-local.
                 int mx, my;
                 MenuBarPane *pane;
-                if (mb->open_menu >= 0) {
+                if (MENU_IS_OPEN(mb)) {
                     // Grabbed on root — coordinates are screen/root coords.
                     // Recover the pane from the pointer position.
                     int rx = ev.xmotion.x_root;
@@ -1195,7 +1242,7 @@ void menubar_run(MenuBar *mb)
                                 apple_handle_motion(mb, -999);
                             }
                         }
-                    } else if (mb->open_menu > 0) {
+                    } else if (MENU_IS_APPDROPDOWN(mb)) {
                         Window hit; int lx, ly;
                         if (appmenu_find_dropdown_at(mb, rx, ry, &hit, &lx, &ly)) {
                             XEvent synth = ev;
@@ -1221,7 +1268,7 @@ void menubar_run(MenuBar *mb)
                     // Only allowed inside the same pane — crossing to a
                     // different pane's bar doesn't trigger scrub in
                     // Classic mode (single pane, can't happen).
-                    if (mb->open_menu >= 0 && new_hover >= 0 &&
+                    if (MENU_IS_OPEN(mb) && new_hover != -1 &&
                         new_hover != mb->open_menu &&
                         mb->active_pane == (int)(pane - mb->panes)) {
                         // Dismiss the old dropdown (keep the grab!)
@@ -1249,7 +1296,7 @@ void menubar_run(MenuBar *mb)
                 int ry = ev.xbutton.y_root;
                 MenuBarPane *pane;
 
-                if (mb->open_menu >= 0) {
+                if (MENU_IS_OPEN(mb)) {
                     pane = mb_pane_for_point(mb, rx, ry);
                     if (pane) {
                         mx = rx - pane->screen_x;
@@ -1276,7 +1323,7 @@ void menubar_run(MenuBar *mb)
                 // enter_pane_scale handles it as a no-op save.
                 PaneScaleSaved _saved_scale = enter_pane_scale(pane);
 
-                if (mb->open_menu >= 0) {
+                if (MENU_IS_OPEN(mb)) {
                     // A menu is currently open.
 
                     // Check if click is within the menu bar of the pane
@@ -1295,7 +1342,7 @@ void menubar_run(MenuBar *mb)
                             // Clicked the same menu title — toggle closed
                             dismiss_open_menu(mb);
                             menubar_paint(mb);
-                        } else if (clicked >= 0) {
+                        } else if (clicked != -1) {
                             // Clicked a different menu title — switch to it.
                             // Dismiss old dropdown but keep the pointer grab.
                             if (mb->open_menu == 0) {
@@ -1333,7 +1380,7 @@ void menubar_run(MenuBar *mb)
                                     handled = true;
                                 }
                             }
-                        } else if (mb->open_menu > 0) {
+                        } else if (MENU_IS_APPDROPDOWN(mb)) {
                             Window hit; int lx, ly;
                             if (appmenu_find_dropdown_at(mb, rx, ry,
                                                          &hit, &lx, &ly)) {
@@ -1372,8 +1419,12 @@ void menubar_run(MenuBar *mb)
                 }
 
                 // No menu is open — check if a menu title was clicked.
+                // hit_test_menu returns -1 for "no hit", HIT_APPMENU (-2)
+                // for the bold app-name region, 0 for Apple, 1+ for menu
+                // titles. Only -1 short-circuits — HIT_APPMENU has to
+                // reach open_menu_at below.
                 int clicked = hit_test_menu(mb, pane, mx);
-                if (clicked < 0) {
+                if (clicked == -1) {
                     leave_pane_scale(_saved_scale);
                     break;
                 }
@@ -1431,7 +1482,7 @@ void menubar_run(MenuBar *mb)
             case LeaveNotify: {
                 // Mouse left the menu bar window — clear hover on that pane
                 MenuBarPane *pane = mb_pane_for_window(mb, ev.xcrossing.window);
-                if (pane && mb->open_menu < 0 && pane->hover_index != -1) {
+                if (pane && !MENU_IS_OPEN(mb) && pane->hover_index != -1) {
                     pane->hover_index = -1;
                     paint_pane(mb, pane);
                 }
@@ -1440,7 +1491,7 @@ void menubar_run(MenuBar *mb)
 
             case PropertyNotify:
                 if (ev.xproperty.atom == mb->atom_net_active_window) {
-                    if (mb->open_menu >= 0) {
+                    if (MENU_IS_OPEN(mb)) {
                         dismiss_open_menu(mb);
                     }
                     appmenu_update_all_panes(mb);
@@ -1545,7 +1596,7 @@ void menubar_run(MenuBar *mb)
 
             case KeyPress: {
                 KeySym sym = XLookupKeysym(&ev.xkey, 0);
-                if (sym == XK_Escape && mb->open_menu >= 0) {
+                if (sym == XK_Escape && MENU_IS_OPEN(mb)) {
                     // If an app menu submenu level is open, Escape
                     // closes just that one level (macOS parity). Only
                     // Escape from the top-level dropdown tears the
@@ -1558,7 +1609,7 @@ void menubar_run(MenuBar *mb)
                     // wraps itself; menubar_paint iterates panes and
                     // wraps each one independently.
                     PaneScaleSaved _saved = enter_active_dropdown_scale(mb);
-                    bool popped = (mb->open_menu > 0 &&
+                    bool popped = (MENU_IS_APPDROPDOWN(mb) &&
                                    appmenu_pop_submenu_level(mb));
                     leave_pane_scale(_saved);
                     if (!popped) {
@@ -1724,9 +1775,32 @@ static void paint_pane(MenuBar *mb, MenuBarPane *pane)
     // every 13pt item on the bar so menus + app name share a baseline.
     int text_y = render_text_center_y(pane->active_app, true);
 
-    double appname_w = render_text(cr, pane->active_app,
-                                   pane->appname_x, text_y,
-                                   true, 0.1, 0.1, 0.1);
+    bool pane_hosts_dropdown = (mb->active_pane == pane_idx);
+
+    // Cache the bold app-name's measured pixel width so the click /
+    // hover hit-test (hit_test_menu, HIT_APPMENU branch) can match the
+    // exact rectangle we paint. Measure first so we can draw the hover/
+    // open highlight UNDER the text (same z-order as the per-app menu
+    // titles below).
+    double appname_meas = render_measure_text(pane->active_app, true);
+    pane->appname_w = (int)appname_meas;
+
+    bool appname_highlighted =
+        pane->hover_index == HIT_APPMENU ||
+        (pane_hosts_dropdown && mb->open_menu == HIT_APPMENU);
+    if (appname_highlighted) {
+        // Same vertical pill geometry as menu titles. Width hugs the
+        // measured glyph extent + a small horizontal padding so the
+        // highlight visually balances against the per-app titles.
+        render_hover_highlight(cr,
+                               pane->appname_x - S(6), S(1),
+                               pane->appname_w + S(12),
+                               MENUBAR_HEIGHT - S(2));
+    }
+
+    render_text(cr, pane->active_app,
+                pane->appname_x, text_y,
+                true, 0.1, 0.1, 0.1);
 
     // ── Menu titles ─────────────────────────────────────────────
     // Walk this pane's MenuNode root. Each pane shows the menus for its
@@ -1737,9 +1811,7 @@ static void paint_pane(MenuBar *mb, MenuBarPane *pane)
     const MenuNode *root = appmenu_root_for(mb, pane);
     int menu_count = root ? root->n_children : 0;
 
-    pane->menus_x = pane->appname_x + (int)appname_w + S(16);
-
-    bool pane_hosts_dropdown = (mb->active_pane == pane_idx);
+    pane->menus_x = pane->appname_x + pane->appname_w + S(16);
 
     int item_x = pane->menus_x;
     for (int i = 0; i < menu_count; i++) {
