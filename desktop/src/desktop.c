@@ -50,28 +50,21 @@
 
 // Definition of the extern declared in desktop.h. Starts at 1.0; updated
 // from the _MOONROCK_OUTPUT_SCALES root-window property at startup and on
-// every subsequent PropertyNotify.
+// every subsequent PropertyNotify. Tracks the *primary* output's scale
+// because the icon grid anchors top-right of primary.
 float desktop_hidpi_scale = 1.0f;
 
 // Live snapshot of every connected output's scale as published by MoonRock.
 // Refreshed at startup and on every PropertyNotify for that atom.
 static MoonRockScaleTable g_output_scales;
 
-// The icon grid anchors in the top-right corner of the virtual screen,
-// so the scale that matters to the desktop is whatever scale applies at a
-// point near the top-right of the root window. Used in both init and on
-// every PropertyNotify so both paths share the same lookup rule.
-static float lookup_desktop_scale(const Desktop *d)
-{
-    if (!g_output_scales.valid) return 1.0f;
-    int sx = d->width - 1;
-    int sy = 0;
-    return moonrock_scale_for_point(&g_output_scales, sx, sy);
-}
-
 // ── Forward declarations ────────────────────────────────────────────
 
 static void desktop_repaint(Desktop *d);
+static void desktop_repaint_one(Desktop *d, DesktopOutput *out);
+static void reconcile_outputs(Desktop *d, bool initial);
+static int  output_index_for_window(Desktop *d, Window w);
+static void log_union_sentinel(Desktop *d);
 
 // ── Initialization ──────────────────────────────────────────────────
 
@@ -124,28 +117,18 @@ bool desktop_init(Desktop *d, const char *wallpaper_path)
         return false;
     }
 
-    d->screen = DefaultScreen(d->dpy);
-    d->root = RootWindow(d->dpy, d->screen);
-    d->width = DisplayWidth(d->dpy, d->screen);
-    d->height = DisplayHeight(d->dpy, d->screen);
-    d->running = true;
-
-    fprintf(stderr, "[desktop] Screen: %dx%d\n", d->width, d->height);
+    d->screen      = DefaultScreen(d->dpy);
+    d->root        = RootWindow(d->dpy, d->screen);
+    d->running     = true;
+    d->output_count = 0;
+    d->primary_idx  = 0;
 
     // Subscribe to MoonRock's per-output scale property before any other
     // setup that depends on size — moonrock_scale_init's XSelectInput is
     // additive, so it ORs PropertyChangeMask onto whatever the root window
-    // already has selected without clobbering anything. After this, a
-    // single refresh gets the current table into g_output_scales and we
-    // can pick desktop_hidpi_scale for the icon-grid anchor point.
+    // already has selected without clobbering anything.
     moonrock_scale_init(d->dpy);
     moonrock_scale_refresh(d->dpy, &g_output_scales);
-    desktop_hidpi_scale = lookup_desktop_scale(d);
-    fprintf(stderr, "[desktop] hidpi: icon-grid scale = %.2f "
-                    "(%d output%s known)\n",
-            (double)desktop_hidpi_scale,
-            g_output_scales.count,
-            g_output_scales.count == 1 ? "" : "s");
 
     // Try to get a 32-bit ARGB visual for transparency effects.
     // If that fails, use the default visual (usually 24-bit RGB).
@@ -157,72 +140,47 @@ bool desktop_init(Desktop *d, const char *wallpaper_path)
         d->colormap = XCreateColormap(d->dpy, d->root, d->visual, AllocNone);
     } else {
         fprintf(stderr, "[desktop] Falling back to default visual\n");
-        d->visual = DefaultVisual(d->dpy, d->screen);
-        d->depth = DefaultDepth(d->dpy, d->screen);
+        d->visual   = DefaultVisual(d->dpy, d->screen);
+        d->depth    = DefaultDepth(d->dpy, d->screen);
         d->colormap = DefaultColormap(d->dpy, d->screen);
     }
 
-    // Create the full-screen desktop window.
-    // XSetWindowAttributes lets us configure the window before creating it.
-    XSetWindowAttributes attrs;
-    attrs.colormap = d->colormap;
-    attrs.border_pixel = 0;          // No border
-    attrs.background_pixel = 0;      // Transparent/black background initially
-    attrs.event_mask =
-        ExposureMask         |  // Window needs repainting
-        ButtonPressMask      |  // Mouse button pressed
-        ButtonReleaseMask    |  // Mouse button released
-        PointerMotionMask    |  // Mouse moved (for dragging)
-        StructureNotifyMask;    // Window resized/moved
-
-    // CWColormap + CWBorderPixel + CWBackPixel + CWEventMask tells X
-    // which fields in 'attrs' we actually set
-    unsigned long attr_mask = CWColormap | CWBorderPixel | CWBackPixel | CWEventMask;
-
-    // Extra PropertyChangeMask on our own window is not required; the
-    // moonrock_scale subscription selected PropertyChangeMask on the root,
-    // which is where _MOONROCK_OUTPUT_SCALES lives. PropertyNotify events
-    // arrive through the same event queue regardless of which window they
-    // target.
-    d->win = XCreateWindow(d->dpy, d->root,
-        0, 0, d->width, d->height,   // Full screen at origin
-        0,                             // No border width
-        d->depth,                      // Color depth
-        InputOutput,                   // We want to draw and receive input
-        d->visual,                     // Visual for this window
-        attr_mask, &attrs);
-
-    // Set the window type to DESKTOP.
-    // This is an EWMH hint that tells the WM to treat this window specially:
-    // no frame, always at the bottom, not in the taskbar.
-    Atom wm_type = XInternAtom(d->dpy, "_NET_WM_WINDOW_TYPE", False);
-    Atom wm_desktop = XInternAtom(d->dpy, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
-    XChangeProperty(d->dpy, d->win, wm_type, XA_ATOM, 32,
-                    PropModeReplace, (unsigned char *)&wm_desktop, 1);
-
-    // Give the window a name (visible in xprop/xwininfo for debugging)
-    XStoreName(d->dpy, d->win, "CopyCatOS Desktop");
-
-    // Show the window on screen
-    XMapWindow(d->dpy, d->win);
-
-    // Wait for the window to actually appear before painting.
-    // The MapNotify event confirms the window is visible.
-    XFlush(d->dpy);
-
-    // Initialize the wallpaper (load image, scale to screen)
-    if (!wallpaper_init(wallpaper_path, d->width, d->height)) {
+    // Load the unscaled wallpaper source. Per-output scaled copies are
+    // produced lazily by wallpaper_paint when each output's window is
+    // painted for the first time.
+    if (!wallpaper_init(wallpaper_path)) {
         fprintf(stderr, "[desktop] Warning: wallpaper init failed, using fallback\n");
     }
 
-    // Initialize the icon grid (scan ~/Desktop, load icons, set up inotify)
-    icons_init(d->dpy, d->width, d->height);
+    // Build per-output windows from MoonRock's scale table. Falls back to
+    // a single virtual-screen-union window if MoonRock isn't running or
+    // hasn't published a table yet.
+    reconcile_outputs(d, /*initial=*/true);
 
-    // Initialize XDND (intern atoms, set XdndAware + XdndProxy on root/our window)
-    dnd_init(d->dpy, d->win, d->root);
+    // Pick the primary output's scale and geometry as the icon-grid anchor.
+    // The icon grid lives top-right of primary regardless of how many
+    // outputs are connected.
+    DesktopOutput *primary = &d->outputs[d->primary_idx];
+    desktop_hidpi_scale = primary->scale;
+    fprintf(stderr, "[desktop] hidpi: icon-grid scale = %.2f on '%s' "
+                    "(%d output%s known)\n",
+            (double)desktop_hidpi_scale,
+            primary->name,
+            d->output_count,
+            d->output_count == 1 ? "" : "s");
 
-    // Do an initial paint so the desktop isn't blank
+    // Initialize the icon grid (scan ~/Desktop, load icons, set up inotify).
+    // Anchored to primary's pixel dimensions, not the virtual-screen union.
+    icons_init(d->dpy, primary->width, primary->height);
+
+    // Initialize XDND. The drag-source window and XdndProxy target are
+    // primary's window — drag operations originate from icons on primary.
+    dnd_init(d->dpy, primary->win, d->root);
+
+    // Do an initial paint so the desktop isn't blank.
     desktop_repaint(d);
+
+    log_union_sentinel(d);
 
     fprintf(stderr, "[desktop] Initialized successfully\n");
     return true;
@@ -230,32 +188,242 @@ bool desktop_init(Desktop *d, const char *wallpaper_path)
 
 // ── Painting ────────────────────────────────────────────────────────
 
-// Repaint the entire desktop: wallpaper first, then icons on top.
-// We create a Cairo context targeting the X window, paint everything,
-// then destroy the context.
-static void desktop_repaint(Desktop *d)
+// Paint one output: its wallpaper, plus icons if it's the primary output
+// (the icon grid lives on primary only, anchored top-right of primary).
+static void desktop_repaint_one(Desktop *d, DesktopOutput *out)
 {
-    // Create a Cairo surface that draws directly onto our X window.
-    // This is the bridge between Cairo's drawing API and X11.
+    if (!out || out->win == None) return;
+
     cairo_surface_t *xsurf = cairo_xlib_surface_create(
-        d->dpy, d->win, d->visual, d->width, d->height);
+        d->dpy, out->win, d->visual, out->width, out->height);
     cairo_t *cr = cairo_create(xsurf);
 
-    // Layer 1: Wallpaper (fills the entire screen)
-    wallpaper_paint(cr, d->width, d->height);
+    // Wallpaper — wallpaper.c caches a scaled copy keyed by (w, h), so a
+    // hotplug that just moves an output reuses the cached surface; only
+    // an output whose pixel size actually changed forces a recompute.
+    wallpaper_paint(cr, out->width, out->height);
 
-    // Layer 2: Desktop icons (on top of wallpaper)
-    icons_paint(cr, d->width, d->height);
+    // Icons: only primary draws them. Coordinates are pane-local
+    // (origin = primary's top-left), which matches what icons.c stores.
+    if (out == &d->outputs[d->primary_idx]) {
+        icons_paint(cr, out->width, out->height);
+    }
 
-    // Clean up the Cairo context (the pixels are already on screen)
     cairo_destroy(cr);
     cairo_surface_destroy(xsurf);
+}
 
-    // Make sure everything is flushed to the X server
+// Repaint every output's window.
+static void desktop_repaint(Desktop *d)
+{
+    for (int i = 0; i < d->output_count; i++) {
+        desktop_repaint_one(d, &d->outputs[i]);
+    }
     XFlush(d->dpy);
 }
 
-// ── Scale change ─────────────────────────────────────────────────────
+// Find which output owns the given X window. Returns -1 if w isn't one
+// of our windows (events on the root window etc.).
+static int output_index_for_window(Desktop *d, Window w)
+{
+    for (int i = 0; i < d->output_count; i++) {
+        if (d->outputs[i].win == w) return i;
+    }
+    return -1;
+}
+
+// Sentinel: warn loudly if DisplayWidth/Height (the legacy single-screen
+// virtual-screen union) ever disagrees with the union of MoonRock's
+// per-output rectangles. They are the same surface in X11 — this caught
+// the original phantom of "DisplayWidth covers union but the desktop
+// window only covers part of it." Now the windows are per-output, so
+// this is a sanity check that the table we built our windows from
+// actually fills the visible screen.
+static void log_union_sentinel(Desktop *d)
+{
+    int dw = DisplayWidth(d->dpy, d->screen);
+    int dh = DisplayHeight(d->dpy, d->screen);
+
+    int max_x = 0, max_y = 0;
+    for (int i = 0; i < d->output_count; i++) {
+        DesktopOutput *o = &d->outputs[i];
+        if (o->x + o->width  > max_x) max_x = o->x + o->width;
+        if (o->y + o->height > max_y) max_y = o->y + o->height;
+    }
+    if (max_x != dw || max_y != dh) {
+        fprintf(stderr,
+                "[desktop] WARNING: output union (%dx%d) != "
+                "DisplayWidth/Height (%dx%d) — outputs may not cover the "
+                "full virtual screen.\n",
+                max_x, max_y, dw, dh);
+    }
+}
+
+// ── Output reconcile ────────────────────────────────────────────────
+//
+// Single source of truth for "what does the desktop component think the
+// connected outputs look like right now?" — driven entirely by MoonRock's
+// _MOONROCK_OUTPUT_SCALES root-window property. Called once at startup
+// (initial=true creates first windows, fallback to single-screen if no
+// table is published yet) and again on every PropertyNotify for that
+// atom (initial=false keeps stable identity by name where possible).
+//
+// We deliberately do not subscribe to XRandR events here — MoonRock
+// already republishes _MOONROCK_OUTPUT_SCALES on every hotplug and on
+// every Displays-pane change, so a single PropertyNotify path covers
+// both cases without a second event source to keep in sync. (See
+// MoonRock's display.c — it owns the persistent EDID-keyed config and
+// the rewrite cadence.)
+static void reconcile_outputs(Desktop *d, bool initial)
+{
+    DesktopOutput old[MOONROCK_SCALE_MAX_OUTPUTS];
+    int old_count = d->output_count;
+    memcpy(old, d->outputs, sizeof(DesktopOutput) * old_count);
+
+    DesktopOutput next[MOONROCK_SCALE_MAX_OUTPUTS];
+    int next_count = 0;
+    int next_primary = 0;
+
+    if (g_output_scales.valid && g_output_scales.count > 0) {
+        // Build the new list from MoonRock's table, in the same row order
+        // (stable across publishes when no hotplug happened).
+        for (int i = 0; i < g_output_scales.count
+             && next_count < MOONROCK_SCALE_MAX_OUTPUTS; i++) {
+            const MoonRockOutputScale *s = &g_output_scales.outputs[i];
+            DesktopOutput *o = &next[next_count];
+            memset(o, 0, sizeof(*o));
+            strncpy(o->name, s->name, sizeof(o->name) - 1);
+            o->x       = s->x;
+            o->y       = s->y;
+            o->width   = s->width;
+            o->height  = s->height;
+            o->scale   = s->scale > 0 ? s->scale : 1.0f;
+            o->primary = s->primary;
+            o->win     = None;
+            if (s->primary) next_primary = next_count;
+            next_count++;
+        }
+    } else {
+        // MoonRock not running yet — fall back to a single virtual-screen
+        // window so the desktop still draws on dev environments that boot
+        // a desktop component without a compositor.
+        DesktopOutput *o = &next[0];
+        memset(o, 0, sizeof(*o));
+        strncpy(o->name, "virt-screen", sizeof(o->name) - 1);
+        o->x       = 0;
+        o->y       = 0;
+        o->width   = DisplayWidth(d->dpy, d->screen);
+        o->height  = DisplayHeight(d->dpy, d->screen);
+        o->scale   = 1.0f;
+        o->primary = true;
+        o->win     = None;
+        next_count = 1;
+    }
+
+    // For each entry in `next`, reuse an existing window from `old` if a
+    // same-named output exists (preserves WID identity across resizes /
+    // primary swaps). Resize/move it if its rect changed; otherwise leave
+    // it alone. Anything in `old` that doesn't appear in `next` gets its
+    // window destroyed afterward.
+    XSetWindowAttributes attrs;
+    attrs.colormap         = d->colormap;
+    attrs.border_pixel     = 0;
+    attrs.background_pixel = 0;
+    attrs.event_mask =
+        ExposureMask | ButtonPressMask | ButtonReleaseMask |
+        PointerMotionMask | StructureNotifyMask;
+    unsigned long attr_mask =
+        CWColormap | CWBorderPixel | CWBackPixel | CWEventMask;
+
+    Atom wm_type    = XInternAtom(d->dpy, "_NET_WM_WINDOW_TYPE", False);
+    Atom wm_desktop = XInternAtom(d->dpy, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
+
+    bool any_size_changed = false;
+
+    for (int i = 0; i < next_count; i++) {
+        DesktopOutput *o = &next[i];
+
+        // Find a same-named entry in old.
+        int reuse = -1;
+        for (int j = 0; j < old_count; j++) {
+            if (old[j].win != None &&
+                strcmp(old[j].name, o->name) == 0) {
+                reuse = j;
+                break;
+            }
+        }
+
+        if (reuse >= 0) {
+            o->win = old[reuse].win;
+            old[reuse].win = None;  // claimed — don't destroy below
+
+            bool size_changed =
+                (old[reuse].width  != o->width) ||
+                (old[reuse].height != o->height);
+            bool moved =
+                (old[reuse].x != o->x) || (old[reuse].y != o->y);
+
+            if (size_changed || moved) {
+                XMoveResizeWindow(d->dpy, o->win,
+                                  o->x, o->y, o->width, o->height);
+                if (size_changed) any_size_changed = true;
+            }
+        } else {
+            // Fresh window for a new (or initially-built) output.
+            o->win = XCreateWindow(d->dpy, d->root,
+                o->x, o->y, o->width, o->height,
+                0, d->depth, InputOutput, d->visual,
+                attr_mask, &attrs);
+
+            XChangeProperty(d->dpy, o->win, wm_type, XA_ATOM, 32,
+                            PropModeReplace,
+                            (unsigned char *)&wm_desktop, 1);
+
+            char title[128];
+            snprintf(title, sizeof(title), "CopyCatOS Desktop (%s)", o->name);
+            XStoreName(d->dpy, o->win, title);
+
+            XMapWindow(d->dpy, o->win);
+            any_size_changed = true;
+        }
+    }
+
+    // Destroy any old windows whose outputs no longer exist.
+    for (int j = 0; j < old_count; j++) {
+        if (old[j].win != None) {
+            fprintf(stderr,
+                    "[desktop] Output '%s' gone — destroying its window\n",
+                    old[j].name);
+            XDestroyWindow(d->dpy, old[j].win);
+            any_size_changed = true;
+        }
+    }
+
+    // Commit.
+    memcpy(d->outputs, next, sizeof(DesktopOutput) * next_count);
+    d->output_count = next_count;
+    d->primary_idx  = next_primary;
+
+    // Drop stale wallpaper cache entries if any output's pixel size
+    // changed; the cache is keyed by (w, h) so old entries that no
+    // longer match any output simply waste memory until invalidated.
+    if (any_size_changed) {
+        wallpaper_invalidate_cache();
+    }
+
+    if (!initial) {
+        log_union_sentinel(d);
+    }
+
+    fprintf(stderr,
+            "[desktop] Reconciled %d output%s (primary='%s' %dx%d @ %.2fx)\n",
+            d->output_count,
+            d->output_count == 1 ? "" : "s",
+            d->outputs[d->primary_idx].name,
+            d->outputs[d->primary_idx].width,
+            d->outputs[d->primary_idx].height,
+            (double)d->outputs[d->primary_idx].scale);
+}
 
 // Re-layout icons and repaint after desktop_hidpi_scale changes. Called
 // on the MoonRock scale-change PropertyNotify path. Layout constants in
@@ -265,10 +433,6 @@ static void desktop_repaint(Desktop *d)
 // Icon source surfaces stay loaded at their original pixel sizes — they
 // are scaled per-paint via cairo_scale(cr, S(ICON_SIZE)/src_w, ...) so
 // the new scale factor automatically changes their apparent size.
-//
-// Wallpaper also stays loaded at its initial screen size; wallpaper is
-// already scaled from source to screen dimensions at load, which are
-// unaffected by scale changes (screen_w/screen_h are physical pixels).
 static void apply_desktop_scale(Desktop *d)
 {
     icons_rescale();
@@ -346,7 +510,8 @@ void desktop_run(Desktop *d)
             if (dnd_tick()) {
                 // Drag timed out — snap the dragged icon back to its grid position
                 if (dragging && drag_active) {
-                    icons_drag_end(d->width, d->height);
+                    DesktopOutput *p = &d->outputs[d->primary_idx];
+                    icons_drag_end(p->width, p->height);
                     dragging    = NULL;
                     drag_active = false;
                     xdnd_started = false;
@@ -361,21 +526,44 @@ void desktop_run(Desktop *d)
             XEvent ev;
             XNextEvent(d->dpy, &ev);
 
+            // For dispatch we frequently need the click's host output and
+            // the primary output. Compute once per event.
+            DesktopOutput *primary = &d->outputs[d->primary_idx];
+
             switch (ev.type) {
             case Expose:
-                // The window (or part of it) needs to be repainted.
-                // We only repaint once even if multiple Expose events
-                // are queued (count == 0 means "last in this batch").
+                // Repaint just the output whose window got exposed.
+                // count == 0 means "this is the last expose in the batch
+                // for that window," which keeps us from repainting
+                // multiple times for one logical exposure.
                 if (ev.xexpose.count == 0) {
-                    desktop_repaint(d);
+                    int oi = output_index_for_window(d, ev.xexpose.window);
+                    if (oi >= 0) {
+                        desktop_repaint_one(d, &d->outputs[oi]);
+                        XFlush(d->dpy);
+                    } else {
+                        desktop_repaint(d);
+                    }
                 }
                 break;
 
             case ButtonPress:
                 if (ev.xbutton.button == Button1) {
-                    // Left click: check if we hit an icon
-                    DesktopIcon *hit = icons_handle_click(
-                        ev.xbutton.x, ev.xbutton.y);
+                    // Click hit-tests against the icon grid only when the
+                    // click landed on the primary's window — icons live on
+                    // primary alone. Translate root coords into primary's
+                    // pane-local space so icons_handle_click works on any
+                    // _MOONROCK_OUTPUT_SCALES layout (primary at non-zero
+                    // origin is normal once an external is plugged in to
+                    // the left of the laptop panel).
+                    int local_x = ev.xbutton.x_root - primary->x;
+                    int local_y = ev.xbutton.y_root - primary->y;
+                    bool on_primary = (ev.xbutton.window == primary->win);
+
+                    DesktopIcon *hit = NULL;
+                    if (on_primary) {
+                        hit = icons_handle_click(local_x, local_y);
+                    }
 
                     if (hit) {
                         // Check for double-click: same icon within 250ms
@@ -405,7 +593,7 @@ void desktop_run(Desktop *d)
                             drag_start_x = ev.xbutton.x_root;
                             drag_start_y = ev.xbutton.y_root;
                             xdnd_started = false;
-                            icons_drag_begin(hit, ev.xbutton.x, ev.xbutton.y);
+                            icons_drag_begin(hit, local_x, local_y);
                         }
                     } else {
                         // Clicked on empty space: deselect all icons
@@ -419,8 +607,26 @@ void desktop_run(Desktop *d)
                     // Right-click: two cases —
                     //   Hit an icon  → show icon context menu (Open, Label, Trash)
                     //   Hit desktop  → show desktop context menu (New Folder, etc.)
-                    DesktopIcon *rhit = icons_handle_click(
-                        ev.xbutton.x, ev.xbutton.y);
+                    int rlocal_x = ev.xbutton.x_root - primary->x;
+                    int rlocal_y = ev.xbutton.y_root - primary->y;
+                    bool ron_primary = (ev.xbutton.window == primary->win);
+
+                    DesktopIcon *rhit = NULL;
+                    if (ron_primary) {
+                        rhit = icons_handle_click(rlocal_x, rlocal_y);
+                    }
+
+                    // Context menus clamp themselves against virtual-screen
+                    // bounds. Build the union from the output table so a
+                    // menu on a non-primary output doesn't get clipped to
+                    // primary's geometry.
+                    int union_w = 0, union_h = 0;
+                    for (int i = 0; i < d->output_count; i++) {
+                        int rx = d->outputs[i].x + d->outputs[i].width;
+                        int ry = d->outputs[i].y + d->outputs[i].height;
+                        if (rx > union_w) union_w = rx;
+                        if (ry > union_h) union_h = ry;
+                    }
 
                     if (rhit) {
                         // Select the right-clicked icon so the user can see
@@ -430,7 +636,7 @@ void desktop_run(Desktop *d)
 
                         int action = contextmenu_show_icon(d->dpy, d->root,
                             ev.xbutton.x_root, ev.xbutton.y_root,
-                            d->width, d->height, rhit);
+                            union_w, union_h, rhit);
 
                         switch (action) {
                         case ICON_ACTION_OPEN:
@@ -473,7 +679,7 @@ void desktop_run(Desktop *d)
                         // and returns the index of the selected item.
                         int choice = contextmenu_show(d->dpy, d->root,
                             ev.xbutton.x_root, ev.xbutton.y_root,
-                            d->width, d->height);
+                            union_w, union_h);
 
                         // Handle the selected menu action
                         switch (choice) {
@@ -496,7 +702,7 @@ void desktop_run(Desktop *d)
                             break;
                         }
                         case 3:  // "Clean Up"
-                            icons_relayout(d->width, d->height);
+                            icons_relayout(primary->width, primary->height);
                             desktop_repaint(d);
                             break;
                         case 5:  // "Change Desktop Background..."
@@ -540,10 +746,12 @@ void desktop_run(Desktop *d)
                         // Past the threshold — activate the visual drag
                         drag_active = true;
 
-                        // Start XDND on the first frame that crosses the threshold
+                        // Start XDND on the first frame that crosses the threshold.
+                        // Source window is primary's desktop window, since the
+                        // dragged icon lives there.
                         if (!xdnd_started) {
                             xdnd_started = true;
-                            dnd_source_begin(d->dpy, d->win, d->root,
+                            dnd_source_begin(d->dpy, primary->win, d->root,
                                              dragging->path,
                                              ev.xmotion.x_root,
                                              ev.xmotion.y_root);
@@ -558,8 +766,12 @@ void desktop_run(Desktop *d)
                         // Only do this when the cursor is over our own desktop
                         // window — when over an external XDND target we don't
                         // move the icon visually (the target shows its own feedback).
+                        // Convert to primary-pane-local coords because icon
+                        // positions are stored in that space.
                         if (!dnd_source_active()) {
-                            icons_drag_update(ev.xmotion.x, ev.xmotion.y);
+                            int mx = ev.xmotion.x_root - primary->x;
+                            int my = ev.xmotion.y_root - primary->y;
+                            icons_drag_update(mx, my);
                         }
 
                         desktop_repaint(d);
@@ -577,7 +789,7 @@ void desktop_run(Desktop *d)
                         // so we do the normal grid-snap.
                         if (!xdnd_started || !dnd_source_drop(d->dpy)) {
                             // No XDND target — snap icon to nearest free grid cell
-                            icons_drag_end(d->width, d->height);
+                            icons_drag_end(primary->width, primary->height);
                         }
                         // else: XDND drop in progress — don't snap yet.
                         // The icon will snap back via dnd_tick() timeout if needed.
@@ -595,20 +807,52 @@ void desktop_run(Desktop *d)
 
             case PropertyNotify:
                 // MoonRock rewrites _MOONROCK_OUTPUT_SCALES on hotplug and
-                // on any Displays-pane change. Ignore every other root-window
-                // property change — there are a lot of them.
+                // on any Displays-pane change. One PropertyNotify drives
+                // both the per-output window reconcile (geometry) and the
+                // icon-grid rescale (primary scale change). Ignore every
+                // other root-window property change — there are a lot of
+                // them.
                 if (ev.xproperty.window == d->root &&
                     ev.xproperty.atom == moonrock_scale_atom(d->dpy)) {
                     moonrock_scale_refresh(d->dpy, &g_output_scales);
-                    float old_scale = desktop_hidpi_scale;
-                    desktop_hidpi_scale = lookup_desktop_scale(d);
-                    if (desktop_hidpi_scale != old_scale) {
-                        fprintf(stderr,
-                                "[desktop] hidpi: %.2f → %.2f (relaying out)\n",
-                                (double)old_scale,
-                                (double)desktop_hidpi_scale);
+
+                    int    old_primary_idx = d->primary_idx;
+                    int    old_primary_w   = d->outputs[old_primary_idx].width;
+                    int    old_primary_h   = d->outputs[old_primary_idx].height;
+                    char   old_primary_name[MOONROCK_SCALE_NAME_MAX];
+                    strncpy(old_primary_name,
+                            d->outputs[old_primary_idx].name,
+                            sizeof(old_primary_name));
+                    float  old_scale       = desktop_hidpi_scale;
+
+                    reconcile_outputs(d, /*initial=*/false);
+
+                    DesktopOutput *p = &d->outputs[d->primary_idx];
+                    desktop_hidpi_scale = p->scale;
+
+                    bool primary_changed =
+                        strcmp(old_primary_name, p->name) != 0 ||
+                        p->width  != old_primary_w        ||
+                        p->height != old_primary_h;
+
+                    if (primary_changed) {
+                        // Icons need to be re-laid against the new primary
+                        // geometry so they still sit top-right of *that*
+                        // output. icons_relayout uses the saved logical
+                        // grid positions (col/row), so positions remain
+                        // stable under primary swap/resize.
+                        icons_relayout(p->width, p->height);
+                    } else if (desktop_hidpi_scale != old_scale) {
+                        // Same primary, scale flipped (e.g. user dragged
+                        // the Interface Scale slider). Re-apply layout to
+                        // pick up the new S() scale factor.
                         apply_desktop_scale(d);
                     }
+
+                    // Always repaint — even unchanged outputs benefit from
+                    // a fresh paint after the wallpaper cache may have
+                    // been invalidated for another output's resize.
+                    desktop_repaint(d);
                 }
                 break;
 
@@ -660,9 +904,13 @@ void desktop_shutdown(Desktop *d)
     icons_shutdown();
     wallpaper_shutdown();
 
-    if (d->win) {
-        XDestroyWindow(d->dpy, d->win);
+    for (int i = 0; i < d->output_count; i++) {
+        if (d->outputs[i].win != None) {
+            XDestroyWindow(d->dpy, d->outputs[i].win);
+            d->outputs[i].win = None;
+        }
     }
+    d->output_count = 0;
 
     // Only free the colormap if we created it ourselves (ARGB visual).
     // The default colormap shouldn't be freed.

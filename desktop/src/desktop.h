@@ -13,9 +13,12 @@
 #include <X11/Xlib.h>
 #include <stdbool.h>
 
-// Per-output HiDPI scale for the output hosting the desktop's icon grid,
-// published by MoonRock on _MOONROCK_OUTPUT_SCALES. 1.0 when MoonRock isn't
-// running (the desktop still draws, just without hidpi awareness).
+#include "moonrock_scale.h"  // MOONROCK_SCALE_MAX_OUTPUTS, MOONROCK_SCALE_NAME_MAX
+
+// Per-output HiDPI scale for the output hosting the desktop's icon grid
+// (the primary output, since icons anchor top-right of primary). Published
+// by MoonRock on _MOONROCK_OUTPUT_SCALES. 1.0 when MoonRock isn't running
+// (the desktop still draws, just without hidpi awareness).
 extern float desktop_hidpi_scale;
 
 // Scale a point value to physical pixels, rounded to nearest int.
@@ -29,6 +32,21 @@ extern float desktop_hidpi_scale;
 // Use for Cairo coordinates, corner radii, and other fractional values.
 #define SF(x) ((x) * (double)desktop_hidpi_scale)
 
+// One DesktopOutput per connected output. Each one owns its own
+// _NET_WM_WINDOW_TYPE_DESKTOP window sized exactly to that output's
+// rectangle in virtual-screen pixels — so each physical display gets a
+// real surface to draw the wallpaper on, instead of one giant window
+// that only happens to cover the leftmost screen.
+typedef struct {
+    char     name[MOONROCK_SCALE_NAME_MAX];  // XRandR name, e.g. "eDP-1"
+    int      x, y;        // Top-left in virtual-screen pixels
+    int      width;       // Pixel width  of this output
+    int      height;      // Pixel height of this output
+    float    scale;       // Effective scale published by MoonRock
+    bool     primary;     // True if this is the XRandR primary output
+    Window   win;         // Per-output desktop window (None until mapped)
+} DesktopOutput;
+
 // Holds all the state for the desktop surface.
 // A single instance of this struct is created in main.c and passed
 // around to the other modules.
@@ -36,13 +54,17 @@ typedef struct {
     Display *dpy;          // Connection to the X server
     int      screen;       // Default screen number (usually 0)
     Window   root;         // Root window of the screen
-    Window   win;          // Our full-screen desktop window
-    int      width;        // Screen width in pixels
-    int      height;       // Screen height in pixels
     bool     running;      // Set to false to exit the event loop
     Visual  *visual;       // Visual we're using (ARGB if available)
     int      depth;        // Color depth (32 for ARGB, else default)
     Colormap colormap;     // Colormap matching our visual
+
+    // Per-output windows. Index into icon-anchor logic and PropertyNotify
+    // reconcile. output_count == 0 only briefly during startup before the
+    // first reconcile.
+    DesktopOutput outputs[MOONROCK_SCALE_MAX_OUTPUTS];
+    int           output_count;
+    int           primary_idx;  // Index of primary output, or 0 as fallback
 } Desktop;
 
 // Initialize the desktop: open X display, create window, load wallpaper

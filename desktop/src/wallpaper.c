@@ -18,6 +18,7 @@
 #define _GNU_SOURCE  // For strcasecmp and M_PI under strict C11
 
 #include "wallpaper.h"
+#include "moonrock_scale.h"  // MOONROCK_SCALE_MAX_OUTPUTS
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -32,9 +33,28 @@
 
 // ── Module state ────────────────────────────────────────────────────
 
-// The cached wallpaper surface, already scaled to screen size.
-// Created once during init and reused for every repaint.
-static cairo_surface_t *wallpaper_surface = NULL;
+// The unscaled source image, loaded once at init from disk. NULL if the
+// solid-color fallback is in effect (in which case wallpaper_paint just
+// paints the solid color directly).
+static cairo_surface_t *wallpaper_source = NULL;
+
+// Per-size cache of scaled wallpaper surfaces. With one output we hit the
+// first slot every paint; with two outputs at different sizes (e.g. eDP-1
+// 1920×1200 + DP-2 2560×1600) we end up with two cached entries. Lookup
+// is linear because the cache is bounded by output count.
+typedef struct {
+    int w;
+    int h;
+    cairo_surface_t *surface;
+} ScaledEntry;
+
+static ScaledEntry wallpaper_cache[MOONROCK_SCALE_MAX_OUTPUTS];
+static int         wallpaper_cache_count = 0;
+
+// Solid-color fallback parameters when no image loads. When this is true,
+// every paint just fills with the SL default blue rather than caching a
+// per-size surface (since solid-color "scaling" is free).
+static bool wallpaper_solid = false;
 
 // ── JPEG loading ────────────────────────────────────────────────────
 
@@ -184,25 +204,6 @@ static cairo_surface_t *load_image(const char *path)
     return NULL;
 }
 
-// ── Solid color fallback ────────────────────────────────────────────
-
-// Create a solid-color surface as a last resort.
-// #3A6EA5 is close to the default Snow Leopard blue gradient.
-static cairo_surface_t *create_solid_fallback(int w, int h)
-{
-    cairo_surface_t *surface = cairo_image_surface_create(
-        CAIRO_FORMAT_RGB24, w, h);
-    cairo_t *cr = cairo_create(surface);
-
-    // Snow Leopard blue: #3A6EA5 = RGB(58, 110, 165)
-    cairo_set_source_rgb(cr, 58.0 / 255.0, 110.0 / 255.0, 165.0 / 255.0);
-    cairo_paint(cr);
-
-    cairo_destroy(cr);
-    fprintf(stderr, "[wallpaper] Using solid fallback color #3A6EA5\n");
-    return surface;
-}
-
 // ── Aspect-fill scaling ─────────────────────────────────────────────
 
 // Scale the loaded image to fill the screen using "aspect-fill":
@@ -249,7 +250,7 @@ static cairo_surface_t *scale_to_fill(cairo_surface_t *src, int dst_w, int dst_h
 
 // ── Public API ──────────────────────────────────────────────────────
 
-bool wallpaper_init(const char *path, int screen_w, int screen_h)
+bool wallpaper_init(const char *path)
 {
     cairo_surface_t *raw = NULL;
 
@@ -291,41 +292,93 @@ bool wallpaper_init(const char *path, int screen_w, int screen_h)
 
     // 4. Solid color fallback if nothing else worked
     if (!raw) {
-        wallpaper_surface = create_solid_fallback(screen_w, screen_h);
+        wallpaper_solid = true;
+        fprintf(stderr, "[wallpaper] No image found — using solid #3A6EA5\n");
         return true;
     }
 
-    // Scale the loaded image to fill the screen
-    wallpaper_surface = scale_to_fill(raw, screen_w, screen_h);
+    // Keep the source at its native size; per-output scaled copies are
+    // produced lazily by wallpaper_paint and cached so paint stays cheap.
+    wallpaper_source = raw;
+    return true;
+}
 
-    // Free the original (unscaled) surface — we only keep the scaled copy
-    cairo_surface_destroy(raw);
+// Look up an existing scaled surface for (win_w × win_h), or build one.
+// Returns NULL on allocation failure (caller falls back to solid color).
+static cairo_surface_t *get_or_build_scaled(int win_w, int win_h)
+{
+    for (int i = 0; i < wallpaper_cache_count; i++) {
+        if (wallpaper_cache[i].w == win_w &&
+            wallpaper_cache[i].h == win_h) {
+            return wallpaper_cache[i].surface;
+        }
+    }
 
-    return (wallpaper_surface != NULL);
+    if (!wallpaper_source) return NULL;
+
+    cairo_surface_t *scaled = scale_to_fill(wallpaper_source, win_w, win_h);
+    if (!scaled) return NULL;
+
+    // If we run out of cache slots a hotplug-heavy session has produced
+    // more distinct sizes than we provisioned for; drop the oldest entry
+    // rather than leaking. In practice MOONROCK_SCALE_MAX_OUTPUTS bounds
+    // the steady-state size count.
+    if (wallpaper_cache_count >= MOONROCK_SCALE_MAX_OUTPUTS) {
+        cairo_surface_destroy(wallpaper_cache[0].surface);
+        for (int i = 1; i < wallpaper_cache_count; i++) {
+            wallpaper_cache[i - 1] = wallpaper_cache[i];
+        }
+        wallpaper_cache_count--;
+    }
+
+    wallpaper_cache[wallpaper_cache_count].w = win_w;
+    wallpaper_cache[wallpaper_cache_count].h = win_h;
+    wallpaper_cache[wallpaper_cache_count].surface = scaled;
+    wallpaper_cache_count++;
+
+    fprintf(stderr, "[wallpaper] Cached scaled surface: %dx%d (now %d entries)\n",
+            win_w, win_h, wallpaper_cache_count);
+    return scaled;
 }
 
 void wallpaper_paint(cairo_t *cr, int win_w, int win_h)
 {
-    (void)win_w;
-    (void)win_h;
+    if (wallpaper_solid) {
+        cairo_set_source_rgb(cr,
+            58.0 / 255.0, 110.0 / 255.0, 165.0 / 255.0);
+        cairo_paint(cr);
+        return;
+    }
 
-    if (!wallpaper_surface) return;
+    cairo_surface_t *surface = get_or_build_scaled(win_w, win_h);
+    if (!surface) {
+        cairo_set_source_rgb(cr,
+            58.0 / 255.0, 110.0 / 255.0, 165.0 / 255.0);
+        cairo_paint(cr);
+        return;
+    }
 
-    // Paint the wallpaper surface at (0, 0).
-    // Since it's already scaled to screen size, no transform is needed.
-    cairo_set_source_surface(cr, wallpaper_surface, 0, 0);
+    cairo_set_source_surface(cr, surface, 0, 0);
     cairo_paint(cr);
 }
 
-cairo_surface_t *wallpaper_get_surface(void)
+void wallpaper_invalidate_cache(void)
 {
-    return wallpaper_surface;
+    for (int i = 0; i < wallpaper_cache_count; i++) {
+        if (wallpaper_cache[i].surface) {
+            cairo_surface_destroy(wallpaper_cache[i].surface);
+            wallpaper_cache[i].surface = NULL;
+        }
+    }
+    wallpaper_cache_count = 0;
 }
 
 void wallpaper_shutdown(void)
 {
-    if (wallpaper_surface) {
-        cairo_surface_destroy(wallpaper_surface);
-        wallpaper_surface = NULL;
+    wallpaper_invalidate_cache();
+    if (wallpaper_source) {
+        cairo_surface_destroy(wallpaper_source);
+        wallpaper_source = NULL;
     }
+    wallpaper_solid = false;
 }
