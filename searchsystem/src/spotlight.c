@@ -686,13 +686,15 @@ void spotlight_run(Display *dpy) {
                 break;
 
             case FocusOut:
-                // The overlay lost focus — this happens when the user clicks
-                // on another window or the WM moves focus away. Dismiss the
-                // overlay so it doesn't linger invisibly in the background.
-                // NotifyGrab (detail=3) is fired when XGrabKeyboard activates,
-                // not an actual focus loss — skip those.
-                if (visible && ev.xfocus.detail != NotifyGrab
-                        && ev.xfocus.detail != NotifyPointerRoot) {
+                // Dismiss only on a real focus loss (the user clicked another
+                // window or the WM moved focus away). FocusOut events from our
+                // own XGrabKeyboard / XUngrabKeyboard arrive with mode set to
+                // NotifyGrab, NotifyUngrab, or NotifyWhileGrabbed; only
+                // mode == NotifyNormal is a genuine WM-driven focus change.
+                // (The earlier filter inspected ev.xfocus.detail, but NotifyGrab
+                // is a value of mode, not detail — so it never excluded the
+                // grab-induced events it was meant to.)
+                if (visible && ev.xfocus.mode == NotifyNormal) {
                     hide_overlay(dpy);
                 }
                 break;
