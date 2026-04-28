@@ -65,4 +65,10 @@ void spotlight_cleanup(Display *dpy);
 // exit cleanly on the next iteration.
 void spotlight_request_quit(void);
 
+// Called from a signal handler to ask the event loop to toggle the
+// overlay's visibility on its next iteration. inputsession sends
+// SIGUSR1 here when the user invokes the spotlight action through
+// any path other than the global Ctrl+Space hotkey.
+void spotlight_request_toggle(void);
+
 #endif // SPOTLIGHT_H

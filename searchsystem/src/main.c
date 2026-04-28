@@ -30,6 +30,14 @@ static void signal_handler(int sig) {
     spotlight_request_quit();
 }
 
+// SIGUSR1 is the "toggle overlay" signal — inputsession sends it
+// when the user fires the spotlight action by any path other than
+// the global Ctrl+Space hotkey (e.g. a remapped controller button).
+static void toggle_signal_handler(int sig) {
+    (void)sig;
+    spotlight_request_toggle();
+}
+
 // ──────────────────────────────────────────────
 // main
 // ──────────────────────────────────────────────
@@ -55,6 +63,13 @@ int main(void) {
 
     sigaction(SIGINT,  &sa, NULL);  // Ctrl+C
     sigaction(SIGTERM, &sa, NULL);  // kill <pid>
+
+    // SIGUSR1 = toggle overlay (inputsession's spotlight action path).
+    struct sigaction sa_toggle;
+    sa_toggle.sa_handler = toggle_signal_handler;
+    sa_toggle.sa_flags   = SA_RESTART;
+    sigemptyset(&sa_toggle.sa_mask);
+    sigaction(SIGUSR1, &sa_toggle, NULL);
 
     // --- Step 3: Initialise the overlay ---
     if (spotlight_init(dpy) != 0) {

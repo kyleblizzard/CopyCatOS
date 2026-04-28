@@ -70,6 +70,10 @@ static int visible = 0;
 // Flag set by the signal handler to request a clean exit.
 static volatile sig_atomic_t quit_flag = 0;
 
+// Flag set by a SIGUSR1 handler to ask the event loop to toggle
+// overlay visibility. Processed once per loop iteration.
+static volatile sig_atomic_t toggle_flag = 0;
+
 // X11 resources.
 static Window  overlay_win   = None;
 static int     screen_width  = 0;
@@ -85,6 +89,10 @@ static cairo_surface_t *surface = NULL;
 
 void spotlight_request_quit(void) {
     quit_flag = 1;
+}
+
+void spotlight_request_toggle(void) {
+    toggle_flag = 1;
 }
 
 // ──────────────────────────────────────────────
@@ -223,6 +231,22 @@ static void show_overlay(Display *dpy) {
                         "keyboard input may not work\n", grab_result);
     }
 
+    // Grab the pointer with owner_events=True so clicks on the overlay
+    // are still delivered normally to overlay_win, while clicks anywhere
+    // else are funneled here as ButtonPress events on overlay_win — that
+    // gives the event loop a chance to dismiss the overlay (real
+    // Spotlight behavior). If the grab fails we still proceed; outside-
+    // click dismiss just won't work that session.
+    int p_grab = XGrabPointer(dpy, overlay_win, True,
+                              ButtonPressMask | ButtonReleaseMask,
+                              GrabModeAsync, GrabModeAsync,
+                              None, None, CurrentTime);
+    if (p_grab != GrabSuccess) {
+        fprintf(stderr, "searchsystem: XGrabPointer failed (%d) — "
+                        "outside-click dismiss disabled this session\n",
+                        p_grab);
+    }
+
     // Also explicitly take input focus so that window managers and
     // other apps know where keyboard input is going.  PointerRoot
     // as the revert-to target means focus returns to the window
@@ -239,6 +263,7 @@ static void hide_overlay(Display *dpy) {
     visible = 0;
 
     XUngrabKeyboard(dpy, CurrentTime);
+    XUngrabPointer(dpy, CurrentTime);
     XUnmapWindow(dpy, overlay_win);
     XFlush(dpy);
 
@@ -537,11 +562,12 @@ int spotlight_init(Display *dpy) {
     // We want to start with a transparent background.
     attrs.background_pixel = 0;
 
-    // Request key press, exposure, and focus events.
-    // ButtonPressMask lets us detect clicks outside the overlay so
-    // we can dismiss it (real Spotlight closes on outside click).
-    attrs.event_mask = KeyPressMask | ExposureMask | StructureNotifyMask |
-                       FocusChangeMask;
+    // Request key press, exposure, and focus events. ButtonPressMask
+    // lets us detect clicks on the overlay itself; the active pointer
+    // grab in show_overlay funnels outside clicks here too so we can
+    // dismiss the overlay (real Spotlight closes on outside click).
+    attrs.event_mask = KeyPressMask | ButtonPressMask | ExposureMask |
+                       StructureNotifyMask | FocusChangeMask;
 
     // Don't inherit the parent's background — avoids flicker.
     attrs.border_pixel = 0;
@@ -591,6 +617,17 @@ void spotlight_run(Display *dpy) {
     int xfd = ConnectionNumber(dpy);
 
     while (!quit_flag) {
+        // ── Drain any deferred toggle requests from SIGUSR1 ──
+        // inputsession sends SIGUSR1 when the user fires the spotlight
+        // action through any path other than the global Ctrl+Space
+        // hotkey. Signal handlers can't safely call X functions, so the
+        // handler just sets toggle_flag and we service it here.
+        if (toggle_flag) {
+            toggle_flag = 0;
+            if (visible) hide_overlay(dpy);
+            else         show_overlay(dpy);
+        }
+
         // ── Process any queued X events ──
         while (XPending(dpy) > 0) {
             XEvent ev;
@@ -618,6 +655,27 @@ void spotlight_run(Display *dpy) {
                 }
                 break;
             }
+
+            case ButtonPress:
+                // With the pointer grabbed in show_overlay, ButtonPress
+                // arrives for both clicks on the overlay itself and clicks
+                // anywhere else. Coordinates are relative to overlay_win,
+                // so a click outside the visible content rect (the inner
+                // rectangle excluding shadow padding) means "user clicked
+                // outside Spotlight" — dismiss. A click inside is on
+                // chrome that we don't yet wire for mouse interaction;
+                // ignore it so the overlay stays open.
+                if (visible) {
+                    int rel_x = ev.xbutton.x;
+                    int rel_y = ev.xbutton.y;
+                    int win_w = calc_window_width();
+                    int win_h = calc_window_height(result_count);
+                    bool inside =
+                        rel_x >= SHADOW_PAD && rel_x < win_w - SHADOW_PAD &&
+                        rel_y >= SHADOW_PAD && rel_y < win_h - SHADOW_PAD;
+                    if (!inside) hide_overlay(dpy);
+                }
+                break;
 
             case Expose:
                 // The window was uncovered or needs repainting.
