@@ -637,6 +637,23 @@ mb_runtime_version = executable(
 test('runtime-version', mb_runtime_version, timeout: 5)
 
 # ---------------------------------------------------------------------
+# mb-icon-bucket — hicolor bucket selection from PNG IHDR
+# ---------------------------------------------------------------------
+#
+# Header-only static-inline helpers in runtime/icon_bucket.h are
+# shared by moonbase-launcher (which reads an AppIcon.png and lands
+# it in hicolor/<NxN>/apps) and this test. The test exercises only
+# the pure parsing + bucket-selection logic — no filesystem, no I/O.
+# Doesn't link libmoonbase: the helpers are libc-only.
+mb_icon_bucket = executable(
+  'mb-icon-bucket',
+  'tests/icon-bucket.c',
+  install: false,
+)
+
+test('icon-bucket', mb_icon_bucket, timeout: 5)
+
+# ---------------------------------------------------------------------
 # mb-hello-handshake — Phase C slice 1 end-to-end test
 # ---------------------------------------------------------------------
 #

@@ -29,12 +29,14 @@
 
 #include "bundle/appimg.h"
 #include "bundle/bundle.h"
+#include "icon_bucket.h"
 
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -639,13 +641,16 @@ static bool xdg_already_registered(const char *bundle_id) {
 //      once at first-launch time) so a relative argv survives the user
 //      dragging the file. The mount path would be wrong here — it's
 //      ephemeral (per-pid) and gone before the host DE indexes it.
-//   2. ~/.local/share/icons/hicolor/128x128/apps/copycatos-<bundle_id>.png
+//   2. ~/.local/share/icons/hicolor/<NxN>/apps/copycatos-<bundle_id>.png
 //      Source is <bundle_root>/Contents/Resources/<icon_relpath>. For a
 //      single-file .app `bundle_root` is the squashfuse mount path the
 //      caller arranges; for a .appdev it's the bundle dir directly.
-//      v1 always installs at 128x128 — a future slice can read PNG IHDR
-//      to land in the correct hicolor size dir. Missing icon is not an
-//      error; the host DE falls back to its generic application glyph.
+//      <NxN> comes from reading the PNG's IHDR and rounding the shorter
+//      side down to the nearest standard hicolor bucket — so a 512×512
+//      AppIcon.png lands in 512x512/apps, a 256 in 256x256/apps. If the
+//      file isn't a parseable PNG we fall back to 128x128 (the historical
+//      always-on bucket). Missing icon is not an error; the host DE
+//      falls back to its generic application glyph.
 //
 // Best-effort cache refresh runs `update-desktop-database` and
 // `gtk-update-icon-cache` so the entry appears immediately. Either can
@@ -720,9 +725,9 @@ static bool xdg_register(const char *bundle_path,
         return false;
     }
 
-    // Icon copy — best-effort. v1 lands at 128x128/apps regardless of
-    // the source PNG's actual dimensions; a future slice can read IHDR
-    // and pick the correct hicolor bucket.
+    // Icon copy — best-effort. Read the PNG IHDR and pick the largest
+    // standard hicolor bucket ≤ the icon's shorter side; fall back to
+    // 128 if the file isn't a parseable PNG.
     char icon_src[PATH_MAX];
     n = snprintf(icon_src, sizeof icon_src,
                  "%s/Contents/Resources/%s",
@@ -730,9 +735,24 @@ static bool xdg_register(const char *bundle_path,
     if (n > 0 && (size_t)n < sizeof icon_src) {
         struct stat ist;
         if (stat(icon_src, &ist) == 0 && S_ISREG(ist.st_mode)) {
+            int bucket = 128;
+            int hfd = open(icon_src, O_RDONLY);
+            if (hfd >= 0) {
+                uint8_t header[24];
+                ssize_t hn = read(hfd, header, sizeof header);
+                close(hfd);
+                if (hn == (ssize_t)sizeof header) {
+                    uint32_t iw = 0, ih = 0;
+                    if (mb_png_dims_from_buf(header, &iw, &ih) == 0) {
+                        uint32_t shorter = (iw < ih) ? iw : ih;
+                        bucket = mb_hicolor_bucket_for(shorter);
+                    }
+                }
+            }
             char icon_dir[PATH_MAX];
             int dn = snprintf(icon_dir, sizeof icon_dir,
-                              "%s/icons/hicolor/128x128/apps", data_home);
+                              "%s/icons/hicolor/%dx%d/apps",
+                              data_home, bucket, bucket);
             if (dn > 0 && (size_t)dn < sizeof icon_dir
                 && mkdir_p(icon_dir, 0755) == 0) {
                 char icon_dst[PATH_MAX];
