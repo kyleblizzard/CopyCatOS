@@ -1057,14 +1057,20 @@ bool mb_host_handle_button_release(Window win, int x, int y,
     // UP — and so a release with no matching DOWN (e.g. a chrome press
     // that didn't hit a traffic light) is silently dropped instead of
     // synthesizing a phantom UP frame.
+    // Only claim the release if it matches an open content press on this
+    // surface. Returning false on a non-match lets events.c fall through
+    // to the legacy drag/resize cleanup, which would otherwise be eaten
+    // (e.g. a title-bar drag that began with owner_events=True ends with
+    // the release reported on a moonbase input_proxy under the cursor).
     uint32_t mb_btn = x_button_to_mb(button);
     if (mb_btn != 0 && surf->pointer_btn_down == (int)mb_btn) {
         send_pointer_frame(surf, MB_IPC_POINTER_UP, x, y, mb_btn,
                            mb_modifiers);
         surf->pointer_btn_down = 0;
         if (g_dpy) XUngrabPointer(g_dpy, CurrentTime);
+        return true;
     }
-    return true;
+    return false;
 }
 
 bool mb_host_handle_motion(Window win, int x, int y,
