@@ -951,13 +951,23 @@ bool mb_host_handle_button_press(Window win, int x, int y,
             // Press feedback — set pressed_button, show hover glyphs on
             // all three, re-raster chrome. Grab the pointer so we still
             // get the ButtonRelease even if the user drags off the
-            // window before letting go (matches decor.c's grab).
+            // window before letting go.
             surf->pressed_button = btn;
             surf->buttons_hover  = true;
             surf->chrome_stale   = true;
 
+            // owner_events MUST be False for the same reason as the
+            // content-rect grab below: with True, X delivers the
+            // release to whatever moonrock-owned window the pointer is
+            // over (frame, dock, root, menubar) when those select
+            // ButtonReleaseMask. The release handler returns false on
+            // non-proxy windows BEFORE reaching the XUngrabPointer at
+            // the bottom of the chrome path, so the grab leaks and the
+            // whole session funnels into this surface. False forces
+            // every grabbed event to input_proxy, guaranteeing the
+            // matching UP unwinds the grab.
             if (g_dpy && surf->input_proxy) {
-                XGrabPointer(g_dpy, surf->input_proxy, True,
+                XGrabPointer(g_dpy, surf->input_proxy, False,
                              PointerMotionMask | ButtonReleaseMask |
                              LeaveWindowMask,
                              GrabModeAsync, GrabModeAsync,
