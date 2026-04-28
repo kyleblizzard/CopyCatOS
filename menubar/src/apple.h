@@ -13,8 +13,8 @@
 //
 // If the PNG files are missing, a simple fallback glyph is drawn instead.
 
-#ifndef AURA_APPLE_H
-#define AURA_APPLE_H
+#ifndef MENUBAR_APPLE_H
+#define MENUBAR_APPLE_H
 
 #include <cairo/cairo.h>
 #include "menubar.h"
@@ -59,4 +59,4 @@ bool apple_handle_event(MenuBar *mb, XEvent *ev, bool *should_dismiss);
 // Free loaded PNG surfaces and other resources.
 void apple_cleanup(void);
 
-#endif // AURA_APPLE_H
+#endif // MENUBAR_APPLE_H

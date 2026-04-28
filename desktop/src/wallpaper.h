@@ -10,8 +10,8 @@
 // natively. The JPEG pixel data (RGB) gets converted to Cairo's BGRX
 // format (CAIRO_FORMAT_RGB24 = 0xXXRRGGBB in native byte order).
 
-#ifndef AURA_WALLPAPER_H
-#define AURA_WALLPAPER_H
+#ifndef DESKTOP_WALLPAPER_H
+#define DESKTOP_WALLPAPER_H
 
 #include <X11/Xlib.h>
 #include <cairo/cairo.h>
@@ -46,4 +46,4 @@ void wallpaper_invalidate_cache(void);
 // Free the cached wallpaper surface and any related resources.
 void wallpaper_shutdown(void);
 
-#endif // AURA_WALLPAPER_H
+#endif // DESKTOP_WALLPAPER_H

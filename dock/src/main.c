@@ -95,11 +95,11 @@ int main(int argc, char *argv[])
     // causing flickering, double redraws, and duplicate log messages.
     int lock_fd = acquire_instance_lock();
     if (lock_fd < 0) {
-        fprintf(stderr, "AuraDock: another instance is already running.\n");
+        fprintf(stderr, "Dock: another instance is already running.\n");
         return EXIT_FAILURE;
     }
 
-    printf("AuraDock v0.1.0 starting...\n");
+    printf("Dock v0.1.0 starting...\n");
 
     // Allocate the dock state on the stack. This struct holds everything:
     // X11 handles, Cairo surfaces, dock items, mouse state, etc.
@@ -134,6 +134,6 @@ int main(int argc, char *argv[])
         close(lock_fd);
     }
 
-    printf("AuraDock exited cleanly.\n");
+    printf("Dock exited cleanly.\n");
     return EXIT_SUCCESS;
 }

@@ -11,8 +11,8 @@
 // It does NOT use Qt — it creates its own window, and moonrock frames
 // it with Snow Leopard title bar chrome automatically.
 
-#ifndef AURA_FINDER_H
-#define AURA_FINDER_H
+#ifndef FILEVIEWER_FINDER_H
+#define FILEVIEWER_FINDER_H
 
 #include <X11/Xlib.h>
 #include <cairo/cairo.h>
@@ -96,4 +96,4 @@ void finder_paint(FinderState *fs);
 // Updates fs->path and refreshes the content area.
 void finder_navigate(FinderState *fs, const char *new_path);
 
-#endif // AURA_FINDER_H
+#endif // FILEVIEWER_FINDER_H

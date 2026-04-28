@@ -23,8 +23,8 @@
 // Column view (VIEW_COLUMNS):
 //   - Reserved for future implementation
 
-#ifndef AURA_CONTENT_H
-#define AURA_CONTENT_H
+#ifndef FILEVIEWER_CONTENT_H
+#define FILEVIEWER_CONTENT_H
 
 #include "finder.h"
 
@@ -121,4 +121,4 @@ void content_set_view_mode(ViewMode mode);
 // Free all loaded file resources (icon surfaces, etc.).
 void content_shutdown(void);
 
-#endif // AURA_CONTENT_H
+#endif // FILEVIEWER_CONTENT_H

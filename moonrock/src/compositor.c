@@ -542,7 +542,7 @@ void compositor_set_input_shape(CCWM *wm, Client *c)
     // Clean up the region object — X server has its own copy now
     XFixesDestroyRegion(wm->dpy, region);
 
-    if (getenv("AURA_DEBUG")) {
+    if (getenv("MOONROCK_DEBUG")) {
         fprintf(stderr, "[moonrock] Set input shape for '%s': "
                 "clickable at (%d,%d) %dx%d within frame\n",
                 c->title, rect.x, rect.y, rect.width, rect.height);
@@ -586,7 +586,7 @@ void compositor_damage_notify(CCWM *wm, XEvent *e)
         // This will re-render the shadow and title bar.
         decor_paint(wm, c);
 
-        if (getenv("AURA_DEBUG")) {
+        if (getenv("MOONROCK_DEBUG")) {
             fprintf(stderr, "[moonrock] Damage repaint for '%s'\n", c->title);
         }
     }

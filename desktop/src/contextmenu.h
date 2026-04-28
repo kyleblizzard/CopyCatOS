@@ -17,8 +17,8 @@
 // Each menu function runs its own mini event loop until the user selects
 // an item or clicks outside. The caller just checks the return value.
 
-#ifndef AURA_CONTEXTMENU_H
-#define AURA_CONTEXTMENU_H
+#ifndef DESKTOP_CONTEXTMENU_H
+#define DESKTOP_CONTEXTMENU_H
 
 #include <X11/Xlib.h>
 #include <stdbool.h>
@@ -59,4 +59,4 @@ int contextmenu_show_icon(Display *dpy, Window root,
                           int screen_w, int screen_h,
                           DesktopIcon *icon);
 
-#endif // AURA_CONTEXTMENU_H
+#endif // DESKTOP_CONTEXTMENU_H

@@ -15,8 +15,8 @@
 // /sys/class/power_supply/. Both are polled periodically to avoid
 // hammering the system with constant reads.
 
-#ifndef AURA_SYSTRAY_H
-#define AURA_SYSTRAY_H
+#ifndef MENUBAR_SYSTRAY_H
+#define MENUBAR_SYSTRAY_H
 
 #include <stdbool.h>
 #include <cairo/cairo.h>
@@ -46,4 +46,4 @@ bool systray_hit_spotlight(const MenuBarPane *pane, int mx, int my);
 // Clean up any resources.
 void systray_cleanup(void);
 
-#endif // AURA_SYSTRAY_H
+#endif // MENUBAR_SYSTRAY_H

@@ -2,8 +2,8 @@
 
 // CopyCatOS Window Manager — Frame management and decoration rendering
 
-#ifndef AURA_FRAME_H
-#define AURA_FRAME_H
+#ifndef MOONROCK_FRAME_H
+#define MOONROCK_FRAME_H
 
 #include "wm.h"
 
@@ -19,4 +19,4 @@ void frame_existing_windows(CCWM *wm);
 // Redraw the decoration (title bar + border) on a frame
 void frame_redraw_decor(CCWM *wm, Client *c);
 
-#endif // AURA_FRAME_H
+#endif // MOONROCK_FRAME_H

@@ -4,8 +4,8 @@
 // Allows the user to grab any edge or corner of a window frame
 // and drag to resize it. Corners take priority over edges.
 
-#ifndef AURA_RESIZE_H
-#define AURA_RESIZE_H
+#ifndef MOONROCK_RESIZE_H
+#define MOONROCK_RESIZE_H
 
 #include "wm.h"
 
@@ -66,4 +66,4 @@ unsigned int resize_get_cursor(ResizeDir dir);
 // cursor is over the interior or title bar.
 void resize_update_cursor(CCWM *wm, Client *c, int frame_x, int frame_y);
 
-#endif // AURA_RESIZE_H
+#endif // MOONROCK_RESIZE_H

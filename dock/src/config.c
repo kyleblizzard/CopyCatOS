@@ -524,7 +524,7 @@ bool config_save(DockState *state)
     }
 
     // Write a header comment so users know what this file is
-    fprintf(fp, "# AuraDock configuration — auto-generated\n");
+    fprintf(fp, "# Dock configuration — auto-generated\n");
     fprintf(fp, "# Format: type|name|exec_path|icon_name|process_name"
                 "|separator_after\n");
     fprintf(fp, "# type: \"app\", \"folder\", or \"spacer\"\n");

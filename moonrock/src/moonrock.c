@@ -1190,7 +1190,7 @@ void mr_window_mapped(CCWM *wm, Client *c)
 
     mr.window_count++;
 
-    if (getenv("AURA_DEBUG")) {
+    if (getenv("MOONROCK_DEBUG")) {
         fprintf(stderr, "[moonrock] Mapped window 0x%lx (%dx%d at %d,%d, "
                 "alpha=%d)\n", c->frame, wt->w, wt->h, wt->x, wt->y,
                 wt->has_alpha);
@@ -1216,7 +1216,7 @@ void mr_window_unmapped(CCWM *wm, Client *c)
             }
             mr.window_count--;
 
-            if (getenv("AURA_DEBUG")) {
+            if (getenv("MOONROCK_DEBUG")) {
                 fprintf(stderr, "[moonrock] Unmapped window 0x%lx\n", c->frame);
             }
             return;
@@ -1399,7 +1399,7 @@ static void sync_tracked_windows(CCWM *wm)
         seen[mr.window_count] = true;
         mr.window_count++;
 
-        if (getenv("AURA_DEBUG")) {
+        if (getenv("MOONROCK_DEBUG")) {
             fprintf(stderr, "[moonrock] Auto-tracked window 0x%lx (%dx%d at %d,%d%s)\n",
                     children[i], wa.width, wa.height, wa.x, wa.y,
                     wa.override_redirect ? " override-redirect" : "");
@@ -1410,7 +1410,7 @@ static void sync_tracked_windows(CCWM *wm)
     // Iterate backwards so removals don't shift indices we haven't checked yet.
     for (int i = mr.window_count - 1; i >= 0; i--) {
         if (!seen[i]) {
-            if (getenv("AURA_DEBUG")) {
+            if (getenv("MOONROCK_DEBUG")) {
                 fprintf(stderr, "[moonrock] Removing stale window 0x%lx\n",
                         mr.windows[i].xwin);
             }
@@ -2142,7 +2142,7 @@ void mr_set_input_shape(CCWM *wm, Client *c)
     // Clean up — the X server made its own copy of the region
     XFixesDestroyRegion(wm->dpy, region);
 
-    if (getenv("AURA_DEBUG")) {
+    if (getenv("MOONROCK_DEBUG")) {
         fprintf(stderr, "[moonrock] Set input shape for '%s': "
                 "clickable at (%d,%d) %dx%d\n",
                 c->title, rect.x, rect.y, rect.width, rect.height);

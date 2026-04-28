@@ -2,8 +2,8 @@
 
 // CopyCatOS Window Manager — Keyboard input handling
 
-#ifndef AURA_INPUT_H
-#define AURA_INPUT_H
+#ifndef MOONROCK_INPUT_H
+#define MOONROCK_INPUT_H
 
 #include "wm.h"
 
@@ -13,4 +13,4 @@ void input_setup_grabs(CCWM *wm);
 // Handle a key press event
 void input_handle_key(CCWM *wm, XKeyEvent *e);
 
-#endif // AURA_INPUT_H
+#endif // MOONROCK_INPUT_H

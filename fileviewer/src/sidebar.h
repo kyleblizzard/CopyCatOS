@@ -25,8 +25,8 @@
 //   - Selected item: gradient #5A96C8 → #386C9D with white text
 //   - 1px separator line on the right edge (#A9A9A9)
 
-#ifndef AURA_SIDEBAR_H
-#define AURA_SIDEBAR_H
+#ifndef FILEVIEWER_SIDEBAR_H
+#define FILEVIEWER_SIDEBAR_H
 
 #include "finder.h"
 
@@ -48,4 +48,4 @@ bool sidebar_handle_click(FinderState *fs, int x, int y);
 // Free any resources allocated by the sidebar (icon surfaces, etc.).
 void sidebar_shutdown(void);
 
-#endif // AURA_SIDEBAR_H
+#endif // FILEVIEWER_SIDEBAR_H

@@ -12,8 +12,8 @@
 // The toolbar has a multi-stop gradient background measured from a real
 // Snow Leopard Finder: 191 (top) → 154 (separator) → 170→168 (bottom).
 
-#ifndef AURA_TOOLBAR_H
-#define AURA_TOOLBAR_H
+#ifndef FILEVIEWER_TOOLBAR_H
+#define FILEVIEWER_TOOLBAR_H
 
 #include "finder.h"
 
@@ -31,4 +31,4 @@ void toolbar_paint(FinderState *fs);
 // Returns true if the click was consumed (e.g., hit a button).
 bool toolbar_handle_click(FinderState *fs, int x, int y);
 
-#endif // AURA_TOOLBAR_H
+#endif // FILEVIEWER_TOOLBAR_H

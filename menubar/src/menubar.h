@@ -17,8 +17,8 @@
 // changes — that's how it knows which application is in the foreground
 // and which menus to show.
 
-#ifndef AURA_MENUBAR_H
-#define AURA_MENUBAR_H
+#ifndef MENUBAR_H
+#define MENUBAR_H
 
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
@@ -292,4 +292,4 @@ MenuBarPane *mb_pane_for_point(MenuBar *mb, int rx, int ry);
 // calls this to pull the single primary pane.
 MenuBarPane *mb_primary_pane(MenuBar *mb);
 
-#endif // AURA_MENUBAR_H
+#endif // MENUBAR_H

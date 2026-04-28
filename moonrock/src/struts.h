@@ -5,8 +5,8 @@
 // and menu bars can reserve edges of the screen. The "work area" is
 // the remaining usable rectangle after all struts are subtracted.
 
-#ifndef AURA_STRUTS_H
-#define AURA_STRUTS_H
+#ifndef MOONROCK_STRUTS_H
+#define MOONROCK_STRUTS_H
 
 #include "wm.h"
 
@@ -59,4 +59,4 @@ void struts_register_geometry_hook(CCWM *wm);
 //   - On left/right, at least 50 px of the window must stay visible.
 void struts_clamp_to_workarea(CCWM *wm, int *x, int *y, int w, int h);
 
-#endif // AURA_STRUTS_H
+#endif // MOONROCK_STRUTS_H

@@ -10,8 +10,8 @@
 // Pango is a text layout engine that handles fonts and Unicode properly.
 // We use Pango through Cairo's integration layer (PangoCairo).
 
-#ifndef AURA_RENDER_H
-#define AURA_RENDER_H
+#ifndef MENUBAR_RENDER_H
+#define MENUBAR_RENDER_H
 
 #include <cairo/cairo.h>
 #include <stdbool.h>
@@ -60,4 +60,4 @@ void render_hover_highlight(cairo_t *cr, int x, int y, int w, int h);
 // Free any resources allocated by render_init (background texture, etc.)
 void render_cleanup(void);
 
-#endif // AURA_RENDER_H
+#endif // MENUBAR_RENDER_H

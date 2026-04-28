@@ -7,8 +7,8 @@
 // main event loop. Other modules (wallpaper, icons, context menu)
 // are initialized and driven from here.
 
-#ifndef AURA_DESKTOP_H
-#define AURA_DESKTOP_H
+#ifndef DESKTOP_H
+#define DESKTOP_H
 
 #include <X11/Xlib.h>
 #include <stdbool.h>
@@ -80,4 +80,4 @@ void desktop_run(Desktop *d);
 // Clean up all resources: destroy windows, free surfaces, close display.
 void desktop_shutdown(Desktop *d);
 
-#endif // AURA_DESKTOP_H
+#endif // DESKTOP_H

@@ -157,7 +157,7 @@ void frame_window(CCWM *wm, Window client)
         mr_window_mapped(wm, c);
     }
 
-    if (getenv("AURA_DEBUG")) {
+    if (getenv("MOONROCK_DEBUG")) {
         fprintf(stderr, "[moonrock] Framed window '%s' client=0x%lx frame=0x%lx %dx%d+%d+%d\n",
                 c->title, client, frame, c->w, c->h, c->x, c->y);
     }
@@ -183,7 +183,7 @@ void unframe_window(CCWM *wm, Client *c)
     XDestroyWindow(wm->dpy, c->frame);
     c->frame = 0;
 
-    if (getenv("AURA_DEBUG")) {
+    if (getenv("MOONROCK_DEBUG")) {
         fprintf(stderr, "[moonrock] Unframed window '%s' client=0x%lx\n",
                 c->title, c->client);
     }

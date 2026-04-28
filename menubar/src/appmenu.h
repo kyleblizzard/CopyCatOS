@@ -23,8 +23,8 @@
 // bounded depth stack so submenus can drill into the DBusMenu tree
 // (Qt AppMenu builds File → Recent Files → individual file lists).
 
-#ifndef AURA_APPMENU_H
-#define AURA_APPMENU_H
+#ifndef MENUBAR_APPMENU_H
+#define MENUBAR_APPMENU_H
 
 #include "menubar.h"
 #include "menu_model.h"
@@ -125,4 +125,4 @@ bool appmenu_pop_submenu_level(MenuBar *mb);
 // Free the built-in MenuNode trees and drop any lingering DbusMenuClient.
 void appmenu_cleanup(MenuBar *mb);
 
-#endif // AURA_APPMENU_H
+#endif // MENUBAR_APPMENU_H

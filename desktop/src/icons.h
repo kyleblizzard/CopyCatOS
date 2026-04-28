@@ -12,8 +12,8 @@
 //   - inotify-based auto-refresh when ~/Desktop contents change
 //   - Icon labels with white text and drop shadow
 
-#ifndef AURA_ICONS_H
-#define AURA_ICONS_H
+#ifndef DESKTOP_ICONS_H
+#define DESKTOP_ICONS_H
 
 #include <X11/Xlib.h>
 #include <cairo/cairo.h>
@@ -108,4 +108,4 @@ void icons_rescale(void);
 // Free all icon resources.
 void icons_shutdown(void);
 
-#endif // AURA_ICONS_H
+#endif // DESKTOP_ICONS_H

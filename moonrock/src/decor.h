@@ -4,8 +4,8 @@
 // Uses Cairo to paint the exact title bar gradient from the reference photos,
 // traffic light buttons from real PNG assets, and centered title text.
 
-#ifndef AURA_DECOR_H
-#define AURA_DECOR_H
+#ifndef MOONROCK_DECOR_H
+#define MOONROCK_DECOR_H
 
 #include "wm.h"
 
@@ -18,4 +18,4 @@ void decor_paint(CCWM *wm, Client *c);
 // Cleanup
 void decor_shutdown(void);
 
-#endif // AURA_DECOR_H
+#endif // MOONROCK_DECOR_H

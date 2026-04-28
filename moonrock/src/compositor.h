@@ -15,8 +15,8 @@
 //   - decor_paint() calls compositor_paint_shadow() first, then draws
 //     the title bar and borders on top.
 
-#ifndef AURA_COMPOSITOR_H
-#define AURA_COMPOSITOR_H
+#ifndef MOONROCK_COMPOSITOR_H
+#define MOONROCK_COMPOSITOR_H
 
 #include "wm.h"
 #include <cairo/cairo.h>
@@ -98,4 +98,4 @@ void compositor_damage_notify(CCWM *wm, XEvent *e);
 // cached surfaces. Call at WM shutdown.
 void compositor_shutdown(CCWM *wm);
 
-#endif // AURA_COMPOSITOR_H
+#endif // MOONROCK_COMPOSITOR_H

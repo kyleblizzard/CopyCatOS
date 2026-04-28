@@ -2,8 +2,8 @@
 
 // CopyCatOS Window Manager — Asset loading (real Snow Leopard PNGs)
 
-#ifndef AURA_ASSETS_H
-#define AURA_ASSETS_H
+#ifndef MOONROCK_ASSETS_H
+#define MOONROCK_ASSETS_H
 
 #include "wm.h"
 #include <cairo/cairo.h>
@@ -19,4 +19,4 @@ cairo_surface_t *assets_get_zoom_button(void);
 // Cleanup
 void assets_shutdown(void);
 
-#endif // AURA_ASSETS_H
+#endif // MOONROCK_ASSETS_H

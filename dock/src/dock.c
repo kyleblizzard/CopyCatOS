@@ -371,7 +371,7 @@ bool dock_init(DockState *state)
     XSetWindowBackgroundPixmap(state->dpy, state->win, None);
 
     // Set the window title (shows up in window lists and debugging tools)
-    XStoreName(state->dpy, state->win, "AuraDock");
+    XStoreName(state->dpy, state->win, "Dock");
 
     // Tell the WM this is a dock window
     set_window_type_dock(state);

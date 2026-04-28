@@ -55,7 +55,7 @@ void decor_paint(CCWM *wm, Client *c)
 
     // Diagnostic: surface c->focused so we can tell whether a "grey-dots
     // even when foreground" report is a focus-tracking bug or an asset bug.
-    if (getenv("AURA_DEBUG")) {
+    if (getenv("MOONROCK_DEBUG")) {
         fprintf(stderr, "[moonrock decor] paint '%s' focused=%d wm_focused=%d\n",
                 c->title, (int)c->focused,
                 (int)(wm->focused == c));

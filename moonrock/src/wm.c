@@ -21,7 +21,7 @@ static int x_error_handler(Display *dpy, XErrorEvent *e)
         e->error_code == BadDrawable ||
         e->error_code == BadMatch ||
         e->error_code == BadAccess) {
-        if (getenv("AURA_DEBUG")) {
+        if (getenv("MOONROCK_DEBUG")) {
             char buf[256];
             XGetErrorText(dpy, e->error_code, buf, sizeof(buf));
             fprintf(stderr, "[moonrock] X error (ignored): %s (request %d)\n",

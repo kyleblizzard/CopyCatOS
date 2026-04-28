@@ -457,7 +457,7 @@ Client *ewmh_handle_pong(CCWM *wm, XClientMessageEvent *cm)
             // restores the default cursor (inherited from root)
             XUndefineCursor(wm->dpy, c->frame);
         }
-        if (getenv("AURA_DEBUG")) {
+        if (getenv("MOONROCK_DEBUG")) {
             fprintf(stderr, "[moonrock] '%s' is responsive again\n", c->title);
         }
     }
