@@ -971,6 +971,14 @@ bool mb_host_handle_button_press(Window win, int x, int y,
     // MB_BUTTON_* is held so the matching UP fires for the same button
     // even after a drag off the proxy. Symmetric XGrabPointer keeps
     // motion + release flowing while the press is open.
+    //
+    // owner_events MUST be False: with True, X delivers the release to
+    // whatever moonrock-owned window the pointer is over (frame, dock,
+    // root, menubar) when those select ButtonReleaseMask, and our
+    // release path only ungrabs when the window matches input_proxy —
+    // so the grab leaks and every subsequent click in the session
+    // routes here. False forces all grabbed events to input_proxy,
+    // guaranteeing the matching UP unwinds the grab.
     uint32_t mb_btn = x_button_to_mb(button);
     if (mb_btn == 0) return true;
 
@@ -978,7 +986,7 @@ bool mb_host_handle_button_press(Window win, int x, int y,
     send_pointer_frame(surf, MB_IPC_POINTER_DOWN, x, y, mb_btn, mb_modifiers);
 
     if (g_dpy && surf->input_proxy) {
-        XGrabPointer(g_dpy, surf->input_proxy, True,
+        XGrabPointer(g_dpy, surf->input_proxy, False,
                      PointerMotionMask | ButtonReleaseMask |
                      LeaveWindowMask,
                      GrabModeAsync, GrabModeAsync,
