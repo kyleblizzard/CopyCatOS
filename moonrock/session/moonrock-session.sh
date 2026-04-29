@@ -142,11 +142,21 @@ GTKEOF
 mkdir -p ~/.config/gtk-4.0
 cp ~/.config/gtk-3.0/settings.ini ~/.config/gtk-4.0/settings.ini
 
+# ─── Track every shell-component PID we spawn ───
+# We don't trust `jobs -p` for cleanup — in a non-interactive bash script
+# with job control off, jobs -p has missed children that get re-parented
+# (e.g. searchsystem when something else re-spawns it via setsid), and a
+# missed child blocks the final `wait` forever, leaving the user staring
+# at a black screen after Log Out. An explicit array of every PID we
+# launched is the only reliable target list for shutdown.
+SHELL_PIDS=()
+
 # ─── Start the window manager first ───
 # The WM must claim SubstructureRedirect before any other windows appear
 WM=${MOONROCK_WM:-moonrock}
 $WM &
 WM_PID=$!
+SHELL_PIDS+=($WM_PID)
 sleep 0.5
 
 # ─── Compositor for ARGB transparency ───
@@ -158,26 +168,41 @@ sleep 0.3
 # ─── Desktop surface (wallpaper + icons) ───
 # Must come before dock/menubar so it sits at the bottom of the stack
 desktop &
+SHELL_PIDS+=($!)
 sleep 0.2
 
 # ─── Shell components (can start in parallel) ───
-menubar &
-dock &
-searchsystem &
+menubar &        SHELL_PIDS+=($!)
+dock &           SHELL_PIDS+=($!)
+searchsystem &   SHELL_PIDS+=($!)
 
 # ─── Input session bridge (talks to inputd, dispatches X11 actions) ───
-inputsession &
+inputsession &   SHELL_PIDS+=($!)
 
 # ─── Framework host (multi-language app runtime) ───
-moonbase &
+moonbase &       SHELL_PIDS+=($!)
 
 # ─── Default file viewer window ───
 fileviewer ~ &
+SHELL_PIDS+=($!)
 
 # ─── Wait for the WM to exit ───
 # When the WM process ends (user logged out or crashed), clean up everything
 wait $WM_PID
 
-# Kill all shell components on exit
-kill $(jobs -p) 2>/dev/null
-wait 2>/dev/null
+# ─── Cleanup — guaranteed exit so SDDM gets the session back ───
+# Send SIGTERM to every PID we launched. Then wait up to ~3 seconds
+# for graceful exits, polling every 0.5s. Anything still alive after
+# that gets SIGKILL. Finally `exit 0` so this script always returns
+# control to the display manager — never block on a misbehaving child.
+kill "${SHELL_PIDS[@]}" 2>/dev/null
+for i in 1 2 3 4 5 6; do
+    alive=0
+    for p in "${SHELL_PIDS[@]}"; do
+        kill -0 "$p" 2>/dev/null && alive=1
+    done
+    [ $alive -eq 0 ] && break
+    sleep 0.5
+done
+kill -9 "${SHELL_PIDS[@]}" 2>/dev/null
+exit 0
