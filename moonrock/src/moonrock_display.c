@@ -369,6 +369,14 @@ static void load_scale_overrides_once(void)
         uint8_t hash[8];
         if (!hex_to_hash(p, hash)) continue;
 
+        // Reject the all-zero EDID hash. Pre-#136 versions could persist
+        // an override under it when an output without a readable EDID
+        // hit the setter. The all-zero key is a footgun: every future
+        // output without EDID would silently inherit it.
+        bool zero = true;
+        for (int i = 0; i < 8; i++) if (hash[i]) { zero = false; break; }
+        if (zero) continue;
+
         float val = strtof(p + 17, NULL);
         if (val <= 0.0f || val > 4.0f) continue; // Reject nonsense.
 
@@ -2721,6 +2729,23 @@ bool display_set_scale_for_output(MROutput *output, float scale)
         fprintf(stderr,
                 "[display] Rejecting out-of-range scale %.3f for %s\n",
                 (double)scale, output->name);
+        return false;
+    }
+
+    // Without a readable EDID hash there's no key to persist against —
+    // every output without EDID would collide on the all-zero key and
+    // shadow each other's overrides on reconnect. Mirrors the guard in
+    // display_set_interface_scale_for_output. Reproduced #136: a stale
+    // 0000000000000000=1.500 line in display-scales.conf came from a
+    // pre-guard call path that hit a connector with no EDID.
+    bool has_edid = false;
+    for (int i = 0; i < 8; i++) {
+        if (output->edid_hash[i] != 0) { has_edid = true; break; }
+    }
+    if (!has_edid && !clear) {
+        fprintf(stderr,
+                "[display] Scale set for '%s' rejected: no EDID hash\n",
+                output->name);
         return false;
     }
 
