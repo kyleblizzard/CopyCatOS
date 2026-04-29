@@ -71,11 +71,40 @@ int main(int argc, char *argv[])
     // Usage: systemcontrol --pane controller
     // If no --pane is given, the icon grid is shown (default behavior).
     const char *open_pane = NULL;
+    bool publish_atoms_only = false;
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--pane") == 0 && i + 1 < argc) {
             open_pane = argv[i + 1];
             i++;  // Skip the pane name argument
+        } else if (strcmp(argv[i], "--publish-atoms") == 0) {
+            publish_atoms_only = true;
         }
+    }
+
+    // Headless mode: load shell.conf and publish the root atoms, then exit.
+    // Invoked from moonrock-session.sh on session start so menubar / desktop
+    // / moonrock see the persisted menu-bar + Spaces modes before they
+    // create their windows. systemcontrol owns the conf→atom mapping; this
+    // is the same path the GUI takes on launch (lines below) — sharing it
+    // keeps the two from drifting.
+    if (publish_atoms_only) {
+        Display *dpy = XOpenDisplay(NULL);
+        if (!dpy) {
+            fprintf(stderr,
+                "[systemcontrol] --publish-atoms: cannot open display\n");
+            return EXIT_FAILURE;
+        }
+        Window root = DefaultRootWindow(dpy);
+        ShellConf shell = {0};
+        shellconf_load(&shell);
+        shellconf_publish_atoms(dpy, root, &shell);
+        XSync(dpy, False);
+        XCloseDisplay(dpy);
+        fprintf(stderr,
+            "[systemcontrol] published shell atoms (menu-bar=%s, spaces=%s)\n",
+            shell.displays_separate_menu_bars ? "modern" : "classic",
+            shell.displays_separate_spaces    ? "per_display" : "global");
+        return EXIT_SUCCESS;
     }
 
     fprintf(stderr, "[systemcontrol] Starting System Preferences...\n");
