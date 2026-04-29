@@ -1,5 +1,7 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
+#define _GNU_SOURCE  // For SA_RESTART (matches the rest of fileviewer)
+
 // main.c — Entry point for CCFinder
 //
 // CCFinder is the Snow Leopard-style file manager for CopyCatOS.
@@ -70,8 +72,17 @@ int main(int argc, char *argv[])
 
     // Install signal handlers for graceful shutdown.
     // SIGINT = Ctrl+C, SIGTERM = kill command / system shutdown.
-    signal(SIGINT, handle_signal);
-    signal(SIGTERM, handle_signal);
+    //
+    // sigaction over signal() so SA_RESTART covers slow X11 syscalls —
+    // a SIGTERM landing mid-XNextEvent on a glibc that doesn't restart
+    // by default would surface as EINTR and could mistranslate into a
+    // protocol error before the event loop ever notices running=false.
+    struct sigaction sa = {0};
+    sa.sa_handler = handle_signal;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
 
     // Initialize: open X display, create window, set up Cairo,
     // load sidebar items, scan initial directory.
