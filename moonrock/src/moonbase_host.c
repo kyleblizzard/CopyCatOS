@@ -221,6 +221,18 @@ static mb_surface_t *surface_find(uint32_t window_id) {
 static void surface_release(mb_surface_t *s) {
     if (!s || !s->in_use) return;
     if (s->input_proxy && g_dpy) {
+        // If this surface held an outstanding pointer grab when the
+        // client disconnected (chrome traffic-light press still open, or
+        // content-rect press still open), the matching release path
+        // never ran. Drop the grab before the proxy XID goes away,
+        // otherwise it leaks server-side and the next click in the
+        // session routes into a window that no longer exists.
+        // Conditional rather than unconditional: X only ever holds one
+        // grab per client, so an unconditional XUngrabPointer here could
+        // clobber a sibling surface's open press.
+        if (s->pressed_button != 0 || s->pointer_btn_down != 0) {
+            XUngrabPointer(g_dpy, CurrentTime);
+        }
         // If a drag session was in flight against this proxy, tell the
         // XDND bridge to drop its state before the XID goes away —
         // otherwise it could try to XSendEvent to a dead window.
