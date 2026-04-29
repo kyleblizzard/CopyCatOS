@@ -165,6 +165,16 @@ sleep 0.5
 # picom --config ~/CopyCatOS/moonrock/session/picom.conf -b
 sleep 0.3
 
+# ─── Publish persisted shell-mode atoms before any shell component ───
+# systemcontrol owns the ~/.config/copycatos/shell.conf → root-atom mapping
+# (_COPYCATOS_MENUBAR_MODE, _COPYCATOS_SPACES_MODE). Without this call the
+# atoms stay unset until the user opens System Preferences, and menubar /
+# desktop fall through to defaults that may not match the persisted choice.
+# --publish-atoms is a headless mode: load conf, write atoms, exit. Failing
+# is non-fatal — components default to Modern / per_display when the atoms
+# are unset.
+systemcontrol --publish-atoms 2>&1 || true
+
 # ─── Desktop surface (wallpaper + icons) ───
 # Must come before dock/menubar so it sits at the bottom of the stack
 desktop &
