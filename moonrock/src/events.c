@@ -771,6 +771,27 @@ static void on_client_message(CCWM *wm, XEvent *e)
             c->mapped     = true;
             c->minimized  = false;   // Clear minimized state on restore
             wm_focus_client(wm, c);
+        } else if (ewmh_get_window_type(wm, cm->window)
+                   == wm->atom_net_wm_type_desktop) {
+            // Snow Leopard parity — clicking empty space on the desktop
+            // sends _NET_ACTIVE_WINDOW for the desktop pane window. We
+            // don't manage desktop-type windows as Clients, so the
+            // wm_find_client lookup misses. Treat the request as
+            // "drop foreground focus + let the menu bar swap to Finder".
+            //
+            // Visible effect: any focused app's chrome goes inactive
+            // (FocusOut redraws greyed traffic lights), keyboard input
+            // routes to PointerRoot (no app receives keystrokes), and
+            // ewmh_set_desktop_active() forces the desktop pane to be
+            // frontmost-per-output for that pane's home output. The
+            // desktop is not raised — z-order is unchanged.
+            if (wm->focused) {
+                wm_unfocus_client(wm, wm->focused);
+                wm->focused = NULL;
+            }
+            XSetInputFocus(wm->dpy, None, RevertToPointerRoot, CurrentTime);
+            XDeleteProperty(wm->dpy, wm->root, wm->atom_net_active_window);
+            ewmh_set_desktop_active(wm, cm->window);
         }
     } else if (cm->message_type == wm->atom_net_close_window) {
         ewmh_send_delete(wm, cm->window);

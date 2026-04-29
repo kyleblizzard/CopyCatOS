@@ -263,6 +263,12 @@ void wm_focus_client(CCWM *wm, Client *c)
         XChangeProperty(wm->dpy, wm->root, wm->atom_net_active_window,
                         XA_WINDOW, 32, PropModeReplace,
                         (unsigned char *)&c->client, 1);
+
+        // A managed client taking focus shadows any "desktop is active"
+        // state from a prior empty-desktop click. Clearing here also
+        // triggers the publish below via ewmh_set_desktop_active(None),
+        // which short-circuits when the slot is already clear.
+        ewmh_set_desktop_active(wm, None);
     }
 
     // Focus change shifts active output AND reorders the stack — the

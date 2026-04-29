@@ -30,6 +30,21 @@ void ewmh_update_client_list(CCWM *wm);
 // changed.
 void ewmh_publish_output_focus_state(CCWM *wm);
 
+// Mark a desktop pane window (`_NET_WM_WINDOW_TYPE_DESKTOP`) as the
+// active "Finder" surface. Snow Leopard parity — clicking empty space
+// on the desktop surfaces Finder's menu bar without raising the desktop
+// or opening a Finder window. The pane WID is stored along with its
+// home output (computed from window geometry), and on the next publish
+// pass `_MOONROCK_FRONTMOST_PER_OUTPUT[output]` is forced to the pane
+// regardless of X stacking order, and `_MOONROCK_ACTIVE_OUTPUT` is set
+// to that output. Callers must have already cleared `wm->focused` and
+// dropped X keyboard focus — this function only owns the per-output
+// "desktop is active" slot, not the focus state.
+//
+// Pass `pane = None` to clear the slot (e.g. after a managed client
+// regains focus on the same output).
+void ewmh_set_desktop_active(CCWM *wm, Window pane);
+
 // Register the display-module scales-published hook so
 // _MOONROCK_OUTPUT_SCALES rewrites automatically trigger a matching
 // rewrite of _MOONROCK_ACTIVE_OUTPUT + _MOONROCK_FRONTMOST_PER_OUTPUT.

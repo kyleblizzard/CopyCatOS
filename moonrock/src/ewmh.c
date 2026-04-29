@@ -513,6 +513,15 @@ static CCWM *focus_state_wm = NULL;
 static Atom  active_output_atom = None;
 static Atom  frontmost_atom = None;
 
+// Desktop-pane "active" slot. When set, the publish pass forces the
+// matching output's frontmost-per-output entry to `g_desktop_pane_win`
+// and sets _MOONROCK_ACTIVE_OUTPUT to `g_desktop_pane_output`, even if
+// a managed client is on top of that output in X stacking order.
+// Snow Leopard parity: clicking the desktop swaps the menu bar to
+// Finder without raising the desktop or unmapping the foreground app.
+static unsigned long g_desktop_pane_win    = (unsigned long)None;
+static int           g_desktop_pane_output = -1;
+
 // Thunk handed to display_set_scales_published_cb(). The display module's
 // hook is void(void), so it finds the WM via the file-static stashed by
 // ewmh_register_focus_state_hook().
@@ -574,6 +583,55 @@ static int home_output_for_client(const Client *c, MROutput *outputs, int n)
     return (n > 0) ? 0 : -1;
 }
 
+void ewmh_set_desktop_active(CCWM *wm, Window pane)
+{
+    if (!wm || !wm->dpy) return;
+
+    // Clear path: the caller (wm_focus_client) is telling us a managed
+    // client took focus, so the desktop should no longer drive the
+    // menu bar. Republish so the per-output atoms reflect the change.
+    if (pane == None) {
+        bool changed = (g_desktop_pane_win != (unsigned long)None
+                        || g_desktop_pane_output >= 0);
+        g_desktop_pane_win    = (unsigned long)None;
+        g_desktop_pane_output = -1;
+        if (changed) {
+            ewmh_publish_output_focus_state(wm);
+        }
+        return;
+    }
+
+    // Compute the pane's home output from its X geometry. desktop
+    // creates one pane per output at that output's root-relative
+    // origin; XGetWindowAttributes returns the same coords, which
+    // home_output_for_point can then resolve against the live output
+    // table.
+    XWindowAttributes wa;
+    if (!XGetWindowAttributes(wm->dpy, pane, &wa)) return;
+
+    int output_count = 0;
+    MROutput *outputs = display_get_outputs(&output_count);
+    if (!outputs || output_count <= 0) return;
+
+    int mx = wa.x + wa.width  / 2;
+    int my = wa.y + wa.height / 2;
+    int idx = output_index_for_point(outputs, output_count, mx, my);
+    if (idx < 0) {
+        // Window covers no live output (hotplug race) — fall back to
+        // primary so we still show Finder somewhere rather than nowhere.
+        for (int i = 0; i < output_count; i++) {
+            if (outputs[i].primary) { idx = i; break; }
+        }
+        if (idx < 0) idx = 0;
+    }
+    if (idx >= MOONROCK_SCALE_MAX_OUTPUTS) return;
+
+    g_desktop_pane_win    = (unsigned long)pane;
+    g_desktop_pane_output = idx;
+
+    ewmh_publish_output_focus_state(wm);
+}
+
 void ewmh_publish_output_focus_state(CCWM *wm)
 {
     if (!wm || !wm->dpy) return;
@@ -596,11 +654,16 @@ void ewmh_publish_output_focus_state(CCWM *wm)
     }
 
     // ── Active output: keyboard-focused window's home output. ──
+    // If no managed client is focused but the desktop pane is "active"
+    // for some output (Snow Leopard desktop-click), that output wins.
     unsigned long active_idx =
         (unsigned long)MOONROCK_ACTIVE_OUTPUT_NONE;
     if (wm->focused) {
         int idx = home_output_for_client(wm->focused, outputs, output_count);
         if (idx >= 0) active_idx = (unsigned long)idx;
+    } else if (g_desktop_pane_output >= 0
+               && g_desktop_pane_output < output_count) {
+        active_idx = (unsigned long)g_desktop_pane_output;
     }
 
     // ── Frontmost per output via real X stacking order. ──
@@ -633,6 +696,21 @@ void ewmh_publish_output_focus_state(CCWM *wm)
             }
         }
         XFree(children);
+    }
+
+    // Desktop-pane override. If the desktop is "active" for an output,
+    // its pane WID wins over whatever XQueryTree returned for that
+    // row — Snow Leopard parity, where clicking the desktop swaps the
+    // menu bar to Finder without raising the desktop or unmapping the
+    // foreground app. menubar reads the pane's WM_CLASS ("desktop")
+    // and maps it to the "Finder" entry in app_names[]. The slot is
+    // cleared via ewmh_set_desktop_active(wm, None) when a managed
+    // client takes focus again — see wm_focus_client().
+    if (g_desktop_pane_output >= 0
+        && g_desktop_pane_output < output_count
+        && g_desktop_pane_output < MOONROCK_SCALE_MAX_OUTPUTS
+        && g_desktop_pane_win != (unsigned long)None) {
+        frontmost[g_desktop_pane_output] = g_desktop_pane_win;
     }
 
     int emit_count = output_count;

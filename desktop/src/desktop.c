@@ -383,6 +383,16 @@ static void reconcile_outputs(Desktop *d, bool initial)
             snprintf(title, sizeof(title), "CopyCatOS Desktop (%s)", o->name);
             XStoreName(d->dpy, o->win, title);
 
+            // WM_CLASS = "desktop" lets menubar map this pane to the
+            // "Finder" app entry in app_names[] when moonrock surfaces
+            // the desktop window as the frontmost-per-output. Without
+            // it, an empty-space click would have no app identity for
+            // menubar to look up. Both res_name and res_class are set
+            // so future sniffers (window list, accessibility) get the
+            // same answer regardless of which one they read.
+            XClassHint ch = { (char *)"desktop", (char *)"desktop" };
+            XSetClassHint(d->dpy, o->win, &ch);
+
             XMapWindow(d->dpy, o->win);
             any_size_changed = true;
         }
@@ -596,9 +606,34 @@ void desktop_run(Desktop *d)
                             icons_drag_begin(hit, local_x, local_y);
                         }
                     } else {
-                        // Clicked on empty space: deselect all icons
+                        // Clicked on empty space: deselect all icons and
+                        // ask moonrock to make this desktop pane "active"
+                        // for its output. Snow Leopard parity — clicking
+                        // the desktop surfaces Finder's menu bar without
+                        // opening any Finder window. moonrock recognizes
+                        // the _NET_WM_WINDOW_TYPE_DESKTOP target, clears
+                        // its focused-client slot for that output, and
+                        // republishes _MOONROCK_FRONTMOST_PER_OUTPUT
+                        // pointing at this pane. menubar then maps the
+                        // pane's WM_CLASS ("desktop") to "Finder".
                         icons_deselect_all();
                         last_clicked = NULL;
+
+                        Atom net_active = XInternAtom(
+                            d->dpy, "_NET_ACTIVE_WINDOW", False);
+                        XEvent ax;
+                        memset(&ax, 0, sizeof(ax));
+                        ax.xclient.type         = ClientMessage;
+                        ax.xclient.window       = ev.xbutton.window;
+                        ax.xclient.message_type = net_active;
+                        ax.xclient.format       = 32;
+                        ax.xclient.data.l[0]    = 1; // source = app
+                        ax.xclient.data.l[1]    = (long)ev.xbutton.time;
+                        ax.xclient.data.l[2]    = 0;
+                        XSendEvent(d->dpy, d->root, False,
+                                   SubstructureNotifyMask
+                                       | SubstructureRedirectMask,
+                                   &ax);
                     }
 
                     desktop_repaint(d);
