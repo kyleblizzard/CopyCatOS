@@ -20,6 +20,7 @@
 #include <math.h>
 #include <unistd.h>
 #include <signal.h>
+#include <time.h>
 
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
@@ -590,6 +591,31 @@ static void apple_execute(MenuBar *mb, int index)
         // moonrock-session.sh's cleanup (kills all shell components).
         // This is how Snow Leopard does it — the WM exit triggers
         // the loginwindow to reappear.
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        fprintf(stderr, "[logout-trace] apple Log Out clicked at %ld.%09ld\n",
+                (long)ts.tv_sec, ts.tv_nsec);
+        // Mirror to persistent trace file (xsession-errors is wiped on relogin)
+        const char *xdg_state = getenv("XDG_STATE_HOME");
+        const char *home = getenv("HOME");
+        char trace_path[512];
+        if (xdg_state && *xdg_state) {
+            snprintf(trace_path, sizeof(trace_path),
+                     "%s/copycatos/logout-trace.log", xdg_state);
+        } else if (home) {
+            snprintf(trace_path, sizeof(trace_path),
+                     "%s/.local/state/copycatos/logout-trace.log", home);
+        } else {
+            trace_path[0] = '\0';
+        }
+        if (trace_path[0]) {
+            FILE *tf = fopen(trace_path, "a");
+            if (tf) {
+                fprintf(tf, "[logout-trace] apple Log Out clicked at %ld.%09ld\n",
+                        (long)ts.tv_sec, ts.tv_nsec);
+                fclose(tf);
+            }
+        }
         pid_t wm_pid = 0;
         FILE *proc = popen("pgrep -x moonrock", "r");
         if (proc) {
