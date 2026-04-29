@@ -7,6 +7,7 @@
 // and app grouping (so Super+H can hide ALL windows of the focused app).
 
 #include "wm.h"
+#include "ewmh.h"
 #include <stdio.h>
 #include <string.h>
 #include <X11/Xutil.h>
@@ -62,6 +63,50 @@ void client_hide_app(CCWM *wm, Client *c)
                 break;
             }
         }
+    }
+}
+
+// Close all windows belonging to the same app as the given client.
+// "Same app" means matching wm_class_name. Mac Cmd+Q semantics:
+// quit closes every window of the application, not just the focused one.
+// Sends WM_DELETE_WINDOW where supported, falls back to XKillClient.
+void client_close_app(CCWM *wm, Client *c)
+{
+    if (!c) return;
+
+    // If the focused client has no WM_CLASS, just close that one window.
+    if (c->wm_class_name[0] == '\0') {
+        ewmh_send_delete(wm, c->client);
+        return;
+    }
+
+    const char *app_class = c->wm_class_name;
+    int closed = 0;
+
+    // Snapshot client window IDs first — sending delete can trigger
+    // UnmapNotify / DestroyNotify and reshape wm->clients mid-walk.
+    Window targets[wm->num_clients];
+    int n_targets = 0;
+    for (int i = 0; i < wm->num_clients; i++) {
+        Client *other = &wm->clients[i];
+        if (other->frame &&
+            strcmp(other->wm_class_name, app_class) == 0) {
+            targets[n_targets++] = other->client;
+        }
+    }
+
+    for (int i = 0; i < n_targets; i++) {
+        if (ewmh_supports_delete(wm, targets[i])) {
+            ewmh_send_delete(wm, targets[i]);
+        } else {
+            XKillClient(wm->dpy, targets[i]);
+        }
+        closed++;
+    }
+
+    if (closed > 0) {
+        fprintf(stderr, "[moonrock] Closed %d window(s) of app '%s' (Cmd+Q)\n",
+                closed, app_class);
     }
 }
 

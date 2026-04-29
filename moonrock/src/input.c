@@ -43,8 +43,15 @@ void input_handle_key(CCWM *wm, XKeyEvent *e)
 
     switch (sym) {
     case XK_q:
+        // Quit focused app — close ALL windows of the same WM_CLASS (Mac Cmd+Q)
+        if (wm->focused) {
+            extern void client_close_app(CCWM *wm, Client *c);
+            client_close_app(wm, wm->focused);
+        }
+        break;
+
     case XK_w:
-        // Close focused window
+        // Close focused window only (Mac Cmd+W)
         if (wm->focused) {
             ewmh_send_delete(wm, wm->focused->client);
         }

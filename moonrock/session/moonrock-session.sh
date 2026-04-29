@@ -186,9 +186,23 @@ moonbase &       SHELL_PIDS+=($!)
 fileviewer ~ &
 SHELL_PIDS+=($!)
 
+# ─── Persistent logout trace ───
+# xsession-errors is truncated on every new X session, so we mirror
+# the trace lines into a stable file under XDG state. Preserved across
+# logout/login so we can read what happened on the *previous* session.
+TRACE_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/copycatos/logout-trace.log"
+mkdir -p "$(dirname "$TRACE_FILE")"
+trace() {
+    local line="[logout-trace] $* at $(date +%s.%N)"
+    echo "$line" >&2
+    echo "$line" >> "$TRACE_FILE"
+}
+trace "----- new session boot $(date -Iseconds) -----"
+
 # ─── Wait for the WM to exit ───
 # When the WM process ends (user logged out or crashed), clean up everything
 wait $WM_PID
+trace "WM_PID exited"
 
 # ─── Cleanup — guaranteed exit so SDDM gets the session back ───
 # Send SIGTERM to every PID we launched. Then wait up to ~3 seconds
@@ -196,13 +210,24 @@ wait $WM_PID
 # that gets SIGKILL. Finally `exit 0` so this script always returns
 # control to the display manager — never block on a misbehaving child.
 kill "${SHELL_PIDS[@]}" 2>/dev/null
-for i in 1 2 3 4 5 6; do
-    alive=0
+trace "SIGTERM sent to shell components"
+# Poll at 50ms granularity for up to ~2.5s. Half-second polling masked
+# fast component exits behind a perceived UI hang during logout —
+# components that died at +30ms were still detected as alive until +500ms.
+for i in $(seq 1 50); do
+    alive_pids=""
     for p in "${SHELL_PIDS[@]}"; do
-        kill -0 "$p" 2>/dev/null && alive=1
+        if kill -0 "$p" 2>/dev/null; then
+            alive_pids="$alive_pids $p"
+        fi
     done
-    [ $alive -eq 0 ] && break
-    sleep 0.5
+    if [ -z "$alive_pids" ]; then
+        trace "all shell components exited cleanly at iter $i"
+        break
+    fi
+    [ $((i % 10)) -eq 0 ] && trace "iter $i still alive:$alive_pids"
+    sleep 0.05
 done
 kill -9 "${SHELL_PIDS[@]}" 2>/dev/null
+trace "cleanup done — exit 0"
 exit 0
