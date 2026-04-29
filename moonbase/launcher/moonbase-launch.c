@@ -882,9 +882,32 @@ int main(int argc, char **argv) {
     // Toolkit-wrapped bundles always go through the chrome stub and
     // never get this setenv regardless of session.
     if (xdg && *xdg && bundle.info.wrap_toolkit == MB_INFO_APPC_WRAP_NATIVE) {
+        // Two signals tell us moonrock-proper already owns the flat
+        // multi-tenant moonbase.sock and we must NOT inject a per-bundle
+        // path:
+        //   (a) XDG_SESSION_DESKTOP=CopyCatOS — the canonical in-session
+        //       marker that moonrock-host's should-host check mirrors.
+        //   (b) The flat socket file actually exists at the runtime dir.
+        //       This catches the SSH-into-the-Legion case where the
+        //       desktop-session env vars never made it into the shell
+        //       but moonrock proper IS running and bound. Without (b),
+        //       a simple `ssh box moonbase-launch foo.app` lands on a
+        //       per-bundle path no host has bound to → MB_ENOTFOUND.
         const char *xdg_session = getenv("XDG_SESSION_DESKTOP");
         bool in_session = xdg_session && strcmp(xdg_session, "CopyCatOS") == 0;
+        bool flat_sock_present = false;
         if (!in_session) {
+            char flat_sock[512];
+            int n = snprintf(flat_sock, sizeof flat_sock,
+                             "%s/moonbase.sock", xdg);
+            if (n > 0 && (size_t)n < sizeof flat_sock) {
+                struct stat st;
+                if (stat(flat_sock, &st) == 0 && S_ISSOCK(st.st_mode)) {
+                    flat_sock_present = true;
+                }
+            }
+        }
+        if (!in_session && !flat_sock_present) {
             char sock_path[768];
             int n = snprintf(sock_path, sizeof sock_path,
                              "%s/moonbase/moonbase-%s.sock",
