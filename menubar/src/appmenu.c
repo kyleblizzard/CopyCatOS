@@ -36,6 +36,7 @@
 #include <strings.h>
 #include <ctype.h>
 #include <math.h>
+#include <time.h>
 
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
@@ -50,6 +51,51 @@
 #include "menu_model.h"
 #include "moonrock_scale.h"
 #include "render.h"
+
+// ── Timing instrumentation (#135) ───────────────────────────────────
+// Capture wall-clock ms at each waypoint of the focus-change path so we
+// can see where the user-perceived lag actually lives. Removed once the
+// fix lands.
+
+static double monotonic_ms(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000.0 + ts.tv_nsec / 1.0e6;
+}
+
+// Per-pane stopwatch start for measuring focus→first-paint latency.
+// Indexed by pane address modulo a tiny table — pane_count <= MENUBAR_MAX_PANES
+// so a linear search is fine.
+#define APPMENU_TIMING_SLOTS 8
+static struct {
+    const void *pane;
+    double      start_ms;
+} appmenu_timing[APPMENU_TIMING_SLOTS];
+
+static void appmenu_timing_start(const void *pane, double t_ms)
+{
+    for (int i = 0; i < APPMENU_TIMING_SLOTS; i++) {
+        if (appmenu_timing[i].pane == pane || appmenu_timing[i].pane == NULL) {
+            appmenu_timing[i].pane     = pane;
+            appmenu_timing[i].start_ms = t_ms;
+            return;
+        }
+    }
+}
+
+static double appmenu_timing_consume(const void *pane)
+{
+    for (int i = 0; i < APPMENU_TIMING_SLOTS; i++) {
+        if (appmenu_timing[i].pane == pane) {
+            double t = appmenu_timing[i].start_ms;
+            appmenu_timing[i].pane     = NULL;
+            appmenu_timing[i].start_ms = 0.0;
+            return t;
+        }
+    }
+    return 0.0;
+}
 
 // ── Font scaling helper (mirrors the one in render.c) ──────────────
 
@@ -422,11 +468,16 @@ static MenuNode *build_app_menu_root(const char *app_name)
 static void rebuild_app_menu_for_pane(MenuBarPane *pane)
 {
     if (!pane) return;
+    double t0 = monotonic_ms();
     if (pane->app_menu_root) {
         menu_node_free(pane->app_menu_root);
         pane->app_menu_root = NULL;
     }
     pane->app_menu_root = build_app_menu_root(pane->active_app);
+    fprintf(stderr,
+            "[appmenu-timing] rebuild_app_menu_for_pane pane=%p app=%s "
+            "took %.2f ms\n",
+            (void*)pane, pane->active_app, monotonic_ms() - t0);
 }
 
 // appmenu_show_app_menu is defined further down — it touches the
@@ -466,6 +517,21 @@ static void on_legacy_client_changed(DbusMenuClient *client, void *user_data)
         // ref. Nothing meaningful to repaint.
         return;
     }
+    double now = monotonic_ms();
+    double start = appmenu_timing_consume(pane);
+    if (start > 0.0) {
+        fprintf(stderr,
+                "[appmenu-timing] DBusMenu first paint pane=%p app=%s "
+                "wid=0x%lx total=%.2f ms (focus→first menu tree)\n",
+                (void*)pane, pane->active_app,
+                (unsigned long)pane->legacy_wid, now - start);
+    } else {
+        fprintf(stderr,
+                "[appmenu-timing] DBusMenu LayoutUpdated pane=%p app=%s "
+                "wid=0x%lx (live update, no focus stopwatch)\n",
+                (void*)pane, pane->active_app,
+                (unsigned long)pane->legacy_wid);
+    }
     pane->legacy_is_loading = false;
 
     const MenuNode *root = dbusmenu_client_root(client);
@@ -487,16 +553,27 @@ static void on_legacy_client_changed(DbusMenuClient *client, void *user_data)
 
 static void update_legacy_client(MenuBar *mb, MenuBarPane *pane, Window active)
 {
+    double t_enter = monotonic_ms();
     const char *service = NULL;
     const char *path    = NULL;
     bool has_registration =
         (active != None) &&
         appmenu_bridge_lookup((uint32_t)active, &service, &path);
 
+    fprintf(stderr,
+            "[appmenu-timing] update_legacy_client enter pane=%p "
+            "wid=0x%lx prior_wid=0x%lx registered=%d\n",
+            (void*)pane, (unsigned long)active,
+            (unsigned long)pane->legacy_wid, has_registration ? 1 : 0);
+
     // Same window as last time on this pane — nothing to rebuild. The
     // registry is keyed by wid, so wid equality implies (service, path)
     // equality.
     if (has_registration && active == pane->legacy_wid && pane->legacy_client) {
+        fprintf(stderr,
+                "[appmenu-timing] update_legacy_client same-wid fast-path "
+                "pane=%p (no rebuild) %.2f ms\n",
+                (void*)pane, monotonic_ms() - t_enter);
         return;
     }
 
@@ -517,11 +594,25 @@ static void update_legacy_client(MenuBar *mb, MenuBarPane *pane, Window active)
     }
 
     if (has_registration) {
+        double t_new = monotonic_ms();
         pane->legacy_client = dbusmenu_client_new(
             service, path, on_legacy_client_changed, mb);
         pane->legacy_wid            = active;
         pane->legacy_is_loading     = (pane->legacy_client != NULL);
         pane->last_seen_legacy_root = NULL;
+        // Stopwatch start: the focus moment. on_legacy_client_changed
+        // closes the loop with the elapsed delta — that's the user-
+        // perceived focus→menus-painted lag for the DBusMenu path.
+        appmenu_timing_start(pane, t_enter);
+        fprintf(stderr,
+                "[appmenu-timing] update_legacy_client new client pane=%p "
+                "service=%s path=%s sync_setup=%.2f ms\n",
+                (void*)pane, service, path, monotonic_ms() - t_new);
+    } else {
+        fprintf(stderr,
+                "[appmenu-timing] update_legacy_client no registration "
+                "pane=%p built-in path; total %.2f ms\n",
+                (void*)pane, monotonic_ms() - t_enter);
     }
 }
 
@@ -1558,16 +1649,27 @@ bool appmenu_find_dropdown_at(MenuBar *mb, int mx, int my,
 void appmenu_show_dropdown(MenuBar *mb, int menu_index,
                            int root_x, int root_y)
 {
+    double t0 = monotonic_ms();
     dismiss_all_dropdowns(mb);
 
     // Anchor the dropdown to the pane that just opened it — open_menu_at
     // sets mb->active_pane immediately before this call, so pull the
     // root through that pane (its legacy_client or its built-in tree).
     const MenuNode *root = appmenu_root_for_active(mb);
-    if (!root || menu_index < 0 || menu_index >= root->n_children) return;
+    if (!root || menu_index < 0 || menu_index >= root->n_children) {
+        fprintf(stderr,
+                "[appmenu-timing] show_dropdown idx=%d aborted (no root) "
+                "%.2f ms\n", menu_index, monotonic_ms() - t0);
+        return;
+    }
 
     const MenuNode *menu = root->children[menu_index];
-    if (!menu || menu->n_children == 0) return;
+    if (!menu || menu->n_children == 0) {
+        fprintf(stderr,
+                "[appmenu-timing] show_dropdown idx=%d empty menu %.2f ms\n",
+                menu_index, monotonic_ms() - t0);
+        return;
+    }
 
     // Ask the server for a pre-show refresh — same reason as
     // submenu spawn. Routed through the active pane's client.
@@ -1577,6 +1679,12 @@ void appmenu_show_dropdown(MenuBar *mb, int menu_index,
     }
 
     push_level(mb, menu, root_x, root_y);
+    fprintf(stderr,
+            "[appmenu-timing] show_dropdown idx=%d label=%s legacy=%d "
+            "%.2f ms\n",
+            menu_index, menu->label ? menu->label : "(null)",
+            menu->action_kind == MENU_ACTION_LEGACY ? 1 : 0,
+            monotonic_ms() - t0);
 }
 
 void appmenu_show_app_menu(MenuBar *mb, int root_x, int root_y)
