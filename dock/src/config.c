@@ -53,6 +53,28 @@ static bool get_config_dir(char *out, size_t out_size);
 static bool get_config_path(char *out, size_t out_size);
 static bool ensure_config_dir_exists(void);
 
+// Copy a path string into dst, expanding a leading "~/" to "$HOME/".
+// Used so default-item exec_paths and dock.conf-loaded paths can both
+// reference user-local locations (e.g. "~/Applications/foo.appdev")
+// without hardcoding /home/<user> in the source. Falls back to a raw
+// copy when HOME is unset or the source doesn't start with "~/". dst
+// is always nul-terminated.
+static void copy_path_expanding_tilde(char *dst, size_t dst_size,
+                                      const char *src)
+{
+    if (!dst || dst_size == 0) return;
+    if (!src) { dst[0] = '\0'; return; }
+    if (src[0] == '~' && src[1] == '/') {
+        const char *home = getenv("HOME");
+        if (home && home[0] != '\0') {
+            snprintf(dst, dst_size, "%s%s", home, src + 1);
+            return;
+        }
+    }
+    strncpy(dst, src, dst_size - 1);
+    dst[dst_size - 1] = '\0';
+}
+
 // ---------------------------------------------------------------------------
 // Icon resolution — find an icon file on disk
 //
@@ -424,9 +446,13 @@ bool config_load(DockState *state)
         // Zero out the item first to ensure clean state
         memset(item, 0, sizeof(DockItem));
 
-        // Copy parsed strings into the item's fixed-size buffers
+        // Copy parsed strings into the item's fixed-size buffers.
+        // exec_path is run through tilde expansion so user-local
+        // bundle paths (e.g. "~/Applications/textedit.appdev") in
+        // dock.conf resolve to absolute paths before launch.
         strncpy(item->name, name, sizeof(item->name) - 1);
-        strncpy(item->exec_path, exec_path, sizeof(item->exec_path) - 1);
+        copy_path_expanding_tilde(item->exec_path, sizeof(item->exec_path),
+                                  exec_path);
         strncpy(item->process_name, process_name,
                 sizeof(item->process_name) - 1);
 
@@ -595,19 +621,27 @@ typedef struct {
     bool separator_after;
 } DefaultItemDef;
 
+// CopyCatOS reference apps live as .appdev bundles under ~/Applications/.
+// The path uses a leading "~/" so the dock expands it to $HOME at load
+// time — the source default is portable across users without hardcoding
+// /home/nobara-user. The dock's launch path detects the .appdev suffix +
+// Contents/Info.appc and routes through moonbase-launch automatically.
 static const DefaultItemDef default_items[] = {
-    // name               exec command       icon name (theme)             process name      sep?
-    {"Finder",              "fileviewer",    "org.kde.dolphin",            "fileviewer",    false},
-    {"Brave",               "brave-browser",  "com.brave.Browser",          "brave",          false},
-    {"Kate",                "kate",           "org.kde.kate",               "kate",           false},
-    {"Terminal",            "konsole",        "utilities-terminal",         "konsole",        false},
-    {"Strawberry",          "strawberry",     "strawberry",                 "strawberry",     true },
-    {"Krita",               "krita",          "krita",                      "krita",          false},
-    {"GIMP",                "gimp",           "gimp",                       "gimp",           false},
-    {"Inkscape",            "inkscape",       "org.inkscape.Inkscape",      "inkscape",       false},
-    {"Kdenlive",            "kdenlive",       "kdenlive",                   "kdenlive",       false},
-    {"System Preferences",  "systemsettings", "preferences-system",         "systemsettings", false},
-    {"Trash",               "fileviewer trash:/", "trashempty",              "trash",          false},
+    // name               exec command                              icon name (theme)             process name      sep?
+    {"Finder",              "fileviewer",                            "org.kde.dolphin",            "fileviewer",      false},
+    {"Brave",               "brave-browser",                         "com.brave.Browser",          "brave",           false},
+    {"Kate",                "kate",                                  "org.kde.kate",               "kate",            false},
+    {"Terminal",            "konsole",                               "utilities-terminal",         "konsole",         false},
+    {"Strawberry",          "strawberry",                            "strawberry",                 "strawberry",      true },
+    {"Krita",               "krita",                                 "krita",                      "krita",           false},
+    {"GIMP",                "gimp",                                  "gimp",                       "gimp",            false},
+    {"Inkscape",            "inkscape",                              "org.inkscape.Inkscape",      "inkscape",        false},
+    {"Kdenlive",            "kdenlive",                              "kdenlive",                   "kdenlive",        false},
+    {"System Preferences",  "systemsettings",                        "preferences-system",         "systemsettings",  true },
+    {"TextEdit",            "~/Applications/textedit.appdev",        "accessories-text-editor",    "textedit",        false},
+    {"Aqua Demo",           "~/Applications/aqua-demo.appdev",       "applications-graphics",      "aqua-demo",       false},
+    {"Activity Monitor",    "~/Applications/activity-monitor.appdev","utilities-system-monitor",   "activity-monitor",false},
+    {"Trash",               "fileviewer trash:/",                    "trashempty",                 "trash",           false},
 };
 
 #define DEFAULT_ITEM_COUNT (sizeof(default_items) / sizeof(default_items[0]))
@@ -628,10 +662,13 @@ void config_set_defaults(DockState *state)
         // Zero out the item struct for a clean start
         memset(item, 0, sizeof(DockItem));
 
-        // Copy the basic text fields from the definition
+        // Copy the basic text fields from the definition. exec_path
+        // is tilde-expanded so default entries pointing at user-local
+        // bundle locations (e.g. "~/Applications/textedit.appdev")
+        // resolve to absolute paths before the dock launches them.
         strncpy(item->name, def->name, sizeof(item->name) - 1);
-        strncpy(item->exec_path, def->exec_path,
-                sizeof(item->exec_path) - 1);
+        copy_path_expanding_tilde(item->exec_path, sizeof(item->exec_path),
+                                  def->exec_path);
         strncpy(item->process_name, def->process_name,
                 sizeof(item->process_name) - 1);
 
