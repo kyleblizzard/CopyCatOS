@@ -17,16 +17,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>  // strcasecmp
 #include <math.h>
 #include <unistd.h>
 #include <signal.h>
 #include <time.h>
+#include <ctype.h>
 
 #include <cairo/cairo.h>
 #include <cairo/cairo-xlib.h>
 #include <pango/pangocairo.h>
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
+#include <X11/Xutil.h>  // XClassHint
 
 #include "apple.h"
 #include "render.h"
@@ -54,63 +57,65 @@ static Window apple_popup = None;
 // Currently hovered item index in the dropdown (-1 = none)
 static int apple_hover = -1;
 
-// ── Apple menu item definitions ─────────────────────────────────────
-// These match the real Snow Leopard Apple menu per Apple HIG Figure 13-14.
-// "---" is a separator. Items have optional right-aligned keyboard shortcuts.
+// ── Apple menu item model ──────────────────────────────────────────
+//
+// The menu is a single flat list of AppleItem entries. Each rebuild
+// (on apple_show_menu) prepends an "Open Applications" section listing
+// every currently-running app, then appends the static system actions
+// (System Preferences, Sleep, Log Out, etc.). Rendering, hit-testing,
+// and dispatch all walk this one array — no special-case branching by
+// section.
 
-// Dynamic "Log Out" label with the actual username
+typedef struct {
+    char    text[128];          // label drawn in the menu
+    char    shortcut[16];       // empty string = no shortcut shown
+    Window  target;             // window to raise on click (running apps)
+    bool    is_separator;       // draw a thin horizontal line, not a row
+    bool    is_header;          // disabled label styled as a section title
+    bool    is_running_app;     // click sends _NET_ACTIVE_WINDOW
+    bool    disabled;           // greyed out, no hover, no dispatch
+    bool    has_submenu_arrow;  // ▶ glyph (Dock / Recent Items)
+} AppleItem;
+
+#define APPLE_MAX_ITEMS 48
+static AppleItem apple_items[APPLE_MAX_ITEMS];
+static int       apple_item_count = 0;
+
+// Dynamic "Log Out <user>..." text — populated in apple_init from $USER
+// and patched into the static menu definition by rebuild_apple_items.
 static char logout_label[128] = "Log Out...";
 
-static const char *apple_items[17] = {
-    "About CopyCatOS",
-    "---",
-    "Software Update...",
-    "---",
-    "System Preferences...",
-    "Controller Settings...",  // Opens systemcontrol directly to the Controller pane
-    "Dock",
-    "Recent Items",
-    "---",
-    "Force Quit...",
-    "---",
-    "Sleep",
-    "Restart...",
-    "Shut Down...",
-    "---",
-    NULL  // Placeholder for logout_label (set dynamically in apple_init)
-};
-static const int apple_item_count = 16;
+// ── Static menu definition ─────────────────────────────────────────
+// The fixed portion of the menu, appended after the running-apps section.
+// A NULL `text` is the placeholder for the dynamic logout label so the
+// real username can be substituted at rebuild time.
 
-// Keyboard shortcuts displayed right-aligned next to menu items.
-// NULL means no shortcut. Uses Mac-style symbols (⌘ ⌥ ⇧).
-static const char *apple_shortcuts[] = {
-    NULL,           // About CopyCatOS
-    NULL,           // ---
-    NULL,           // Software Update...
-    NULL,           // ---
-    NULL,           // System Preferences...
-    NULL,           // Controller Settings...
-    NULL,           // Dock
-    NULL,           // Recent Items
-    NULL,           // ---
-    "⌥⌘Esc",       // Force Quit...
-    NULL,           // ---
-    NULL,           // Sleep
-    NULL,           // Restart...
-    NULL,           // Shut Down...
-    NULL,           // ---
-    "⇧⌘Q",         // Log Out
-};
+typedef struct {
+    const char *text;
+    const char *shortcut;       // NULL = no shortcut
+    bool        disabled;
+    bool        has_submenu_arrow;
+} AppleStaticItem;
 
-// Which items are disabled (grayed out, non-clickable)?
-static bool is_disabled(int index)
-{
-    // Software Update, Dock submenu, Recent Items — still disabled stubs.
-    // About CopyCatOS (index 0) now fires a placeholder notify-send toast
-    // pending a real Aqua About sheet. Indices shifted by +1 from the
-    // "Controller Settings..." insertion.
-    return (index == 2 || index == 6 || index == 7);
-}
+static const AppleStaticItem apple_static_items[] = {
+    { "About CopyCatOS",        NULL,      false, false },
+    { "---",                    NULL,      false, false },
+    { "Software Update...",     NULL,      true,  false },
+    { "---",                    NULL,      false, false },
+    { "System Preferences...",  NULL,      false, false },
+    { "Controller Settings...", NULL,      false, false },
+    { "Dock",                   NULL,      true,  true  },
+    { "Recent Items",           NULL,      true,  true  },
+    { "---",                    NULL,      false, false },
+    { "Force Quit...",          "⌥⌘Esc",   false, false },
+    { "---",                    NULL,      false, false },
+    { "Sleep",                  NULL,      false, false },
+    { "Restart...",             NULL,      false, false },
+    { "Shut Down...",           NULL,      false, false },
+    { "---",                    NULL,      false, false },
+    { NULL,                     "⇧⌘Q",     false, false },  // logout placeholder
+};
+#define APPLE_STATIC_COUNT (sizeof(apple_static_items)/sizeof(apple_static_items[0]))
 
 // ── Internal: load a PNG, scale it, and extract an alpha mask ───────
 
@@ -199,11 +204,11 @@ void apple_init(MenuBar *mb)
 
     // Build the "Log Out <username>..." label from the actual system user.
     // Real Snow Leopard shows the short username (e.g., "Log Out Kyle...").
+    // The dynamic label is plumbed in via rebuild_apple_items() — the
+    // static_items table carries a NULL placeholder that gets substituted.
     const char *user = getenv("USER");
     if (!user) user = "User";
     snprintf(logout_label, sizeof(logout_label), "Log Out %s...", user);
-    // Point the last item slot to our dynamic label
-    apple_items[apple_item_count - 1] = logout_label;
 
     // Build the paths to the Apple logo PNGs.
     // We use $HOME to avoid hardcoding a username.
@@ -302,6 +307,242 @@ void apple_paint(MenuBar *mb, MenuBarPane *pane, cairo_t *cr)
     }
 }
 
+// ── Running-app enumeration ─────────────────────────────────────────
+
+// Read _NET_CLIENT_LIST from the root window. Caller must XFree(*out_list)
+// when the returned count > 0. Duplicates the helper in appmenu.c so apple.c
+// can stay self-contained — both are tiny and keeping them inline avoids a
+// new shared header just for two utility functions.
+static int apple_read_client_list(MenuBar *mb, Window **out_list)
+{
+    *out_list = NULL;
+    Atom atom_client_list = XInternAtom(mb->dpy, "_NET_CLIENT_LIST", False);
+
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *data = NULL;
+
+    int status = XGetWindowProperty(
+        mb->dpy, mb->root, atom_client_list,
+        0, 1024, False, XA_WINDOW,
+        &actual_type, &actual_format,
+        &nitems, &bytes_after, &data);
+
+    if (status != Success || nitems == 0 || !data) {
+        if (data) XFree(data);
+        return 0;
+    }
+    *out_list = (Window *)data;
+    return (int)nitems;
+}
+
+// Read WM_CLASS for `w` and return a friendly app name in `out` (size `n`).
+// We prefer res_class (e.g. "TextEdit", "Brave-browser") over res_name
+// (e.g. the binary basename) — res_class is closer to a human-facing app
+// name. Returns true on success.
+static bool apple_get_class(MenuBar *mb, Window w, char *out, size_t n)
+{
+    if (!out || n == 0) return false;
+    XClassHint ch = {0};
+    if (!XGetClassHint(mb->dpy, w, &ch)) return false;
+
+    const char *src = (ch.res_class && ch.res_class[0])
+                    ? ch.res_class
+                    : (ch.res_name && ch.res_name[0] ? ch.res_name : NULL);
+    bool ok = false;
+    if (src) {
+        strncpy(out, src, n - 1);
+        out[n - 1] = '\0';
+        ok = true;
+    }
+    if (ch.res_class) XFree(ch.res_class);
+    if (ch.res_name)  XFree(ch.res_name);
+    return ok;
+}
+
+// Filter shell components out of the running-apps list. The menubar
+// itself, dock, desktop wallpaper surface, searchsystem overlay, and the
+// inputmap utility are infrastructure — they're always running and
+// listing them in the "Open Applications" section would be noise.
+static bool apple_is_shell_component(const char *cls)
+{
+    if (!cls) return true;
+    static const char *shell_classes[] = {
+        "menubar", "dock", "desktop", "searchsystem",
+        "inputmap", "moonrock", "moonrock-lite",
+        NULL,
+    };
+    for (int i = 0; shell_classes[i]; i++) {
+        if (strcasecmp(cls, shell_classes[i]) == 0) return true;
+    }
+    return false;
+}
+
+// Read _NET_WM_WINDOW_TYPE for `w` and return true if the window is a
+// type that should appear in the application list. Excludes DOCK,
+// DESKTOP, MENU, TOOLTIP, NOTIFICATION, SPLASH, etc. — these are
+// transient or shell chrome and shouldn't be picked as the activate
+// target for an app entry. Missing _NET_WM_WINDOW_TYPE defaults to
+// "normal app" (true) so apps that never set the property still list.
+static bool apple_window_is_app(MenuBar *mb, Window w)
+{
+    Atom atom_type   = XInternAtom(mb->dpy, "_NET_WM_WINDOW_TYPE", False);
+    Atom actual_type;
+    int actual_format;
+    unsigned long nitems, bytes_after;
+    unsigned char *data = NULL;
+
+    int status = XGetWindowProperty(
+        mb->dpy, w, atom_type,
+        0, 32, False, XA_ATOM,
+        &actual_type, &actual_format,
+        &nitems, &bytes_after, &data);
+
+    if (status != Success || !data) {
+        if (data) XFree(data);
+        return true;  // unknown → treat as a normal app
+    }
+
+    static const char *exclude[] = {
+        "_NET_WM_WINDOW_TYPE_DOCK",
+        "_NET_WM_WINDOW_TYPE_DESKTOP",
+        "_NET_WM_WINDOW_TYPE_MENU",
+        "_NET_WM_WINDOW_TYPE_TOOLTIP",
+        "_NET_WM_WINDOW_TYPE_NOTIFICATION",
+        "_NET_WM_WINDOW_TYPE_SPLASH",
+        "_NET_WM_WINDOW_TYPE_DROPDOWN_MENU",
+        "_NET_WM_WINDOW_TYPE_POPUP_MENU",
+        "_NET_WM_WINDOW_TYPE_COMBO",
+        NULL,
+    };
+
+    Atom *types = (Atom *)data;
+    bool ok = true;
+    for (unsigned long i = 0; i < nitems && ok; i++) {
+        char *name = XGetAtomName(mb->dpy, types[i]);
+        if (!name) continue;
+        for (int e = 0; exclude[e]; e++) {
+            if (strcmp(name, exclude[e]) == 0) { ok = false; break; }
+        }
+        XFree(name);
+    }
+    XFree(data);
+    return ok;
+}
+
+// Find an existing item slot for an app with this class name. Returns the
+// index in apple_items[], or -1 if not found. Used during dedupe so a
+// second window of the same app overwrites the first entry's target
+// (with the later one in mapping order, which is approximately the most
+// recently mapped — close enough for v1 without reading STACKING).
+static int apple_find_running_entry(const char *cls, int prefix_count)
+{
+    for (int i = 0; i < prefix_count; i++) {
+        AppleItem *it = &apple_items[i];
+        if (!it->is_running_app) continue;
+        if (strcasecmp(it->text, cls) == 0) return i;
+    }
+    return -1;
+}
+
+// Capitalize the first character if it's a lowercase ASCII letter.
+// "fileviewer" → "Fileviewer", "TextEdit" → "TextEdit". Quick visual
+// polish so res_class lowercase names don't look out of place next to
+// proper-case ones in the menu.
+static void apple_capitalize_first(char *s)
+{
+    if (s && s[0] >= 'a' && s[0] <= 'z') s[0] = (char)(s[0] - 'a' + 'A');
+}
+
+// ── Menu rebuild ────────────────────────────────────────────────────
+// Repopulate apple_items[] from scratch. Called at the start of every
+// apple_show_menu() so the running-apps section reflects current state.
+// The menu is: [running apps section] [separator] [static fixed items].
+// If no real running apps are found, the running-apps section + its
+// separator are dropped entirely — no empty header is shown.
+
+static void apple_rebuild(MenuBar *mb)
+{
+    apple_item_count = 0;
+
+    // ── Running-apps section ─────────────────────────────────────
+    // Header row first so it draws even when no apps populate (we
+    // unwind it below if the section is empty). The header item is
+    // disabled and styled smaller/dimmer to read as a section title.
+    AppleItem *header = &apple_items[apple_item_count++];
+    memset(header, 0, sizeof(*header));
+    strncpy(header->text, "Open Applications",
+            sizeof(header->text) - 1);
+    header->is_header = true;
+    header->disabled  = true;
+
+    int header_idx = 0;
+    int apps_added = 0;
+
+    Window *list = NULL;
+    int n = apple_read_client_list(mb, &list);
+    for (int i = 0; i < n; i++) {
+        if (apple_item_count >= APPLE_MAX_ITEMS - 4) break;  // leave room
+
+        char cls[128];
+        if (!apple_get_class(mb, list[i], cls, sizeof(cls))) continue;
+        if (apple_is_shell_component(cls)) continue;
+        if (!apple_window_is_app(mb, list[i])) continue;
+
+        // Dedupe by class — keep one entry per app, point its target at
+        // the most recently seen window so a click activates the latest
+        // mapped instance (close to the user's expectation of "frontmost").
+        int existing = apple_find_running_entry(cls, apple_item_count);
+        if (existing >= 0) {
+            apple_items[existing].target = list[i];
+            continue;
+        }
+
+        AppleItem *it = &apple_items[apple_item_count++];
+        memset(it, 0, sizeof(*it));
+        strncpy(it->text, cls, sizeof(it->text) - 1);
+        apple_capitalize_first(it->text);
+        it->target         = list[i];
+        it->is_running_app = true;
+        apps_added++;
+    }
+    if (list) XFree(list);
+
+    if (apps_added == 0) {
+        // Nothing real to show — drop the header so the menu looks
+        // exactly like the original (About → ...) instead of a lone
+        // "Open Applications" label with no contents under it.
+        apple_item_count = header_idx;
+    } else {
+        // Trailing separator between section and the static items.
+        AppleItem *sep = &apple_items[apple_item_count++];
+        memset(sep, 0, sizeof(*sep));
+        sep->is_separator = true;
+    }
+
+    // ── Static fixed items ──────────────────────────────────────
+    for (size_t i = 0; i < APPLE_STATIC_COUNT; i++) {
+        if (apple_item_count >= APPLE_MAX_ITEMS) break;
+        const AppleStaticItem *s = &apple_static_items[i];
+        AppleItem *it = &apple_items[apple_item_count++];
+        memset(it, 0, sizeof(*it));
+
+        // NULL text is the logout placeholder — substitute the live
+        // dynamic label built in apple_init() from $USER.
+        const char *text = s->text ? s->text : logout_label;
+        if (text && strcmp(text, "---") == 0) {
+            it->is_separator = true;
+            continue;
+        }
+        if (text) strncpy(it->text, text, sizeof(it->text) - 1);
+        if (s->shortcut) strncpy(it->shortcut, s->shortcut,
+                                 sizeof(it->shortcut) - 1);
+        it->disabled          = s->disabled;
+        it->has_submenu_arrow = s->has_submenu_arrow;
+    }
+}
+
 // ── Dropdown helpers ────────────────────────────────────────────────
 
 // Helper: draw a rounded rectangle path (for the dropdown background).
@@ -314,6 +555,14 @@ static void apple_rounded_rect(cairo_t *cr, double x, double y,
     cairo_arc(cr, x + radius,     y + h - radius, radius, M_PI / 2,   M_PI);
     cairo_arc(cr, x + radius,     y + radius,     radius, M_PI,       3 * M_PI / 2);
     cairo_close_path(cr);
+}
+
+// Compute the row height for an item — separators are short, every
+// other row is full-height. Centralized so paint, hit-test, and popup
+// height all agree.
+static int apple_row_height(const AppleItem *it)
+{
+    return it->is_separator ? S(7) : S(22);
 }
 
 // Paint the Apple menu dropdown contents.
@@ -341,10 +590,9 @@ static void paint_apple_dropdown(MenuBar *mb, int popup_w, int popup_h)
     int y = S(4); // Top padding
 
     for (int i = 0; i < apple_item_count; i++) {
-        const char *label = apple_items[i];
-        if (!label) continue; // Safety: skip NULL entries
+        AppleItem *it = &apple_items[i];
 
-        if (strcmp(label, "---") == 0) {
+        if (it->is_separator) {
             // Separator line
             cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 40.0 / 255.0);
             cairo_set_line_width(cr, 1.0);
@@ -352,82 +600,88 @@ static void paint_apple_dropdown(MenuBar *mb, int popup_w, int popup_h)
             cairo_line_to(cr, popup_w - S(10), y + SF(3.5));
             cairo_stroke(cr);
             y += S(7);
-        } else {
-            // Check if this item is hovered — draw blue highlight
-            // behind it, matching the Snow Leopard selection blue (#3875D7)
-            bool disabled = is_disabled(i);
-            bool hovered = (i == apple_hover && !disabled);
-
-            if (hovered) {
-                // Blue selection highlight (rounded rect)
-                cairo_set_source_rgba(cr, 56/255.0, 117/255.0, 215/255.0, 0.9);
-                double rx = S(4), ry = y, rw = popup_w - S(8), rh = S(22), rr = SF(3.0);
-                cairo_new_sub_path(cr);
-                cairo_arc(cr, rx + rw - rr, ry + rr, rr, -M_PI/2, 0);
-                cairo_arc(cr, rx + rw - rr, ry + rh - rr, rr, 0, M_PI/2);
-                cairo_arc(cr, rx + rr, ry + rh - rr, rr, M_PI/2, M_PI);
-                cairo_arc(cr, rx + rr, ry + rr, rr, M_PI, 3*M_PI/2);
-                cairo_close_path(cr);
-                cairo_fill(cr);
-            }
-
-            // Text color: white on blue highlight, gray for disabled, dark otherwise
-            if (hovered) {
-                cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
-            } else if (disabled) {
-                cairo_set_source_rgb(cr, 0.6, 0.6, 0.6);
-            } else {
-                cairo_set_source_rgb(cr, 0.1, 0.1, 0.1);
-            }
-
-            // Menu item label (left-aligned) with scaled font
-            PangoLayout *layout = pango_cairo_create_layout(cr);
-            pango_layout_set_text(layout, label, -1);
-
-            PangoFontDescription *desc = pango_font_description_from_string(
-                apple_scaled_font("Lucida Grande", 13)
-            );
-            pango_layout_set_font_description(layout, desc);
-            pango_font_description_free(desc);
-
-            cairo_move_to(cr, S(18), y + S(2));
-            pango_cairo_show_layout(cr, layout);
-            g_object_unref(layout);
-
-            // Submenu indicator arrow for Dock and Recent Items
-            if (strcmp(label, "Dock") == 0 ||
-                strcmp(label, "Recent Items") == 0) {
-                // Draw a small right-pointing triangle, scaled proportionally
-                double ax = popup_w - S(16);
-                double ay = y + SF(10.0);
-                cairo_move_to(cr, ax, ay - SF(4.0));
-                cairo_line_to(cr, ax + SF(5.0), ay);
-                cairo_line_to(cr, ax, ay + SF(4.0));
-                cairo_close_path(cr);
-                cairo_fill(cr);
-            }
-
-            // Keyboard shortcut (right-aligned, smaller scaled font)
-            if (i < apple_item_count && apple_shortcuts[i]) {
-                PangoLayout *sc_layout = pango_cairo_create_layout(cr);
-                pango_layout_set_text(sc_layout, apple_shortcuts[i], -1);
-
-                PangoFontDescription *sc_desc = pango_font_description_from_string(
-                    apple_scaled_font("Lucida Grande", 12)
-                );
-                pango_layout_set_font_description(sc_layout, sc_desc);
-                pango_font_description_free(sc_desc);
-
-                int sc_w, sc_h;
-                pango_layout_get_pixel_size(sc_layout, &sc_w, &sc_h);
-
-                cairo_move_to(cr, popup_w - sc_w - S(12), y + S(2));
-                pango_cairo_show_layout(cr, sc_layout);
-                g_object_unref(sc_layout);
-            }
-
-            y += S(22);
+            continue;
         }
+
+        // Hover highlight — only on enabled, non-separator items.
+        bool hovered = (i == apple_hover && !it->disabled);
+        if (hovered) {
+            // Blue selection highlight (rounded rect) — Snow Leopard #3875D7
+            cairo_set_source_rgba(cr, 56/255.0, 117/255.0, 215/255.0, 0.9);
+            double rx = S(4), ry = y, rw = popup_w - S(8), rh = S(22), rr = SF(3.0);
+            cairo_new_sub_path(cr);
+            cairo_arc(cr, rx + rw - rr, ry + rr, rr, -M_PI/2, 0);
+            cairo_arc(cr, rx + rw - rr, ry + rh - rr, rr, 0, M_PI/2);
+            cairo_arc(cr, rx + rr, ry + rh - rr, rr, M_PI/2, M_PI);
+            cairo_arc(cr, rx + rr, ry + rr, rr, M_PI, 3*M_PI/2);
+            cairo_close_path(cr);
+            cairo_fill(cr);
+        }
+
+        // Text color: white on blue highlight, gray for disabled, dark otherwise
+        if (hovered) {
+            cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+        } else if (it->disabled) {
+            cairo_set_source_rgb(cr, 0.55, 0.55, 0.55);
+        } else {
+            cairo_set_source_rgb(cr, 0.1, 0.1, 0.1);
+        }
+
+        // Headers render in a slightly smaller font to read as section
+        // titles rather than disabled menu rows. Running-app rows get a
+        // small left indent to visually separate them from the section
+        // header above.
+        int label_x = S(18);
+        const char *font_base = "Lucida Grande";
+        int font_size = 13;
+        if (it->is_header) {
+            font_size = 11;
+        } else if (it->is_running_app) {
+            label_x = S(24);
+        }
+
+        PangoLayout *layout = pango_cairo_create_layout(cr);
+        pango_layout_set_text(layout, it->text, -1);
+        PangoFontDescription *desc = pango_font_description_from_string(
+            apple_scaled_font(font_base, font_size)
+        );
+        pango_layout_set_font_description(layout, desc);
+        pango_font_description_free(desc);
+
+        cairo_move_to(cr, label_x, y + S(2));
+        pango_cairo_show_layout(cr, layout);
+        g_object_unref(layout);
+
+        // Submenu indicator arrow (Dock / Recent Items)
+        if (it->has_submenu_arrow) {
+            double ax = popup_w - S(16);
+            double ay = y + SF(10.0);
+            cairo_move_to(cr, ax, ay - SF(4.0));
+            cairo_line_to(cr, ax + SF(5.0), ay);
+            cairo_line_to(cr, ax, ay + SF(4.0));
+            cairo_close_path(cr);
+            cairo_fill(cr);
+        }
+
+        // Right-aligned keyboard shortcut
+        if (it->shortcut[0]) {
+            PangoLayout *sc_layout = pango_cairo_create_layout(cr);
+            pango_layout_set_text(sc_layout, it->shortcut, -1);
+            PangoFontDescription *sc_desc = pango_font_description_from_string(
+                apple_scaled_font("Lucida Grande", 12)
+            );
+            pango_layout_set_font_description(sc_layout, sc_desc);
+            pango_font_description_free(sc_desc);
+
+            int sc_w, sc_h;
+            pango_layout_get_pixel_size(sc_layout, &sc_w, &sc_h);
+
+            cairo_move_to(cr, popup_w - sc_w - S(12), y + S(2));
+            pango_cairo_show_layout(cr, sc_layout);
+            g_object_unref(sc_layout);
+        }
+
+        y += S(22);
     }
 
     cairo_destroy(cr);
@@ -440,13 +694,17 @@ void apple_show_menu(MenuBar *mb)
     // Dismiss any existing Apple menu first
     apple_dismiss(mb);
 
+    // Rebuild the items array from current state — this captures the
+    // current set of running apps for the "Open Applications" section.
+    apple_rebuild(mb);
+
     // ── Calculate popup size (all dimensions scale proportionally) ──
     int popup_w = S(220); // Fixed width matching Snow Leopard Apple menu
 
-    // Height: S(22) per item, S(7) per separator, plus scaled padding
+    // Height: sum the per-item heights from the rebuilt list, plus padding
     int popup_h = S(8);
     for (int i = 0; i < apple_item_count; i++) {
-        popup_h += (strcmp(apple_items[i], "---") == 0) ? S(7) : S(22);
+        popup_h += apple_row_height(&apple_items[i]);
     }
 
     // ── Anchor in root-absolute coordinates ─────────────────────
@@ -509,17 +767,14 @@ static int apple_y_to_item(int y)
 {
     int row_y = S(4); // Top padding (scaled)
     for (int i = 0; i < apple_item_count; i++) {
-        const char *label = apple_items[i];
-        if (!label) continue;
-
-        if (strcmp(label, "---") == 0) {
-            row_y += S(7);
-        } else {
-            if (y >= row_y && y < row_y + S(22)) {
-                return i;
-            }
-            row_y += S(22);
+        AppleItem *it = &apple_items[i];
+        int h = apple_row_height(it);
+        if (it->is_separator) {
+            row_y += h;
+            continue;
         }
+        if (y >= row_y && y < row_y + h) return i;
+        row_y += h;
     }
     return -1;
 }
@@ -530,11 +785,32 @@ static int apple_y_to_item(int y)
 // a real system command matching macOS Snow Leopard behavior.
 static void apple_execute(MenuBar *mb, int index)
 {
-    const char *label = apple_items[index];
-    if (!label) return;
-    if (is_disabled(index)) return; // Don't execute disabled items
+    if (index < 0 || index >= apple_item_count) return;
+    AppleItem *it = &apple_items[index];
+    if (it->disabled || it->is_separator) return;
 
+    const char *label = it->text;
     fprintf(stderr, "[apple] Execute: %s\n", label);
+
+    // ── Running-app activation ──────────────────────────────────
+    // The Open Applications section dispatches by sending the standard
+    // EWMH _NET_ACTIVE_WINDOW ClientMessage to the root for the entry's
+    // target window. moonrock interprets this as "raise + focus" and
+    // pulls the app to the front, identical to the dock click path.
+    if (it->is_running_app) {
+        Window target = it->target;
+        if (target == None) return;
+        XEvent ev = {0};
+        ev.type                 = ClientMessage;
+        ev.xclient.window       = target;
+        ev.xclient.message_type = mb->atom_net_active_window;
+        ev.xclient.format       = 32;
+        ev.xclient.data.l[0]    = 2;  // source = pager/taskbar
+        XSendEvent(mb->dpy, mb->root, False,
+                   SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+        XFlush(mb->dpy);
+        return;
+    }
 
     if (strcmp(label, "About CopyCatOS") == 0) {
         // Placeholder About surface — pulls the live libmoonbase.so runtime
@@ -640,7 +916,7 @@ void apple_handle_motion(MenuBar *mb, int motion_y)
 {
     int item = apple_y_to_item(motion_y);
     // Don't highlight disabled items or separators
-    if (item >= 0 && is_disabled(item)) item = -1;
+    if (item >= 0 && apple_items[item].disabled) item = -1;
 
     if (item != apple_hover) {
         apple_hover = item;
@@ -658,7 +934,7 @@ bool apple_handle_click(MenuBar *mb, int click_x, int click_y)
     (void)click_x;
     int item = apple_y_to_item(click_y);
 
-    if (item >= 0 && !is_disabled(item)) {
+    if (item >= 0 && !apple_items[item].disabled) {
         // Execute the action, then dismiss
         apple_execute(mb, item);
         return true; // Should dismiss
