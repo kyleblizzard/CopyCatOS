@@ -41,8 +41,19 @@ typedef struct {
     char name[256];              // Display name (filename, possibly without extension)
     char path[1024];             // Full filesystem path to the file
     cairo_surface_t *icon;       // Pre-loaded icon surface (scaled to ICON_SIZE)
-    int grid_col, grid_row;      // Position in the logical grid
-    int x, y;                    // Pixel position on screen (computed from grid)
+    int grid_col, grid_row;      // Last canonical grid cell (runtime hint).
+                                 // Used by Clean Up and as a tiebreak for
+                                 // auto-place collision avoidance — not the
+                                 // source of truth for icon position. The
+                                 // user-visible position lives in (x, y) and
+                                 // persists via the user.moonbase.position
+                                 // xattr on the file itself.
+    int x, y;                    // Pixel position on screen (free-form).
+                                 // Restored from xattr (in points → pixels)
+                                 // or computed by auto-place when no xattr.
+    bool has_pos;                // True if (x, y) was restored from a
+                                 // saved xattr position (free-form drop).
+                                 // False for auto-placed icons.
     bool selected;               // Whether this icon is currently highlighted
     bool is_directory;           // true if this is a folder
     int label;                   // Color label index (0=none, 1-7=Red/Orange/Yellow/Green/Blue/Purple/Grey)

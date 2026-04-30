@@ -1,21 +1,14 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// layout.c — Persistent desktop icon layout (spatial memory)
+// layout.c — Desktop spatial workspace
 //
-// Snow Leopard's defining characteristic: icons stay exactly where you
-// put them. You place your project folder in the top-right, a year later
-// it's still there. This module implements that guarantee.
-//
-// Every time you drag an icon to a new position, layout_save_all() writes
-// the complete grid layout to disk atomically. Every time desktop starts,
-// layout_load() reads it back and layout_apply() restores every icon to
-// exactly where you left it.
-//
-// New files (not in the saved layout) are auto-placed in the next free
-// grid cell, maintaining the same top-right → down → left ordering that
-// Finder uses for auto-arranged icons.
+// Per-file xattr `user.moonbase.position` holds the icon's free-form
+// pixel position, stored as ASCII "x y" in points. layout_apply reads
+// those xattrs, auto-places anything without one, and the desktop paints
+// every icon at exactly the spot the user dropped it — across reboots,
+// across renames, across HiDPI scale changes.
 
-#define _GNU_SOURCE  // For strndup
+#define _GNU_SOURCE
 
 #include "layout.h"
 #include "icons.h"
@@ -24,242 +17,122 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h>   // mkdir
-#include <unistd.h>     // rename
 #include <errno.h>
+#include <sys/xattr.h>
 
-// ── Internal layout store ─────────────────────────────────────────────
+// Linux mandates the `user.` prefix on xattr keys settable by unprivileged
+// users on most filesystems. Public, namespaced under MoonBase.
+#define XATTR_POSITION "user.moonbase.position"
 
-// One entry per file we've seen placed. We use filenames (not full paths)
-// as keys so the layout survives if you move your home directory.
-typedef struct {
-    char name[256];  // Filename (basename only, e.g. "report.pdf")
-    int  col;        // Grid column (0 = rightmost)
-    int  row;        // Grid row (0 = topmost)
-} LayoutEntry;
-
-// In-memory table loaded by layout_load() and used by layout_apply().
-// 512 entries covers any sane number of desktop files.
-#define MAX_LAYOUT_ENTRIES 512
-static LayoutEntry entries[MAX_LAYOUT_ENTRIES];
-static int         entry_count = 0;
-
-// ── Path helpers ──────────────────────────────────────────────────────
-
-// Build the path to the layout file and ensure its parent directory exists.
-// Path: ~/.local/share/copycatos/desktop-layout.ini
-static void get_layout_path(char *buf, size_t bufsize)
+// Read one file's saved position xattr. Returns true and fills (*px, *py)
+// in points when the xattr exists and parses cleanly.
+static bool read_position_xattr(const char *path, int *px, int *py)
 {
-    const char *home = getenv("HOME");
-    if (!home) home = "/tmp";
+    char buf[64];
+    ssize_t n = getxattr(path, XATTR_POSITION, buf, sizeof(buf) - 1);
+    if (n <= 0) return false;
+    buf[n] = '\0';
 
-    // Ensure the directory exists. mkdir() with -p equivalent:
-    // we create each component manually.
-    char dir[1024];
-    snprintf(dir, sizeof(dir), "%s/.local/share/copycatos", home);
+    int x, y;
+    if (sscanf(buf, "%d %d", &x, &y) != 2) return false;
 
-    // Create ~/.local if missing
-    char local_dir[1024];
-    snprintf(local_dir, sizeof(local_dir), "%s/.local", home);
-    mkdir(local_dir, 0755);  // Ignore error — may already exist
-
-    // Create ~/.local/share if missing
-    char share_dir[1024];
-    snprintf(share_dir, sizeof(share_dir), "%s/.local/share", home);
-    mkdir(share_dir, 0755);
-
-    // Create ~/.local/share/copycatos if missing
-    mkdir(dir, 0755);
-
-    snprintf(buf, bufsize, "%s/desktop-layout.ini", dir);
+    *px = x;
+    *py = y;
+    return true;
 }
 
-// ── layout_load ───────────────────────────────────────────────────────
-
-void layout_load(void)
+// Convert points to physical pixels through the current desktop scale.
+// Same expression as the S() macro but operates on a runtime int, so we
+// inline it here rather than abuse the macro on stored data.
+static inline int pts_to_px(int pts)
 {
-    entry_count = 0;
-
-    char path[1024];
-    get_layout_path(path, sizeof(path));
-
-    FILE *f = fopen(path, "r");
-    if (!f) {
-        // File doesn't exist yet — first run. That's fine.
-        fprintf(stderr, "[layout] No saved layout (first run or cleared)\n");
-        return;
-    }
-
-    char line[512];
-    int  loaded = 0;
-
-    while (fgets(line, sizeof(line), f) && entry_count < MAX_LAYOUT_ENTRIES) {
-        // Skip blank lines and comment lines (starting with '#')
-        char *p = line;
-        while (*p == ' ' || *p == '\t') p++;
-        if (*p == '#' || *p == '\n' || *p == '\r' || *p == '\0') continue;
-
-        // Format: filename=col:row
-        // The filename can contain any character except '=' and newline.
-        // We find the last '=' to handle filenames that contain '='.
-        char *eq = strrchr(p, '=');
-        if (!eq) continue;
-
-        // Split at '='
-        *eq = '\0';
-        char *key = p;
-        char *val = eq + 1;
-
-        // Parse col:row from value
-        int col, row;
-        if (sscanf(val, "%d:%d", &col, &row) != 2) continue;
-        if (col < 0 || row < 0 || col > 200 || row > 200) continue;
-
-        // Strip any trailing whitespace from the key (filename)
-        size_t klen = strlen(key);
-        while (klen > 0 && (key[klen-1] == ' ' || key[klen-1] == '\t')) {
-            key[--klen] = '\0';
-        }
-        if (klen == 0 || klen >= 256) continue;
-
-        // Store the entry
-        strncpy(entries[entry_count].name, key, 255);
-        entries[entry_count].name[255] = '\0';
-        entries[entry_count].col = col;
-        entries[entry_count].row = row;
-        entry_count++;
-        loaded++;
-    }
-
-    fclose(f);
-    fprintf(stderr, "[layout] Loaded %d saved icon positions from %s\n",
-            loaded, path);
-}
-
-// ── layout_apply ─────────────────────────────────────────────────────
-
-// Look up a filename in the loaded entry table.
-// Returns the entry pointer, or NULL if not found.
-static LayoutEntry *layout_find(const char *name)
-{
-    for (int i = 0; i < entry_count; i++) {
-        if (strcmp(entries[i].name, name) == 0) {
-            return &entries[i];
-        }
-    }
-    return NULL;
-}
-
-// Convert grid (col, row) to screen pixel position.
-// This is the single source of truth for the grid-to-pixel mapping.
-// col=0 is the rightmost column; row=0 is the topmost row.
-// ICON_* constants are points at the 1.0x baseline; S() folds in the
-// current desktop_hidpi_scale so the math lands in physical pixels.
-static void grid_to_pixel(int col, int row, int screen_w,
-                           int *out_x, int *out_y)
-{
-    int cell_w = S(ICON_CELL_W);
-    int cell_h = S(ICON_CELL_H);
-    int top    = S(ICON_TOP_MARGIN);
-    int right  = S(ICON_RIGHT_MARGIN);
-
-    *out_x = screen_w - right - cell_w - (col * cell_w);
-    *out_y = top + (row * cell_h);
+    float s = desktop_hidpi_scale;
+    if (s <= 0.0f) s = 1.0f;
+    return (int)(pts * s + 0.5f);
 }
 
 void layout_apply(DesktopIcon *icons, int count, int screen_w, int screen_h)
 {
     if (count == 0) return;
 
-    // How many rows fit on screen, accounting for the menubar margin.
-    // Same S() scaling as grid_to_pixel so row-capacity and icon placement
-    // stay consistent.
-    int rows_per_col = (screen_h - S(ICON_TOP_MARGIN)) / S(ICON_CELL_H);
+    int cell_w = S(ICON_CELL_W);
+    int cell_h = S(ICON_CELL_H);
+    int top    = S(ICON_TOP_MARGIN);
+    int right  = S(ICON_RIGHT_MARGIN);
+
+    int rows_per_col = (screen_h - top) / cell_h;
     if (rows_per_col < 1) rows_per_col = 1;
 
-    // Build an occupancy grid so we know which cells are already taken
-    // by icons with saved positions. We need this to auto-place new icons.
-    // Use a flat array: occupied[col * rows_per_col + row]
-    // We cap at 50 columns which is far more than any screen will show.
+    // Occupancy grid for auto-place. Free-form icons mark the canonical
+    // cell their center maps to as occupied, so a fresh file scanned on
+    // first login doesn't auto-place underneath an icon the user dragged.
     #define MAX_GRID_COLS 50
     bool occupied[MAX_GRID_COLS * rows_per_col];
     memset(occupied, 0, sizeof(bool) * MAX_GRID_COLS * rows_per_col);
 
-    // ── Pass 1: restore icons that have a saved position ──────────────
+    // ── Pass 1: place icons that have a saved xattr position ──────────
     int restored = 0;
     for (int i = 0; i < count; i++) {
-        LayoutEntry *e = layout_find(icons[i].name);
-        if (!e) continue;
-
-        int col = e->col;
-        int row = e->row;
-
-        // Validate: clamp to grid bounds in case screen shrank
-        if (col >= MAX_GRID_COLS) col = MAX_GRID_COLS - 1;
-        if (row >= rows_per_col)  row = rows_per_col - 1;
-
-        // If two saved icons claim the same cell (shouldn't happen but
-        // be defensive), skip this one — it'll get auto-placed below.
-        if (col >= 0 && col < MAX_GRID_COLS &&
-            occupied[col * rows_per_col + row]) {
-            fprintf(stderr, "[layout] Collision at col=%d row=%d for '%s', "
-                    "will auto-place\n", col, row, icons[i].name);
+        int x_pt, y_pt;
+        if (!read_position_xattr(icons[i].path, &x_pt, &y_pt)) {
+            icons[i].has_pos = false;
             continue;
         }
 
-        // Restore position
+        // Stored value is in points — multiply through the current scale
+        // so the user gets the same logical drop point on the 1.0× HDMI
+        // monitor and the 1.75× Legion panel.
+        icons[i].x = pts_to_px(x_pt);
+        icons[i].y = pts_to_px(y_pt);
+        icons[i].has_pos = true;
+
+        // Tag the icon with the canonical grid cell its center maps onto
+        // so Clean Up has a starting cell, and so the auto-place pass
+        // below can avoid landing a new icon on top of this one.
+        int cx = icons[i].x + cell_w / 2;
+        int cy = icons[i].y + cell_h / 2;
+        int col = (screen_w - right - cx) / cell_w;
+        int row = (cy - top) / cell_h;
+        if (col < 0) col = 0;
+        if (col >= MAX_GRID_COLS) col = MAX_GRID_COLS - 1;
+        if (row < 0) row = 0;
+        if (row >= rows_per_col) row = rows_per_col - 1;
         icons[i].grid_col = col;
         icons[i].grid_row = row;
-        grid_to_pixel(col, row, screen_w, &icons[i].x, &icons[i].y);
-
-        // Mark cell occupied
-        if (col >= 0 && col < MAX_GRID_COLS)
-            occupied[col * rows_per_col + row] = true;
-
+        occupied[col * rows_per_col + row] = true;
         restored++;
     }
 
-    // ── Pass 2: auto-place icons with no saved position ───────────────
-    // Walk cells in Snow Leopard order (col=0 row=0, col=0 row=1, ...
-    // col=1 row=0, ...) and assign the first free cell to each new icon.
-    int auto_col = 0;
-    int auto_row = 0;
-
-    // Helper: advance (auto_col, auto_row) to the next free cell.
-    // Returns false if we've run out of grid space.
-    // (Defined as a nested lambda-equivalent using a local goto target.)
+    // ── Pass 2: auto-place icons with no saved xattr ──────────────────
+    int auto_col = 0, auto_row = 0;
     for (int i = 0; i < count; i++) {
-        LayoutEntry *e = layout_find(icons[i].name);
-        if (e) continue;  // Already placed in pass 1
+        if (icons[i].has_pos) continue;
 
-        // Find next free cell
         bool found = false;
         while (auto_col < MAX_GRID_COLS) {
             if (!occupied[auto_col * rows_per_col + auto_row]) {
                 found = true;
                 break;
             }
-            // Advance: go down first, then to next column
             auto_row++;
             if (auto_row >= rows_per_col) {
                 auto_row = 0;
                 auto_col++;
             }
         }
-
         if (!found) {
-            // No more grid space — stack at last column
+            // Out of grid space — stack at the last column, top.
+            // 50 columns is a hard ceiling; nobody hits it in practice.
             auto_col = MAX_GRID_COLS - 1;
             auto_row = 0;
         }
 
-        // Place the icon
         icons[i].grid_col = auto_col;
         icons[i].grid_row = auto_row;
-        grid_to_pixel(auto_col, auto_row, screen_w, &icons[i].x, &icons[i].y);
+        icons[i].x = screen_w - right - cell_w - (auto_col * cell_w);
+        icons[i].y = top + (auto_row * cell_h);
         occupied[auto_col * rows_per_col + auto_row] = true;
 
-        // Advance cursor for next auto-placed icon
         auto_row++;
         if (auto_row >= rows_per_col) {
             auto_row = 0;
@@ -267,62 +140,40 @@ void layout_apply(DesktopIcon *icons, int count, int screen_w, int screen_h)
         }
     }
 
-    fprintf(stderr, "[layout] Applied: %d restored, %d auto-placed\n",
+    fprintf(stderr, "[layout] Applied: %d xattr-placed, %d auto-placed\n",
             restored, count - restored);
 }
 
-// ── layout_save_all ───────────────────────────────────────────────────
-
-void layout_save_all(const DesktopIcon *icons, int count)
+void layout_save_position(const DesktopIcon *icon)
 {
-    char path[1024];
-    get_layout_path(path, sizeof(path));
+    if (!icon || !icon->path[0]) return;
 
-    // Write to a temp file first, then atomically rename into place.
-    // This ensures the layout file is never in a half-written state
-    // even if desktop is killed during the write.
-    char tmp_path[1056];
-    snprintf(tmp_path, sizeof(tmp_path), "%s.tmp", path);
+    float scale = desktop_hidpi_scale;
+    if (scale <= 0.0f) scale = 1.0f;
 
-    FILE *f = fopen(tmp_path, "w");
-    if (!f) {
-        fprintf(stderr, "[layout] Cannot write layout: %s (errno=%d)\n",
-                tmp_path, errno);
+    int x_pt = (int)(icon->x / scale + 0.5f);
+    int y_pt = (int)(icon->y / scale + 0.5f);
+
+    char buf[64];
+    int n = snprintf(buf, sizeof(buf), "%d %d", x_pt, y_pt);
+    if (n <= 0 || (size_t)n >= sizeof(buf)) return;
+
+    if (setxattr(icon->path, XATTR_POSITION, buf, (size_t)n, 0) != 0) {
+        fprintf(stderr, "[layout] setxattr %s on %s failed: %s\n",
+                XATTR_POSITION, icon->path, strerror(errno));
         return;
     }
 
-    // Write a header comment so the file is human-readable
-    fprintf(f, "# CopyCatOS desktop icon layout\n");
-    fprintf(f, "# Format: filename=col:row  (col 0 = rightmost, row 0 = top)\n");
-    fprintf(f, "# Edit this file to pre-position icons, or just drag them.\n");
-    fprintf(f, "#\n");
+    fprintf(stderr, "[layout] Saved %s position (%d, %d) pts\n",
+            icon->name, x_pt, y_pt);
+}
 
-    for (int i = 0; i < count; i++) {
-        // Write: filename=col:row
-        // The filename is the basename only (no path prefix).
-        fprintf(f, "%s=%d:%d\n", icons[i].name, icons[i].grid_col, icons[i].grid_row);
-    }
+void layout_clear_position(const DesktopIcon *icon)
+{
+    if (!icon || !icon->path[0]) return;
 
-    fclose(f);
-
-    // Atomic rename: replaces the old file in one syscall.
-    // If rename() fails for some reason, we at least have the .tmp file.
-    if (rename(tmp_path, path) != 0) {
-        fprintf(stderr, "[layout] rename() failed: %s → %s (errno=%d)\n",
-                tmp_path, path, errno);
-        return;
-    }
-
-    fprintf(stderr, "[layout] Saved %d icon positions to %s\n", count, path);
-
-    // Keep the in-memory table in sync with what we just wrote.
-    // This way subsequent layout_find() calls see up-to-date data.
-    entry_count = 0;
-    for (int i = 0; i < count && entry_count < MAX_LAYOUT_ENTRIES; i++) {
-        strncpy(entries[entry_count].name, icons[i].name, 255);
-        entries[entry_count].name[255] = '\0';
-        entries[entry_count].col = icons[i].grid_col;
-        entries[entry_count].row = icons[i].grid_row;
-        entry_count++;
+    if (removexattr(icon->path, XATTR_POSITION) != 0 && errno != ENODATA) {
+        fprintf(stderr, "[layout] removexattr on %s failed: %s\n",
+                icon->path, strerror(errno));
     }
 }

@@ -1,53 +1,51 @@
 // CopyCatOS — by Kyle Blizzard at Blizzard.show
 
-// layout.h — Persistent desktop icon layout
+// layout.h — Desktop spatial workspace: free-form icon placement
 //
-// Spatial memory: icons stay exactly where you put them across reboots.
-// This is one of the key behavioral differences between Snow Leopard's
-// Finder and every modern Linux file manager, which either resets icon
-// positions on every login or doesn't support free positioning at all.
+// Snow Leopard's identity feature: icons stay exactly where you put them.
+// Drag a folder to the middle of the desktop, log out, log back in — the
+// folder is still in the middle of the desktop, at the same pixel.
 //
-// Storage format (~/.local/share/copycatos/desktop-layout.ini):
+// Storage is per-file xattr `user.moonbase.position`, holding two ASCII
+// integers in points: "x y". Points (not pixels) so the position survives
+// HiDPI scale changes — every paint multiplies through S() to land in
+// physical pixels for the current output scale.
 //
-//   # CopyCatOS desktop icon layout
-//   example.pdf=0:0
-//   Projects=0:1
-//   README.txt=1:0
+// Why xattr (not a central index file): positions move with the file.
+// Rename ~/Desktop/Notes.txt → ~/Desktop/Old Notes.txt and the position
+// follows. Move it to /tmp and back, the position follows. No central
+// registry to fall out of sync, no orphaned entries when files vanish.
 //
-// Keys are filenames only (not full paths), so the layout survives home
-// directory changes. Values are col:row in the icon grid (not pixels),
-// so the layout adapts correctly when the screen resolution changes.
+// Filesystems without xattr support (FAT32, exFAT, some NFS) fall through
+// to auto-place every login. A sidecar fallback is a future slice; ext4
+// and btrfs are the daily path on the dev target and any modern Linux box.
 //
 // Usage:
-//   1. layout_load()                        — call once at startup
-//   2. layout_apply(icons, count, sw, sh)   — after scan_desktop()
-//   3. layout_save_all(icons, count)        — after any position change
+//   1. layout_apply(icons, count, sw, sh)  — after scan_desktop()
+//   2. layout_save_position(icon)          — after a single drag end
+//   3. layout_clear_position(icon)         — Clean Up reverts to auto-place
 
 #ifndef CC_LAYOUT_H
 #define CC_LAYOUT_H
 
 #include "icons.h"
 
-// Load the saved layout from disk into an internal lookup table.
-// If the file doesn't exist yet, this is a no-op (all icons will be
-// auto-placed by layout_apply on first run).
-// Call once at startup before layout_apply().
-void layout_load(void);
-
-// Apply saved grid positions to the icon array.
-//
-// For each icon, we look up its filename in the loaded layout table:
-//   - Found: restore its grid_col/grid_row and compute pixel x/y
-//   - Not found (new file): auto-place in the next free grid cell,
-//     ordered top-right → down → left (Snow Leopard's default order)
-//
-// screen_w/screen_h are needed to compute pixel positions from grid coords.
+// Read xattr-stored positions for any icons that have one, then auto-place
+// the rest in canonical Snow Leopard order (top-right → down → left).
+// Icons with a stored xattr keep their exact pixel-XY (translated from
+// stored points through the current desktop scale). Icons without one
+// fill the next free grid cell — the cell containing each xattr-positioned
+// icon's center is reserved so a fresh file doesn't auto-place under it.
 void layout_apply(DesktopIcon *icons, int count, int screen_w, int screen_h);
 
-// Save all current icon positions to disk.
-// Written atomically: we write to a .tmp file first, then rename()
-// it over the real file — so a crash never leaves a corrupted layout.
-// Call this after any position change (drag end, clean up, relayout).
-void layout_save_all(const DesktopIcon *icons, int count);
+// Persist one icon's current pixel position as `user.moonbase.position`
+// on its file. Stored as ASCII "x y" in points so it stays correct after
+// docking to a different-scale display. Called from icons_drag_end after
+// a successful drag.
+void layout_save_position(const DesktopIcon *icon);
+
+// Remove the position xattr for one icon — reverts that icon to the
+// auto-place grid the next time layout_apply runs. Called from Clean Up.
+void layout_clear_position(const DesktopIcon *icon);
 
 #endif // CC_LAYOUT_H

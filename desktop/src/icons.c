@@ -512,14 +512,32 @@ void icons_init(Display *dpy, int screen_w, int screen_h)
     cached_screen_w = screen_w;
     cached_screen_h = screen_h;
 
+    // One-shot cleanup of the legacy central-index file. The pre-spatial
+    // build wrote ~/.local/share/copycatos/desktop-layout.ini on every drag;
+    // free-form positions now live in per-file user.moonbase.position xattrs
+    // (see layout.c) so the .ini is dead weight. Best-effort unlink — if it
+    // never existed or already vanished, ENOENT is fine.
+    const char *xdg_data = getenv("XDG_DATA_HOME");
+    char legacy_ini[1024];
+    if (xdg_data && xdg_data[0]) {
+        snprintf(legacy_ini, sizeof(legacy_ini),
+                 "%s/copycatos/desktop-layout.ini", xdg_data);
+    } else {
+        const char *h = getenv("HOME");
+        snprintf(legacy_ini, sizeof(legacy_ini),
+                 "%s/.local/share/copycatos/desktop-layout.ini",
+                 h ? h : "");
+    }
+    if (unlink(legacy_ini) == 0) {
+        fprintf(stderr, "[icons] Removed legacy %s\n", legacy_ini);
+    }
+
     // Scan ~/Desktop for files and folders
     scan_desktop();
 
-    // Load the saved layout from disk, then apply it.
-    // layout_load() fills the in-memory table; layout_apply() uses that
-    // table to set each icon's grid_col/grid_row/x/y. Icons not found
-    // in the table (new files) are auto-placed in the next free cell.
-    layout_load();
+    // Apply the spatial layout. layout_apply reads each file's
+    // user.moonbase.position xattr; files with no xattr (new files,
+    // first run) auto-place into the next free Snow Leopard grid cell.
     layout_apply(icons, icon_count, screen_w, screen_h);
 
     // Set up inotify to watch ~/Desktop for changes.
@@ -957,60 +975,37 @@ void icons_drag_end(int screen_w, int screen_h)
 {
     if (!drag_icon) return;
 
-    // Snap the icon to the nearest grid cell.
-    // We compute which grid cell the icon's center is closest to,
-    // then check if that cell is free.
-
-    // Scaled cell geometry — the snap math works in physical pixels.
+    // Free-form drop: no grid snap. The icon stays at exactly the pixel
+    // the user released the mouse — that's the spatial-workspace promise.
+    // We only clamp so the icon doesn't end up entirely off-screen, where
+    // the user couldn't grab it again.
     int cell_w = S(ICON_CELL_W);
     int cell_h = S(ICON_CELL_H);
     int top    = S(ICON_TOP_MARGIN);
-    int right  = S(ICON_RIGHT_MARGIN);
 
-    int rows_per_col = (screen_h - top) / cell_h;
-    if (rows_per_col < 1) rows_per_col = 1;
+    int min_x = 0;
+    int max_x = screen_w - cell_w;
+    int min_y = top;                 // Don't overlap the menubar workarea
+    int max_y = screen_h - cell_h;
+    if (max_x < min_x) max_x = min_x;
+    if (max_y < min_y) max_y = min_y;
 
-    // Find the grid cell closest to the icon's current position
-    int center_x = drag_icon->x + cell_w / 2;
-    int center_y = drag_icon->y + cell_h / 2;
+    if (drag_icon->x < min_x) drag_icon->x = min_x;
+    if (drag_icon->x > max_x) drag_icon->x = max_x;
+    if (drag_icon->y < min_y) drag_icon->y = min_y;
+    if (drag_icon->y > max_y) drag_icon->y = max_y;
 
-    // Convert pixel position to grid coordinates.
-    // X axis: measured from the right edge, moving left
-    int col = (screen_w - right - center_x) / cell_w;
-    int row = (center_y - top) / cell_h;
+    // Tag the icon as user-positioned so a later layout_apply (e.g. after
+    // an inotify rescan or a scale change) restores its free-form spot
+    // instead of stealing it for the auto-place pass.
+    drag_icon->has_pos = true;
 
-    // Clamp to valid range
-    if (col < 0) col = 0;
-    if (row < 0) row = 0;
-    if (row >= rows_per_col) row = rows_per_col - 1;
-
-    // Check if the target cell is occupied by another icon
-    bool occupied = false;
-    for (int i = 0; i < icon_count; i++) {
-        if (&icons[i] == drag_icon) continue;
-        if (icons[i].grid_col == col && icons[i].grid_row == row) {
-            occupied = true;
-            break;
-        }
-    }
-
-    if (!occupied) {
-        // Snap to the target cell
-        drag_icon->grid_col = col;
-        drag_icon->grid_row = row;
-    }
-    // If occupied, keep the old grid position (the icon will snap back)
-
-    // Compute pixel position from grid coordinates
-    drag_icon->x = screen_w - right - cell_w - (drag_icon->grid_col * cell_w);
-    drag_icon->y = top + (drag_icon->grid_row * cell_h);
+    // Persist this single icon's pixel position to its xattr in points.
+    // Per-file storage means renames and moves carry the position with
+    // the file; nothing else on disk needs to know the icon moved.
+    layout_save_position(drag_icon);
 
     drag_icon = NULL;
-
-    // Persist the new layout to disk so this position survives restart.
-    // We save all icons (not just the moved one) because a single file
-    // write is simpler and the file is tiny.
-    layout_save_all(icons, icon_count);
 }
 
 // ── Public API: Rescale ─────────────────────────────────────────────
@@ -1020,7 +1015,8 @@ void icons_rescale(void)
     // A scale change doesn't change which files are on the desktop — only
     // the pixel math. Re-run layout_apply against the cached screen size
     // so every icon's (x, y) is recomputed from the current S()-scaled
-    // ICON_* constants. Saved col/row in layout.ini stays untouched.
+    // ICON_* constants. The xattr stores points, so free-form positions
+    // re-resolve to the right pixels at the new scale automatically.
     layout_apply(icons, icon_count, cached_screen_w, cached_screen_h);
 }
 
@@ -1028,13 +1024,15 @@ void icons_rescale(void)
 
 void icons_relayout(int screen_w, int screen_h)
 {
-    // "Clean Up": reset all icons to canonical sorted positions (top-right).
-    // This is the same as a fresh auto-layout with no saved positions.
+    // "Clean Up": revert every icon to canonical auto-place. We clear
+    // each file's position xattr and rerun the auto-place pass — that
+    // way any new file added later auto-places into the same grid the
+    // user just snapped back to, instead of fighting a saved free-form
+    // ghost from before.
+    for (int i = 0; i < icon_count; i++) {
+        layout_clear_position(&icons[i]);
+        icons[i].has_pos = false;
+    }
     layout_icons(screen_w, screen_h);
     fprintf(stderr, "[icons] Relayout: %d icons arranged\n", icon_count);
-
-    // Save the new sorted positions so they persist across restarts.
-    // After Clean Up, the user's explicit positions are gone — the sorted
-    // grid becomes the new baseline.
-    layout_save_all(icons, icon_count);
 }
