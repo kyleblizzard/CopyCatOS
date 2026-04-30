@@ -355,6 +355,15 @@ int contextmenu_show(Display *dpy, Window root, int root_x, int root_y,
     bool menu_open = true;
     int highlighted = -1;  // Currently highlighted item index
 
+    // The opening right-click's ButtonRelease is delivered to this loop
+    // (the grab transferred to menu_win mid-click). We must ignore it,
+    // otherwise the menu picks/dismisses itself the instant the user
+    // releases the button. Snow Leopard parity: a quick right-click
+    // leaves the menu posted; the user then left-clicks an item.
+    // We only honor a ButtonRelease that follows a ButtonPress *inside*
+    // this loop.
+    bool seen_press_in_loop = false;
+
     while (menu_open) {
         XEvent ev;
         XNextEvent(dpy, &ev);
@@ -386,6 +395,9 @@ int contextmenu_show(Display *dpy, Window root, int root_x, int root_y,
 
         case ButtonRelease:
         {
+            // Skip the leftover release from the click that opened us.
+            if (!seen_press_in_loop) break;
+
             // Check if the release was on a menu item
             int mx = ev.xbutton.x - MENU_SHADOW_SIZE;
             int my = ev.xbutton.y - MENU_SHADOW_SIZE;
@@ -405,6 +417,7 @@ int contextmenu_show(Display *dpy, Window root, int root_x, int root_y,
 
         case ButtonPress:
         {
+            seen_press_in_loop = true;
             // Check if the press was outside the menu (dismiss)
             int mx = ev.xbutton.x - MENU_SHADOW_SIZE;
             int my = ev.xbutton.y - MENU_SHADOW_SIZE;
@@ -835,6 +848,9 @@ static int show_label_picker(Display *dpy, Window root,
     int result    = -1;
     bool open     = true;
     int  highlight = -1;
+    // Same opening-click race as the main menu: ignore the leftover
+    // ButtonRelease that arrives before any in-loop press.
+    bool seen_press_in_loop = false;
 
     while (open) {
         XEvent ev;
@@ -863,6 +879,7 @@ static int show_label_picker(Display *dpy, Window root,
 
         case ButtonRelease:
         {
+            if (!seen_press_in_loop) break;
             int mx = ev.xbutton.x - PICKER_SHADOW;
             int my = ev.xbutton.y - PICKER_SHADOW;
             int hit = picker_hit_test(mx, my, cw, ch);
@@ -878,6 +895,7 @@ static int show_label_picker(Display *dpy, Window root,
 
         case ButtonPress:
         {
+            seen_press_in_loop = true;
             int mx = ev.xbutton.x - PICKER_SHADOW;
             int my = ev.xbutton.y - PICKER_SHADOW;
             if (picker_hit_test(mx, my, cw, ch) < 0) {
@@ -991,6 +1009,9 @@ int contextmenu_show_icon(Display *dpy, Window root,
     int  highlighted = -1;
     bool want_label  = false;  // Set when user picks "Label ▶"
     int  label_item_screen_y = 0;  // Absolute y of the Label item (for picker placement)
+    // Same opening-click race as the main menu: ignore the leftover
+    // ButtonRelease that arrives before any in-loop press.
+    bool seen_press_in_loop = false;
 
     while (menu_open) {
         XEvent ev;
@@ -1018,6 +1039,7 @@ int contextmenu_show_icon(Display *dpy, Window root,
 
         case ButtonRelease:
         {
+            if (!seen_press_in_loop) break;
             int mx = ev.xbutton.x - MENU_SHADOW_SIZE;
             int my = ev.xbutton.y - MENU_SHADOW_SIZE;
             int hit = icon_hit_test(mx, my, menu_content_h);
@@ -1051,6 +1073,7 @@ int contextmenu_show_icon(Display *dpy, Window root,
 
         case ButtonPress:
         {
+            seen_press_in_loop = true;
             int mx = ev.xbutton.x - MENU_SHADOW_SIZE;
             int my = ev.xbutton.y - MENU_SHADOW_SIZE;
             if (mx < 0 || mx >= MENU_WIDTH ||
