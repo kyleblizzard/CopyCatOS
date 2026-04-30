@@ -18,6 +18,28 @@ export XDG_CURRENT_DESKTOP=CopyCatOS
 # install still works as a system-wide fallback when ~/.local is empty.
 export PATH="$HOME/.local/bin:$PATH"
 
+# ─── Stale-shadow probe ───
+# The PATH prepend above is the dev-loop convenience: a fresh
+# `meson install --prefix=$HOME/.local` rolls into the session without
+# sudo. The flip side: a leftover shadow under ~/.local/bin that lags
+# the /usr/local/bin copy will silently run old code — regressions
+# hide for hours behind a binary that nobody knew was running. Probe
+# every shell component at boot and warn loudly when the user-local
+# copy is older than the system copy.
+# Non-fatal — the user is informed, the session continues, and the
+# warning sticks in logout-trace.log across logins until cleared.
+SHADOW_TRACE_FILE="${XDG_STATE_HOME:-$HOME/.local/state}/copycatos/logout-trace.log"
+mkdir -p "$(dirname "$SHADOW_TRACE_FILE")"
+for b in moonrock desktop menubar dock searchsystem inputsession moonbase fileviewer moonbase-launch; do
+    shadow="$HOME/.local/bin/$b"
+    system="/usr/local/bin/$b"
+    if [ -f "$shadow" ] && [ -f "$system" ] && [ "$system" -nt "$shadow" ]; then
+        msg="[shadow-warn] ~/.local/bin/$b is OLDER than /usr/local/bin/$b — session will run the stale shadow"
+        echo "$msg" >&2
+        echo "$msg at $(date +%s.%N)" >> "$SHADOW_TRACE_FILE"
+    fi
+done
+
 # Clean session-type marker for inputd. A single file at a stable path
 # per user is the only signal inputd reads to pick DESKTOP vs GAME profile.
 # /run/user/$UID/ is tmpfs, owned by the session user, and goes away on
