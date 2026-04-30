@@ -44,13 +44,31 @@ void apple_dismiss(MenuBar *mb);
 // Get the Apple popup window (for click routing in menubar.c)
 Window apple_get_popup(void);
 
+// Get the Apple "Open Applications" submenu window, or None if the
+// submenu is not currently open. The submenu is a cascading popup that
+// auto-opens when the pointer hovers the parent row in the main popup
+// and auto-closes when it leaves to a different parent row.
+Window apple_get_submenu(void);
+
 // Handle a click inside the Apple menu popup. Identifies which item
 // was clicked from the Y coordinate, executes the action, and returns
 // true if the menu should be dismissed.
 bool apple_handle_click(MenuBar *mb, int click_x, int click_y);
 
-// Handle hover inside the Apple menu popup. Updates highlight.
+// Handle a click inside the Open Applications submenu popup. Activates
+// the running app via _NET_ACTIVE_WINDOW and returns true so the caller
+// dismisses the entire Apple menu.
+bool apple_handle_submenu_click(MenuBar *mb, int click_x, int click_y);
+
+// Handle hover inside the Apple menu popup. Updates highlight, and
+// auto-opens / auto-closes the Open Applications submenu based on
+// which row is hovered.
 void apple_handle_motion(MenuBar *mb, int motion_y);
+
+// Handle hover inside the Open Applications submenu popup. Keeps the
+// parent row highlighted in the main popup while updating the submenu's
+// own hover row.
+void apple_handle_submenu_motion(MenuBar *mb, int motion_y);
 
 // Handle an X event directed at the Apple popup window.
 // Returns true if the event was consumed.

@@ -54,17 +54,34 @@ static cairo_surface_t *logo_selected = NULL;
 // The Apple menu dropdown popup window. None if not open.
 static Window apple_popup = None;
 
-// Currently hovered item index in the dropdown (-1 = none)
+// Currently hovered item index in the dropdown (-1 = none).
+// While the Open Applications submenu is open and the pointer is inside
+// it, this stays pinned to the parent row so the parent stays highlighted
+// — same behavior as Snow Leopard's hierarchical menus.
 static int apple_hover = -1;
+
+// ── Open Applications submenu (cascading popup) ────────────────────
+//
+// The "Open Applications" row in the main popup carries a ▶ arrow.
+// When the pointer hovers it, this secondary popup opens to the right
+// and lists every running app, one per row. Click an entry → activate
+// that window via _NET_ACTIVE_WINDOW. Same auto-open / auto-close UX
+// as Recent Items in real Snow Leopard.
+
+static Window apple_submenu = None;
+static int    apple_submenu_hover = -1;
+static int    apple_submenu_w = 0;
+static int    apple_submenu_h = 0;
 
 // ── Apple menu item model ──────────────────────────────────────────
 //
 // The menu is a single flat list of AppleItem entries. Each rebuild
-// (on apple_show_menu) prepends an "Open Applications" section listing
-// every currently-running app, then appends the static system actions
-// (System Preferences, Sleep, Log Out, etc.). Rendering, hit-testing,
-// and dispatch all walk this one array — no special-case branching by
-// section.
+// (on apple_show_menu) prepends a single "Open Applications ▶" item
+// (whose submenu lists every running app), then appends the static
+// system actions (System Preferences, Sleep, Log Out, etc.). The
+// running apps live in a second parallel array drawn into the submenu
+// popup. Rendering, hit-testing, and dispatch walk these two arrays
+// — no special-case branching beyond submenu open/close.
 
 typedef struct {
     char    text[128];          // label drawn in the menu
@@ -80,6 +97,14 @@ typedef struct {
 #define APPLE_MAX_ITEMS 48
 static AppleItem apple_items[APPLE_MAX_ITEMS];
 static int       apple_item_count = 0;
+
+// Open Applications submenu — parallel array drawn into apple_submenu.
+// apple_submenu_parent_idx is the index of the "Open Applications" row
+// in apple_items[], or -1 if no apps are running (in which case the
+// parent row is omitted from the main popup entirely).
+static AppleItem apple_submenu_items[APPLE_MAX_ITEMS];
+static int       apple_submenu_count = 0;
+static int       apple_submenu_parent_idx = -1;
 
 // Dynamic "Log Out <user>..." text — populated in apple_init from $USER
 // and patched into the static menu definition by rebuild_apple_items.
@@ -431,21 +456,6 @@ static bool apple_window_is_app(MenuBar *mb, Window w)
     return ok;
 }
 
-// Find an existing item slot for an app with this class name. Returns the
-// index in apple_items[], or -1 if not found. Used during dedupe so a
-// second window of the same app overwrites the first entry's target
-// (with the later one in mapping order, which is approximately the most
-// recently mapped — close enough for v1 without reading STACKING).
-static int apple_find_running_entry(const char *cls, int prefix_count)
-{
-    for (int i = 0; i < prefix_count; i++) {
-        AppleItem *it = &apple_items[i];
-        if (!it->is_running_app) continue;
-        if (strcasecmp(it->text, cls) == 0) return i;
-    }
-    return -1;
-}
-
 // Capitalize the first character if it's a lowercase ASCII letter.
 // "fileviewer" → "Fileviewer", "TextEdit" → "TextEdit". Quick visual
 // polish so res_class lowercase names don't look out of place next to
@@ -455,67 +465,80 @@ static void apple_capitalize_first(char *s)
     if (s && s[0] >= 'a' && s[0] <= 'z') s[0] = (char)(s[0] - 'a' + 'A');
 }
 
+// ── Submenu dedupe helper ───────────────────────────────────────────
+// Same job as apple_find_running_entry but for the submenu's parallel
+// array. Keeps one row per WM_CLASS so a second window of the same app
+// updates the existing entry's target instead of duplicating the row.
+static int apple_find_running_entry_submenu(const char *cls)
+{
+    for (int i = 0; i < apple_submenu_count; i++) {
+        if (strcasecmp(apple_submenu_items[i].text, cls) == 0) return i;
+    }
+    return -1;
+}
+
 // ── Menu rebuild ────────────────────────────────────────────────────
-// Repopulate apple_items[] from scratch. Called at the start of every
-// apple_show_menu() so the running-apps section reflects current state.
-// The menu is: [running apps section] [separator] [static fixed items].
-// If no real running apps are found, the running-apps section + its
-// separator are dropped entirely — no empty header is shown.
+// Repopulate apple_items[] and apple_submenu_items[] from scratch.
+// Called at the start of every apple_show_menu() so both reflect the
+// current set of running apps.
+//
+// Main popup layout:
+//   [Open Applications ▶] [---]          ← only if apps exist
+//   [About CopyCatOS] ... [Log Out ...]  ← static items
+//
+// Submenu layout (only built when at least one app is found):
+//   [App A] [App B] [App C] ...
+//
+// If no real running apps are found, the parent row + its separator
+// are dropped entirely — the menu looks exactly like the original
+// (About → ...) instead of carrying an empty cascade.
 
 static void apple_rebuild(MenuBar *mb)
 {
     apple_item_count = 0;
+    apple_submenu_count = 0;
+    apple_submenu_parent_idx = -1;
 
-    // ── Running-apps section ─────────────────────────────────────
-    // Header row first so it draws even when no apps populate (we
-    // unwind it below if the section is empty). The header item is
-    // disabled and styled smaller/dimmer to read as a section title.
-    AppleItem *header = &apple_items[apple_item_count++];
-    memset(header, 0, sizeof(*header));
-    strncpy(header->text, "Open Applications",
-            sizeof(header->text) - 1);
-    header->is_header = true;
-    header->disabled  = true;
-
-    int header_idx = 0;
-    int apps_added = 0;
-
+    // ── Collect running apps into the submenu's array ───────────
     Window *list = NULL;
     int n = apple_read_client_list(mb, &list);
     for (int i = 0; i < n; i++) {
-        if (apple_item_count >= APPLE_MAX_ITEMS - 4) break;  // leave room
+        if (apple_submenu_count >= APPLE_MAX_ITEMS) break;
 
         char cls[128];
         if (!apple_get_class(mb, list[i], cls, sizeof(cls))) continue;
         if (apple_is_shell_component(cls)) continue;
         if (!apple_window_is_app(mb, list[i])) continue;
 
-        // Dedupe by class — keep one entry per app, point its target at
-        // the most recently seen window so a click activates the latest
-        // mapped instance (close to the user's expectation of "frontmost").
-        int existing = apple_find_running_entry(cls, apple_item_count);
+        // Dedupe by class — one row per app, target = most recently
+        // seen window so a click activates the latest mapped instance.
+        int existing = apple_find_running_entry_submenu(cls);
         if (existing >= 0) {
-            apple_items[existing].target = list[i];
+            apple_submenu_items[existing].target = list[i];
             continue;
         }
 
-        AppleItem *it = &apple_items[apple_item_count++];
+        AppleItem *it = &apple_submenu_items[apple_submenu_count++];
         memset(it, 0, sizeof(*it));
         strncpy(it->text, cls, sizeof(it->text) - 1);
         apple_capitalize_first(it->text);
         it->target         = list[i];
         it->is_running_app = true;
-        apps_added++;
     }
     if (list) XFree(list);
 
-    if (apps_added == 0) {
-        // Nothing real to show — drop the header so the menu looks
-        // exactly like the original (About → ...) instead of a lone
-        // "Open Applications" label with no contents under it.
-        apple_item_count = header_idx;
-    } else {
-        // Trailing separator between section and the static items.
+    // ── Parent row in the main popup ────────────────────────────
+    // Only emitted when at least one app populated the submenu. The
+    // row carries the ▶ arrow and stays enabled so it can be hovered
+    // (hovering opens the submenu — see apple_handle_motion).
+    if (apple_submenu_count > 0) {
+        apple_submenu_parent_idx = apple_item_count;
+        AppleItem *parent = &apple_items[apple_item_count++];
+        memset(parent, 0, sizeof(*parent));
+        strncpy(parent->text, "Open Applications",
+                sizeof(parent->text) - 1);
+        parent->has_submenu_arrow = true;
+
         AppleItem *sep = &apple_items[apple_item_count++];
         memset(sep, 0, sizeof(*sep));
         sep->is_separator = true;
@@ -689,6 +712,135 @@ static void paint_apple_dropdown(MenuBar *mb, int popup_w, int popup_h)
     XFlush(mb->dpy);
 }
 
+// ── Submenu paint / open / close ───────────────────────────────────
+
+// Paint the Open Applications submenu contents. Same visual language
+// as paint_apple_dropdown (rounded white panel, blue hover highlight,
+// Lucida Grande 13pt at scale) but without separators or shortcuts.
+static void paint_apple_submenu(MenuBar *mb, int popup_w, int popup_h)
+{
+    cairo_surface_t *surface = cairo_xlib_surface_create(
+        mb->dpy, apple_submenu,
+        DefaultVisual(mb->dpy, mb->screen),
+        popup_w, popup_h
+    );
+    cairo_t *cr = cairo_create(surface);
+
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 245.0 / 255.0);
+    apple_rounded_rect(cr, 0, 0, popup_w, popup_h, SF(5.0));
+    cairo_fill(cr);
+
+    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 60.0 / 255.0);
+    cairo_set_line_width(cr, 1.0);
+    apple_rounded_rect(cr, 0.5, 0.5, popup_w - 1, popup_h - 1, SF(5.0));
+    cairo_stroke(cr);
+
+    int y = S(4);
+    for (int i = 0; i < apple_submenu_count; i++) {
+        AppleItem *it = &apple_submenu_items[i];
+
+        bool hovered = (i == apple_submenu_hover && !it->disabled);
+        if (hovered) {
+            cairo_set_source_rgba(cr, 56/255.0, 117/255.0, 215/255.0, 0.9);
+            double rx = S(4), ry = y, rw = popup_w - S(8), rh = S(22), rr = SF(3.0);
+            cairo_new_sub_path(cr);
+            cairo_arc(cr, rx + rw - rr, ry + rr, rr, -M_PI/2, 0);
+            cairo_arc(cr, rx + rw - rr, ry + rh - rr, rr, 0, M_PI/2);
+            cairo_arc(cr, rx + rr, ry + rh - rr, rr, M_PI/2, M_PI);
+            cairo_arc(cr, rx + rr, ry + rr, rr, M_PI, 3*M_PI/2);
+            cairo_close_path(cr);
+            cairo_fill(cr);
+        }
+
+        if (hovered) {
+            cairo_set_source_rgb(cr, 1.0, 1.0, 1.0);
+        } else {
+            cairo_set_source_rgb(cr, 0.1, 0.1, 0.1);
+        }
+
+        PangoLayout *layout = pango_cairo_create_layout(cr);
+        pango_layout_set_text(layout, it->text, -1);
+        PangoFontDescription *desc = pango_font_description_from_string(
+            apple_scaled_font("Lucida Grande", 13)
+        );
+        pango_layout_set_font_description(layout, desc);
+        pango_font_description_free(desc);
+
+        cairo_move_to(cr, S(18), y + S(2));
+        pango_cairo_show_layout(cr, layout);
+        g_object_unref(layout);
+
+        y += S(22);
+    }
+
+    cairo_destroy(cr);
+    cairo_surface_destroy(surface);
+    XFlush(mb->dpy);
+}
+
+// Compute the Y offset (within the main popup) where item `idx` begins.
+// Walks the apple_items array summing per-row heights — same accumulator
+// as paint_apple_dropdown so submenu placement matches the visible row.
+static int apple_row_top_y(int idx)
+{
+    int y = S(4);
+    for (int i = 0; i < idx && i < apple_item_count; i++) {
+        y += apple_row_height(&apple_items[i]);
+    }
+    return y;
+}
+
+// Open the Open Applications submenu next to the main popup. No-op if
+// there's no parent row (no apps running) or if it's already open.
+static void apple_open_submenu(MenuBar *mb)
+{
+    if (apple_submenu != None) return;
+    if (apple_submenu_parent_idx < 0) return;
+    if (apple_popup == None) return;
+    if (apple_submenu_count <= 0) return;
+
+    XWindowAttributes mwa;
+    if (!XGetWindowAttributes(mb->dpy, apple_popup, &mwa)) return;
+
+    apple_submenu_w = S(220);
+    apple_submenu_h = S(8) + apple_submenu_count * S(22);
+
+    int sub_x = mwa.x + mwa.width;
+    int sub_y = mwa.y + apple_row_top_y(apple_submenu_parent_idx) - S(4);
+    if (sub_y < 0) sub_y = 0;
+
+    XSetWindowAttributes attrs;
+    attrs.override_redirect = True;
+    attrs.event_mask = ExposureMask | ButtonPressMask
+                     | PointerMotionMask | LeaveWindowMask;
+    attrs.background_pixel = WhitePixel(mb->dpy, mb->screen);
+
+    apple_submenu = XCreateWindow(
+        mb->dpy, mb->root,
+        sub_x, sub_y,
+        (unsigned int)apple_submenu_w,
+        (unsigned int)apple_submenu_h,
+        0,
+        CopyFromParent, InputOutput, CopyFromParent,
+        CWOverrideRedirect | CWEventMask | CWBackPixel,
+        &attrs
+    );
+
+    apple_submenu_hover = -1;
+    XMapRaised(mb->dpy, apple_submenu);
+    paint_apple_submenu(mb, apple_submenu_w, apple_submenu_h);
+}
+
+// Close the submenu without dismissing the main Apple menu.
+static void apple_close_submenu(MenuBar *mb)
+{
+    if (apple_submenu == None) return;
+    XDestroyWindow(mb->dpy, apple_submenu);
+    apple_submenu = None;
+    apple_submenu_hover = -1;
+    XFlush(mb->dpy);
+}
+
 void apple_show_menu(MenuBar *mb)
 {
     // Dismiss any existing Apple menu first
@@ -747,6 +899,9 @@ void apple_show_menu(MenuBar *mb)
 
 void apple_dismiss(MenuBar *mb)
 {
+    // Close the submenu first so its X window goes away before the
+    // parent — avoids a single-frame flash of the cascade with no parent.
+    apple_close_submenu(mb);
     if (apple_popup != None) {
         XDestroyWindow(mb->dpy, apple_popup);
         apple_popup = None;
@@ -758,6 +913,11 @@ void apple_dismiss(MenuBar *mb)
 Window apple_get_popup(void)
 {
     return apple_popup;
+}
+
+Window apple_get_submenu(void)
+{
+    return apple_submenu;
 }
 
 // ── Item hit testing ───────────────────────────────────────────────
@@ -927,6 +1087,55 @@ void apple_handle_motion(MenuBar *mb, int motion_y)
             paint_apple_dropdown(mb, wa.width, wa.height);
         }
     }
+
+    // Cascade rule: hovering the parent row auto-opens the submenu;
+    // hovering any other row auto-closes it. This is the same UX as
+    // Snow Leopard's Recent Items / Dock — no click needed to expand.
+    // motion_y == -999 (pointer left both popups) also closes it via
+    // the "item != parent_idx" branch.
+    if (apple_submenu_parent_idx >= 0 && item == apple_submenu_parent_idx) {
+        if (apple_submenu == None) apple_open_submenu(mb);
+    } else if (apple_submenu != None) {
+        apple_close_submenu(mb);
+    }
+}
+
+void apple_handle_submenu_motion(MenuBar *mb, int motion_y)
+{
+    if (apple_submenu == None) return;
+
+    // Map Y inside the submenu popup to a row index. Same row geometry
+    // as paint_apple_submenu: top padding S(4), then S(22) per row.
+    int item = -1;
+    int row_y = S(4);
+    for (int i = 0; i < apple_submenu_count; i++) {
+        if (motion_y >= row_y && motion_y < row_y + S(22)) {
+            item = i;
+            break;
+        }
+        row_y += S(22);
+    }
+
+    bool changed = (item != apple_submenu_hover);
+    apple_submenu_hover = item;
+
+    // While the pointer is inside the submenu, pin the parent row
+    // highlighted in the main popup (Snow Leopard pattern). If the
+    // main hover was on a different row, repaint main too.
+    bool main_changed = false;
+    if (apple_hover != apple_submenu_parent_idx) {
+        apple_hover = apple_submenu_parent_idx;
+        main_changed = true;
+    }
+
+    if (changed) {
+        paint_apple_submenu(mb, apple_submenu_w, apple_submenu_h);
+    }
+    if (main_changed && apple_popup != None) {
+        XWindowAttributes wa;
+        XGetWindowAttributes(mb->dpy, apple_popup, &wa);
+        paint_apple_dropdown(mb, wa.width, wa.height);
+    }
 }
 
 bool apple_handle_click(MenuBar *mb, int click_x, int click_y)
@@ -935,6 +1144,13 @@ bool apple_handle_click(MenuBar *mb, int click_x, int click_y)
     int item = apple_y_to_item(click_y);
 
     if (item >= 0 && !apple_items[item].disabled) {
+        // Parent row click is a no-op on the action path: the submenu
+        // already opens on hover, so a click there just keeps the
+        // cascade open instead of dismissing the menu.
+        if (item == apple_submenu_parent_idx) {
+            if (apple_submenu == None) apple_open_submenu(mb);
+            return false;
+        }
         // Execute the action, then dismiss
         apple_execute(mb, item);
         return true; // Should dismiss
@@ -942,11 +1158,55 @@ bool apple_handle_click(MenuBar *mb, int click_x, int click_y)
     return false; // Clicked on separator, disabled, or padding
 }
 
+bool apple_handle_submenu_click(MenuBar *mb, int click_x, int click_y)
+{
+    (void)click_x;
+    if (apple_submenu == None) return false;
+
+    int item = -1;
+    int row_y = S(4);
+    for (int i = 0; i < apple_submenu_count; i++) {
+        if (click_y >= row_y && click_y < row_y + S(22)) {
+            item = i;
+            break;
+        }
+        row_y += S(22);
+    }
+    if (item < 0) return false;
+
+    AppleItem *it = &apple_submenu_items[item];
+    if (!it->is_running_app || it->target == None) return false;
+
+    // Same EWMH activation as the dock: send _NET_ACTIVE_WINDOW to root,
+    // moonrock raises + focuses the target window.
+    XEvent ev = {0};
+    ev.type                 = ClientMessage;
+    ev.xclient.window       = it->target;
+    ev.xclient.message_type = mb->atom_net_active_window;
+    ev.xclient.format       = 32;
+    ev.xclient.data.l[0]    = 2;  // source = pager/taskbar
+    XSendEvent(mb->dpy, mb->root, False,
+               SubstructureRedirectMask | SubstructureNotifyMask, &ev);
+    XFlush(mb->dpy);
+    return true; // dismiss the whole Apple menu
+}
+
 bool apple_handle_event(MenuBar *mb, XEvent *ev, bool *should_dismiss)
 {
     *should_dismiss = false;
 
     if (apple_popup == None) return false;
+
+    // Submenu Expose comes first — its window has its own X id, but the
+    // grab covers root so motion/button events are delivered through the
+    // root-coord path in menubar.c (apple_handle_submenu_motion / click).
+    if (apple_submenu != None && ev->xany.window == apple_submenu) {
+        if (ev->type == Expose && ev->xexpose.count == 0) {
+            paint_apple_submenu(mb, apple_submenu_w, apple_submenu_h);
+        }
+        return true;
+    }
+
     if (ev->xany.window != apple_popup) return false;
 
     switch (ev->type) {
@@ -963,6 +1223,10 @@ bool apple_handle_event(MenuBar *mb, XEvent *ev, bool *should_dismiss)
         return true;
 
     case LeaveNotify:
+        // Don't clear the highlight if the pointer just crossed into
+        // the submenu — the submenu motion handler keeps the parent row
+        // pinned. Only clear when truly leaving every Apple-menu popup.
+        if (apple_submenu != None) return true;
         if (apple_hover != -1) {
             apple_hover = -1;
             XWindowAttributes wa;
@@ -992,4 +1256,8 @@ void apple_cleanup(void)
     }
 
     apple_popup = None;
+    apple_submenu = None;
+    apple_submenu_hover = -1;
+    apple_submenu_count = 0;
+    apple_submenu_parent_idx = -1;
 }

@@ -1232,12 +1232,25 @@ void menubar_run(MenuBar *mb)
                     int ry = ev.xmotion.y_root;
                     if (mb->open_menu == 0) {
                         Window dropdown = apple_get_popup();
+                        Window submenu  = apple_get_submenu();
                         if (dropdown != None) {
                             XWindowAttributes dwa;
                             XGetWindowAttributes(mb->dpy, dropdown, &dwa);
-                            if (rx >= dwa.x && rx < dwa.x + dwa.width &&
-                                ry >= dwa.y && ry < dwa.y + dwa.height) {
+                            bool in_main =
+                                rx >= dwa.x && rx < dwa.x + dwa.width &&
+                                ry >= dwa.y && ry < dwa.y + dwa.height;
+                            bool in_sub = false;
+                            XWindowAttributes swa;
+                            if (submenu != None) {
+                                XGetWindowAttributes(mb->dpy, submenu, &swa);
+                                in_sub =
+                                    rx >= swa.x && rx < swa.x + swa.width &&
+                                    ry >= swa.y && ry < swa.y + swa.height;
+                            }
+                            if (in_main) {
                                 apple_handle_motion(mb, ry - dwa.y);
+                            } else if (in_sub) {
+                                apple_handle_submenu_motion(mb, ry - swa.y);
                             } else {
                                 apple_handle_motion(mb, -999);
                             }
@@ -1366,7 +1379,25 @@ void menubar_run(MenuBar *mb)
 
                         if (mb->open_menu == 0) {
                             Window dropdown = apple_get_popup();
-                            if (dropdown != None) {
+                            Window submenu  = apple_get_submenu();
+                            // Submenu first — it sits visually on top
+                            // and to the right of the main popup, and
+                            // its hit-rect doesn't overlap the main.
+                            if (submenu != None) {
+                                XWindowAttributes swa;
+                                XGetWindowAttributes(mb->dpy, submenu, &swa);
+                                if (rx >= swa.x && rx < swa.x + swa.width &&
+                                    ry >= swa.y && ry < swa.y + swa.height) {
+                                    if (apple_handle_submenu_click(mb,
+                                                                   rx - swa.x,
+                                                                   ry - swa.y)) {
+                                        dismiss_open_menu(mb);
+                                        menubar_paint(mb);
+                                    }
+                                    handled = true;
+                                }
+                            }
+                            if (!handled && dropdown != None) {
                                 XWindowAttributes dwa;
                                 XGetWindowAttributes(mb->dpy, dropdown, &dwa);
                                 if (rx >= dwa.x && rx < dwa.x + dwa.width &&
