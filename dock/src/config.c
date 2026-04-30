@@ -638,9 +638,12 @@ static const DefaultItemDef default_items[] = {
     {"Inkscape",            "inkscape",                              "org.inkscape.Inkscape",      "inkscape",        false},
     {"Kdenlive",            "kdenlive",                              "kdenlive",                   "kdenlive",        false},
     {"System Preferences",  "systemsettings",                        "preferences-system",         "systemsettings",  true },
-    {"TextEdit",            "~/Applications/textedit.appdev",        "accessories-text-editor",    "textedit",        false},
-    {"Aqua Demo",           "~/Applications/aqua-demo.appdev",       "applications-graphics",      "aqua-demo",       false},
-    {"Activity Monitor",    "~/Applications/activity-monitor.appdev","utilities-system-monitor",   "activity-monitor",false},
+    // TextEdit / Aqua Demo / Activity Monitor pulled from defaults until
+    // task #116 (Slice 19.H.2.j-γ) lands: moonrock proper does not yet emit
+    // MB_IPC_WINDOW_RESIZED on per-output scale migration, so reference-app
+    // bundles created on a non-primary output disconnect mid-handshake when
+    // their window migrates to a different-scale output. Restore once #116
+    // ships and the bundles open reliably from the dock.
     {"Trash",               "fileviewer trash:/",                    "trashempty",                 "trash",           false},
 };
 
