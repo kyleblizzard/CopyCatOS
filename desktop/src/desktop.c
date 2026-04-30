@@ -506,8 +506,12 @@ void desktop_run(Desktop *d)
             continue;
         }
 
-        // Check for inotify events (files changed in ~/Desktop)
-        if (inotify_fd >= 0 && FD_ISSET(inotify_fd, &fds)) {
+        // Check for inotify events (files changed in ~/Desktop).
+        // Call every iteration, not just when the fd is readable: the
+        // debounce-fire path runs on a *follow-up* call with an empty
+        // read, after INOTIFY_DEBOUNCE_MS has elapsed since the last
+        // event. The 500 ms select timeout guarantees that follow-up.
+        if (inotify_fd >= 0) {
             if (icons_check_inotify()) {
                 // Icons were refreshed, repaint everything
                 desktop_repaint(d);
