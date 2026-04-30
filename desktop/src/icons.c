@@ -30,6 +30,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <strings.h>
 #include <dirent.h>
@@ -655,79 +656,89 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
         pango_layout_set_font_description(layout, font);
         pango_font_description_free(font);
 
-        // Max width, centered, ellipsis for long names, word-char wrap
+        // Max width, centered, word-char wrap. Snow Leopard caps the
+        // filename at TWO lines and only ellipsizes if the second line
+        // also overflows — pango_layout_set_height with a NEGATIVE value
+        // means "limit to N lines, ellipsize after that", so -2 is the
+        // exact two-line behavior.
         pango_layout_set_width(layout, cell_w * PANGO_SCALE);
         pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
-        pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
         pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+        pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+        pango_layout_set_height(layout, -2 * PANGO_SCALE);
 
-        // Measure the rendered text dimensions
+        // Measure the rendered text dimensions. Pango ALIGN_CENTER +
+        // set_width(cell_w) does the horizontal centering for us when the
+        // layout is shown — the cairo_move_to origin must be the cell's
+        // left edge, NOT cell_w/2 - text_w/2 (that double-centers).
+        // text_visible_x is only used for sizing the colored label pill,
+        // since the pill must hug the actual rendered text rectangle.
         int text_w, text_h;
         pango_layout_get_pixel_size(layout, &text_w, &text_h);
-        int text_x = icon->x + (cell_w - text_w) / 2;
+        int text_visible_x = icon->x + (cell_w - text_w) / 2;
+
+        // Snow Leopard parity: while an icon is being dragged, render the
+        // entire icon cell (image + label pill + filename) at ~50% alpha
+        // so the user can see the wallpaper / underlying icons through
+        // the moving glyph. We push a group, paint normally below, then
+        // pop_group_to_source + paint_with_alpha so every layer of this
+        // cell composites together at one consistent opacity.
+        bool dragging_this = (icon == drag_icon);
+        if (dragging_this) cairo_push_group(cr);
 
         // ── Step 2: Draw label color rect (behind text) ───────────────
         // Snow Leopard labels color the filename background, not the icon.
         // The colored rounded rect sits directly behind the text label.
         // When the icon is also selected, the blue highlight overlaps on
         // top because it's painted next (with transparency, so both show).
+        // Snow Leopard's filename pill (label color OR selection blue) is
+        // capsule-rounded — half the pill height for the corner radius
+        // makes the ends true semicircles. Start with a base 7pt pad on
+        // each side, then widen the entire pill by 20% around its center
+        // so the capsule has noticeably more breathing room than the
+        // text rectangle (matches the SL look more closely than a tight
+        // hug). When the filename word-wraps to two lines the pill grows
+        // taller automatically because pill_h tracks text_h.
+        double base_pill_x = text_visible_x - SF(7);
+        double base_pill_w = text_w + SF(14);
+        double extra_w     = base_pill_w * 0.20;
+        double pill_x = base_pill_x - extra_w / 2.0;
+        double pill_y = label_y - SF(2);
+        double pill_w = base_pill_w + extra_w;
+        double pill_h = text_h + SF(4);
+        double pill_r = pill_h / 2.0;
+
         if (icon->label > LABEL_NONE && icon->label < LABEL_COUNT) {
             const LabelColor *lc = &label_colors[icon->label];
-
-            // Pad 4pt around the text on each side
-            double lrx = text_x - SF(4);
-            double lry = label_y - SF(2);
-            double lrw = text_w + SF(8);
-            double lrh = text_h + SF(4);
-
-            draw_rounded_rect(cr, lrx, lry, lrw, lrh, SF(4.0));
+            draw_rounded_rect(cr, pill_x, pill_y, pill_w, pill_h, pill_r);
             // Alpha 200/255 — visible but lets the wallpaper hint through
             cairo_set_source_rgba(cr, lc->r, lc->g, lc->b, 200.0 / 255.0);
             cairo_fill(cr);
         }
 
         // ── Step 3: Selection highlight ───────────────────────────────
-        // Semi-transparent blue rect over the whole icon cell.
-        // Drawn AFTER the label rect so selection overlays it (blended).
+        // Snow Leopard parity: selection paints a solid blue capsule
+        // BEHIND THE FILENAME ONLY — never a box around the icon image.
+        // The icon image remains untouched (no tint, no halo); the
+        // filename pill is the entire visual selection cue. Same
+        // geometry as the color-label pill so a labelled+selected icon
+        // transitions cleanly (the blue pill replaces the label pill
+        // while selected — color label still wins when not selected).
         if (icon->selected) {
-            draw_rounded_rect(cr,
-                icon->x + SF(2), icon->y + SF(2),
-                cell_w - SF(4), cell_h - SF(4),
-                SF(8.0));  // 8pt corner radius
-
-            // #3875D7 at alpha 160/255
+            draw_rounded_rect(cr, pill_x, pill_y, pill_w, pill_h, pill_r);
+            // SL selection blue #3875D7, fully opaque so the white
+            // filename pops cleanly against it.
             cairo_set_source_rgba(cr,
-                0x38 / 255.0, 0x75 / 255.0, 0xD7 / 255.0,
-                160.0 / 255.0);
+                0x38 / 255.0, 0x75 / 255.0, 0xD7 / 255.0, 1.0);
             cairo_fill(cr);
         }
 
-        // ── Step 4: Drop shadow ───────────────────────────────────────
-        // Subtle shadow behind the icon image gives the Snow Leopard
-        // "floating object" feel. Three passes: large/faint to small/solid.
-        cairo_save(cr);
-        for (int pass = 3; pass >= 1; pass--) {
-            double alpha = 0.08 * pass;  // Stronger close to icon, fading outward
-            double offset = SF(pass + 1);
-            double grow   = SF(pass);
-            cairo_set_source_rgba(cr, 0, 0, 0, alpha);
-            // Rounded rect slightly larger than and below the icon
-            double sx = img_x - grow;
-            double sy = img_y - grow + offset;
-            double sw = icon_px + grow * 2;
-            double sh = icon_px + grow * 2;
-            double r  = SF(8.0) + grow;
-            cairo_new_sub_path(cr);
-            cairo_arc(cr, sx + sw - r, sy + r,      r, -M_PI / 2, 0);
-            cairo_arc(cr, sx + sw - r, sy + sh - r, r, 0,          M_PI / 2);
-            cairo_arc(cr, sx + r,      sy + sh - r, r, M_PI / 2,   M_PI);
-            cairo_arc(cr, sx + r,      sy + r,      r, M_PI,        3 * M_PI / 2);
-            cairo_close_path(cr);
-            cairo_fill(cr);
-        }
-        cairo_restore(cr);
-
-        // ── Step 5: Icon image ────────────────────────────────────────
+        // ── Step 4: Icon image ────────────────────────────────────────
+        // Snow Leopard icons paint directly on the wallpaper with no
+        // bounding rectangle behind them — soft edges and any drop
+        // shadow come from the .icns PNG's own alpha channel. We don't
+        // synthesize a manual shadow rect; that creates the visible
+        // dark box Snow Leopard never had.
         if (icon->icon) {
             // Source surfaces are loaded at their PNG's original size; scale
             // per-paint to icon_px (the scaled target). cairo_scale collapses
@@ -746,7 +757,11 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
             cairo_restore(cr);
         }
 
-        // ── Step 6: Label text with drop shadow ───────────────────────
+        // ── Step 5: Label text with drop shadow ───────────────────────
+        // The cairo origin is the cell's left edge; Pango ALIGN_CENTER
+        // + set_width(cell_w) handles horizontal centering inside the
+        // layout, so we move_to icon->x (NOT text_visible_x — that
+        // would double-center and shift the label off to the right).
         // Multiple passes create the dark halo that makes white text
         // readable on any wallpaper (light, dark, or busy). Offsets are
         // scaled so the halo stays proportional to the rendered text on
@@ -756,16 +771,21 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
         for (int dy = -halo; dy <= halo * 2; dy += halo) {
             for (int dx = -halo; dx <= halo; dx += halo) {
                 if (dx == 0 && dy == 0) continue;  // Center is the white text itself
-                cairo_move_to(cr, text_x + dx, label_y + dy);
+                cairo_move_to(cr, icon->x + dx, label_y + dy);
                 cairo_set_source_rgba(cr, 0, 0, 0, 0.6);
                 pango_cairo_show_layout(cr, layout);
             }
         }
 
         // White text on top
-        cairo_move_to(cr, text_x, label_y);
+        cairo_move_to(cr, icon->x, label_y);
         cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
         pango_cairo_show_layout(cr, layout);
+
+        if (dragging_this) {
+            cairo_pop_group_to_source(cr);
+            cairo_paint_with_alpha(cr, 0.5);
+        }
 
         g_object_unref(layout);
     }

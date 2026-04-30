@@ -525,16 +525,16 @@ void dnd_source_begin(Display *dpy, Window src_win, Window root_win,
     // Grab the pointer (mouse) so all mouse events come to us regardless
     // of which window the cursor is over. This is what allows us to track
     // the drag position when the cursor is over a different application.
-    // XC_fleur is the standard "move" cursor shape (four-way arrow).
-    Cursor drag_cursor = XCreateFontCursor(dpy, XC_fleur);
+    // Snow Leopard parity: the cursor stays the standard arrow during a
+    // file drag — no four-way "move" shape. Pass None to inherit whatever
+    // cursor the source window already has on it.
     XGrabPointer(dpy, src_win, False,
                  ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
                  GrabModeAsync,   // Don't freeze pointer events
                  GrabModeAsync,   // Don't freeze keyboard
                  None,            // Confine to no specific window
-                 drag_cursor,     // Show the move cursor
+                 None,            // Inherit existing cursor (default arrow)
                  CurrentTime);
-    XFreeCursor(dpy, drag_cursor);
 
     // Send the initial position so the target gets an immediate Enter+Position
     // pair right when the drag starts (before any motion events arrive).
