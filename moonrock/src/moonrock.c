@@ -48,6 +48,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <time.h>
 
 // OpenGL and GLX headers — these give us access to GPU rendering on X11.
 // GL/gl.h:      Core OpenGL functions (drawing, textures, blending)
@@ -1815,6 +1816,23 @@ void mr_composite(CCWM *wm)
 {
     if (!mr.active || !wm) return;
 
+    // Frame-time tracing (task #147 — drag-lag diagnosis).
+    // Gated on MOONROCK_FRAME_TRACE=1. Logs interval since previous swap
+    // and the swap call duration so we can tell the difference between
+    // "frame budget consumed elsewhere" (long dt, short swap) and
+    // "blocked on vsync" (short dt minus swap, long swap).
+    static int trace_inited = 0;
+    static int trace_enabled = 0;
+    static struct timespec last_ts = {0};
+    if (!trace_inited) {
+        trace_enabled = (getenv("MOONROCK_FRAME_TRACE") != NULL);
+        trace_inited = 1;
+    }
+    struct timespec entry_ts;
+    if (trace_enabled) {
+        clock_gettime(CLOCK_MONOTONIC, &entry_ts);
+    }
+
     // ── Step 0: Check for direct scanout bypass ──
     // If a single fullscreen opaque window covers the entire display (e.g.,
     // a game), we can skip compositing entirely and let the X server present
@@ -2059,7 +2077,28 @@ void mr_composite(CCWM *wm)
     //
     // If VSync is enabled, this call blocks until the next vertical blank
     // period, limiting us to the monitor's refresh rate (typically 60 FPS).
+    struct timespec swap_start_ts;
+    if (trace_enabled) {
+        clock_gettime(CLOCK_MONOTONIC, &swap_start_ts);
+    }
     glXSwapBuffers(wm->dpy, mr.gl_window);
+    if (trace_enabled) {
+        struct timespec swap_end_ts;
+        clock_gettime(CLOCK_MONOTONIC, &swap_end_ts);
+        long swap_us = (swap_end_ts.tv_sec - swap_start_ts.tv_sec) * 1000000L
+                     + (swap_end_ts.tv_nsec - swap_start_ts.tv_nsec) / 1000L;
+        long dt_us = -1;
+        if (last_ts.tv_sec != 0 || last_ts.tv_nsec != 0) {
+            dt_us = (swap_end_ts.tv_sec - last_ts.tv_sec) * 1000000L
+                  + (swap_end_ts.tv_nsec - last_ts.tv_nsec) / 1000L;
+        }
+        long work_us = (swap_start_ts.tv_sec - entry_ts.tv_sec) * 1000000L
+                     + (swap_start_ts.tv_nsec - entry_ts.tv_nsec) / 1000L;
+        last_ts = swap_end_ts;
+        fprintf(stderr,
+                "[mr-frame] dt=%ld us  work=%ld us  swap=%ld us  windows=%d\n",
+                dt_us, work_us, swap_us, mr.window_count);
+    }
 }
 
 // ────────────────────────────────────────────────────────────────────────
