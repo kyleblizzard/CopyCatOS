@@ -1377,6 +1377,14 @@ static void dispatch_native_by_label(MenuBar *mb, const char *label)
         // to one close request; multi-window apps shut down fully.
         quit_all_for_active_pane(mb);
 
+    } else if (strcmp(label, "Search") == 0) {
+        // Help → Search toggles the system-wide searchsystem overlay.
+        // searchsystem treats SIGUSR1 as a toggle (slice #134), so a
+        // second click closes the overlay rather than re-opening it.
+        if (system("pkill -USR1 -x searchsystem") != 0) {
+            // Non-zero just means searchsystem isn't running. Not fatal.
+        }
+
     } else if (strncmp(label, "About ", 6) == 0 ||
                strcmp(label, "Settings\xe2\x80\xa6") == 0 ||  // "Settings…"
                strcmp(label, "Services") == 0) {

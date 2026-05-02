@@ -690,9 +690,14 @@ void desktop_run(Desktop *d)
                             break;
 
                         case ICON_ACTION_TRASH:
-                            // Move to Trash — placeholder for now
-                            fprintf(stderr, "[desktop] TODO: Move to Trash '%s'\n",
-                                    rhit->name);
+                            // gio handles files AND directories (plain
+                            // unlink/rmdir would fail on non-empty folders
+                            // and skips the freedesktop trash spec).
+                            if (fork() == 0) {
+                                execlp("gio", "gio", "trash", "--",
+                                       rhit->path, NULL);
+                                _exit(127);
+                            }
                             break;
 
                         default:

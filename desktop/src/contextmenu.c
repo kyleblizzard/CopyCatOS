@@ -42,7 +42,7 @@
 // time against the current desktop_hidpi_scale. That means every use site
 // produces correct physical pixels on a 1.0× external or a 1.75× panel,
 // with no per-function local scaling dance.
-#define MENU_WIDTH          S(240)    // Total menu width
+#define MENU_WIDTH          S(290)    // Total menu width
 #define MENU_ITEM_HEIGHT    S(22)     // Height of each menu item
 #define MENU_PAD_H          S(4)      // Horizontal padding inside items
 #define MENU_PAD_V          S(3)      // Vertical padding above/below items
