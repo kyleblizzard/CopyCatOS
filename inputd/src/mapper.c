@@ -220,16 +220,20 @@ void mapper_init(Mapper *m, int threshold)
     // Y2 back paddle (right) → Volume up
     add_rule(desktop, EV_KEY, BTN_TR2, ACTION_COPYCATOS, CC_ACTION_VOLUME_UP, 0);
 
-    // D-pad axes → arrow keys
+    // D-pad axes → mouse navigation (Desktop session)
+    //   Left/Right → mouse buttons (left/right click)
+    //   Up/Down    → scroll wheel ticks
+    //
     // The d-pad reports as ABS_HAT0X (-1=left, +1=right) and
     // ABS_HAT0Y (-1=up, +1=down). We store the direction in param2:
-    //   param2 = -1 means "when value is -1, emit this key"
-    //   param2 = +1 means "when value is +1, emit this key"
-    // For d-pad rules, we store two rules per axis (one per direction).
-    add_rule(desktop, EV_ABS, ABS_HAT0X, ACTION_KEY, KEY_LEFT,  -1);
-    add_rule(desktop, EV_ABS, ABS_HAT0X, ACTION_KEY, KEY_RIGHT, +1);
-    add_rule(desktop, EV_ABS, ABS_HAT0Y, ACTION_KEY, KEY_UP,    -1);
-    add_rule(desktop, EV_ABS, ABS_HAT0Y, ACTION_KEY, KEY_DOWN,  +1);
+    //   param2 = -1 means "when axis value is -1, fire this rule"
+    //   param2 = +1 means "when axis value is +1, fire this rule"
+    // For ACTION_SCROLL, param holds the REL_WHEEL delta (+1 = up, -1 = down).
+    // The HAT handler in mapper_process() dispatches on action type.
+    add_rule(desktop, EV_ABS, ABS_HAT0X, ACTION_MOUSE_BUTTON, BTN_LEFT,  -1);
+    add_rule(desktop, EV_ABS, ABS_HAT0X, ACTION_MOUSE_BUTTON, BTN_RIGHT, +1);
+    add_rule(desktop, EV_ABS, ABS_HAT0Y, ACTION_SCROLL,       +1,        -1);
+    add_rule(desktop, EV_ABS, ABS_HAT0Y, ACTION_SCROLL,       -1,        +1);
 
     // Analog triggers → mouse buttons
     // These are handled specially in mapper_process() because they're
@@ -391,37 +395,50 @@ int mapper_process(Mapper *m, const struct input_event *ev,
         // ------------------------------------------------------------------
         // D-pad (ABS_HAT0X and ABS_HAT0Y)
         // ------------------------------------------------------------------
-        // The d-pad reports as an absolute axis with values -1, 0, or +1.
-        // We convert these into key press/release events:
-        //   -1 or +1 → key press (the direction key)
-        //   0        → key release (d-pad returned to center)
+        // The d-pad reports as an absolute axis with values -1, 0, or +1:
+        //   -1 or +1 → press (the direction is being held)
+        //   0        → release (d-pad returned to center)
         //
-        // We need to find the rule that matches both the axis code AND the
-        // direction (stored in param2). For release (value=0), we release
-        // both direction keys for this axis since we don't know which
-        // direction was previously held.
+        // Each d-pad direction owns its own rule, with the direction stored
+        // in param2 (-1 or +1). On press we find the matching rule by axis
+        // code AND direction. On release we don't know which direction was
+        // held, so we release every action attached to that axis.
+        //
+        // Action dispatch:
+        //   ACTION_KEY          → uinput_key (press / release)
+        //   ACTION_MOUSE_BUTTON → uinput_mouse_button (press / release)
+        //   ACTION_SCROLL       → uinput_mouse_scroll one-shot tick on press,
+        //                          no-op on release. param holds REL_WHEEL
+        //                          delta (+1 = up, -1 = down).
         // ------------------------------------------------------------------
         if (ev->code == ABS_HAT0X || ev->code == ABS_HAT0Y) {
             if (ev->value == 0) {
-                // D-pad released — release both direction keys for this axis.
-                // We scan all rules for this axis code and release their keys.
+                // D-pad released — release any held key or mouse button for
+                // this axis. Scroll has no held state, so skip.
                 for (int i = 0; i < profile->rule_count; i++) {
                     const MappingRule *r = &profile->rules[i];
-                    if (r->ev_type == EV_ABS && r->ev_code == ev->code &&
-                        r->action == ACTION_KEY) {
-                        uinput_key(vd, r->param, 0);   // 0 = release
+                    if (r->ev_type != EV_ABS || r->ev_code != ev->code) continue;
+                    if (r->action == ACTION_KEY) {
+                        uinput_key(vd, r->param, 0);
+                    } else if (r->action == ACTION_MOUSE_BUTTON) {
+                        uinput_mouse_button(vd, r->param, 0);
                     }
                 }
             } else {
-                // D-pad pressed in a direction — find the rule matching
-                // this direction (param2 stores -1 or +1)
+                // D-pad pressed in a direction — find the rule matching this
+                // direction (param2 stores -1 or +1) and emit its action.
                 for (int i = 0; i < profile->rule_count; i++) {
                     const MappingRule *r = &profile->rules[i];
-                    if (r->ev_type == EV_ABS && r->ev_code == ev->code &&
-                        r->action == ACTION_KEY && r->param2 == ev->value) {
-                        uinput_key(vd, r->param, 1);   // 1 = press
-                        break;   // Only one direction can be active at a time
+                    if (r->ev_type != EV_ABS || r->ev_code != ev->code) continue;
+                    if (r->param2 != ev->value) continue;
+                    if (r->action == ACTION_KEY) {
+                        uinput_key(vd, r->param, 1);
+                    } else if (r->action == ACTION_MOUSE_BUTTON) {
+                        uinput_mouse_button(vd, r->param, 1);
+                    } else if (r->action == ACTION_SCROLL) {
+                        uinput_mouse_scroll(vd, 0, r->param);
                     }
+                    break;   // Only one direction can be active at a time
                 }
             }
             return -1;
