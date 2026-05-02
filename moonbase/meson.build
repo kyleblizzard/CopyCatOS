@@ -1513,7 +1513,11 @@ if aqua_demo_assets_root == ''
 endif
 message('aqua-demo: using widget assets from ' + aqua_demo_assets_root)
 
-# Slice α — push button regular family (3 states: normal/pressed/disabled).
+# Slices α + β — push button + checkbox + radio, regular size.
+#   push:     normal / pressed / disabled (no value axis).
+#   checkbox: 3 idle (off / on / mixed) + 2 pressed (off / on) + disabled.
+#             Mixed-pressed has no SL asset — pressed-on stands in.
+#   radio:    2 idle (off / on) + 2 pressed (off / on) + disabled.
 # Inactive (window-unfocused) lives in a later slice; promote it here once
 # the focus-change event surface lands. Future slices append tracks/,
 # segments/, frames/, misc/, tabs/ entries as widgets come online. Listed
@@ -1523,6 +1527,17 @@ aqua_demo_widget_files = [
   'buttons/push_active_regular.png',
   'buttons/push_pressed_regular.png',
   'buttons/push_disabled_regular.png',
+  'buttons/checkbox_active_regular.png',
+  'buttons/checkbox_active_on_regular.png',
+  'buttons/checkbox_active_mixed_regular.png',
+  'buttons/checkbox_pressed_regular.png',
+  'buttons/checkbox_pressed_on_regular.png',
+  'buttons/checkbox_disabled_regular.png',
+  'buttons/radio_active_regular.png',
+  'buttons/radio_active_on_regular.png',
+  'buttons/radio_pressed_regular.png',
+  'buttons/radio_pressed_on_regular.png',
+  'buttons/radio_disabled_regular.png',
 ]
 
 # Resolve the widget files into absolute paths and into a comma-
