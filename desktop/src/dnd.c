@@ -587,9 +587,17 @@ void dnd_source_motion(Display *dpy, int root_x, int root_y)
 
 bool dnd_source_active(void)
 {
-    // True when the cursor is over an external XDND window.
-    // The caller uses this to decide whether to do XDND drop vs. grid-snap.
-    return src.active && src.target != None;
+    // True when the cursor is over an EXTERNAL XDND window.
+    // The desktop sets XdndAware on its own window (so the root XdndProxy
+    // can redirect drops to us); find_xdnd_target therefore returns
+    // src.src_win whenever the cursor is over our own desktop. That is NOT
+    // an "active external handshake" — it's just our own surface — so we
+    // must exclude it. Without this check, the visual-icon drag-update
+    // gate (`if (!dnd_source_active())` in desktop.c MotionNotify) skips
+    // every frame after threshold cross, leaving the dragged icon frozen
+    // at the threshold position while the cursor moves on. That looks
+    // identical to "drag lag" but it's actually "drag stuck".
+    return src.active && src.target != None && src.target != src.src_win;
 }
 
 bool dnd_source_drop(Display *dpy)

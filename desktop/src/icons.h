@@ -18,6 +18,7 @@
 #include <X11/Xlib.h>
 #include <cairo/cairo.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 // Grid layout constants — these control how icons are spaced and sized.
 // The grid starts at the top-right and fills downward, then moves left
@@ -57,6 +58,22 @@ typedef struct {
     bool selected;               // Whether this icon is currently highlighted
     bool is_directory;           // true if this is a folder
     int label;                   // Color label index (0=none, 1-7=Red/Orange/Yellow/Green/Blue/Purple/Grey)
+    int z_order;                 // Stacking order. Higher = visually on top.
+                                 // Bumped on click so clicking a buried icon
+                                 // surfaces it. Ephemeral — initialized at
+                                 // scan time and not persisted to xattr.
+    uint8_t *hit_mask;           // Pixel mask, source-surface resolution. 1
+                                 // means the pixel is inside the icon's
+                                 // outer perimeter (opaque OR interior hole
+                                 // unreachable from the corners); 0 means
+                                 // exterior transparency that should let
+                                 // clicks fall through to a lower icon.
+                                 // Computed at scan time by flood-filling
+                                 // transparent pixels from the four corners.
+                                 // Owned by this struct — freed in
+                                 // icons_shutdown / on rescan.
+    int hit_mask_w, hit_mask_h;  // Dimensions of the mask buffer (matches
+                                 // the source PNG, not the rendered cell).
 } DesktopIcon;
 
 // Initialize the icon system: scan ~/Desktop, load icons, compute grid
@@ -89,14 +106,31 @@ void icons_deselect_all(void);
 // Returns true if icons were refreshed (caller should repaint).
 bool icons_check_inotify(void);
 
-// Begin dragging an icon from position (x, y).
+// Begin dragging an icon. (x, y) are primary-pane-local pixel coords of
+// the click point. No window is created here — the override-redirect
+// "ghost" popup that visually follows the cursor is created lazily on
+// the first icons_drag_update() call (i.e. only after the drag-threshold
+// crosses), so a simple click+release that never moves doesn't create
+// or map any X window.
 void icons_drag_begin(DesktopIcon *icon, int x, int y);
 
-// Update the position of the icon being dragged to (x, y).
-void icons_drag_update(int x, int y);
+// Update the dragged icon's position. (local_x, local_y) are pane-local
+// (used to update the icon's logical x/y so icons_drag_end's clamp uses
+// the right final position); (root_x, root_y) are virtual-screen-root
+// coords used to XMoveWindow the ghost popup. First call after a
+// drag_begin creates and maps the ghost; subsequent calls just move it.
+void icons_drag_update(int local_x, int local_y, int root_x, int root_y);
 
-// End the drag operation and snap the icon to the nearest free grid cell.
+// End the drag operation: clamp the icon's position to the visible
+// primary-pane bounds, persist its xattr, destroy the ghost popup, and
+// clear all drag state. Call this on a successful (non-XDND) drop.
 void icons_drag_end(int screen_w, int screen_h);
+
+// Cancel any in-progress drag without clamping or saving: destroys the
+// ghost popup if one was mapped and clears all drag state. Safe to call
+// even when no drag is active (simple click+release, XDND-handled drop,
+// XDND cancellation, ButtonRelease before threshold cross).
+void icons_drag_cancel(void);
 
 // Return the inotify file descriptor so the event loop can select() on it.
 // Returns -1 if inotify is not available.

@@ -25,7 +25,9 @@
 #include "labels.h"
 
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>           // XVisualInfo, XMatchVisualInfo (ghost popup)
 #include <cairo/cairo.h>
+#include <cairo/cairo-xlib.h>    // cairo_xlib_surface_create (ghost paint)
 #include <pango/pangocairo.h>
 
 #include <stdio.h>
@@ -50,6 +52,183 @@
 static DesktopIcon icons[MAX_ICONS];
 static int icon_count = 0;
 
+// Z-order machinery for stacked free-form icons.
+//
+// Each icon carries a z_order value (higher = visually on top). The icons
+// array stays in alphabetical order — auto-place / clean-up depend on a
+// stable iteration order — so we keep a separate paint_order[] index that
+// is sorted by z_order. Paint walks paint_order ascending (top-of-stack is
+// last). Hit-test walks it descending (top-of-stack wins). next_z is the
+// next unused stacking value: incremented and assigned every time an icon
+// is clicked, so a click on a buried icon raises it above its neighbors.
+//
+// next_z is ephemeral. On relaunch icons get sequential z values from
+// scan_desktop (alphabetical = initial paint order), which matches the
+// classic Snow Leopard look at first paint.
+static int paint_order[MAX_ICONS];
+static int paint_order_count = 0;
+static int next_z = 0;
+
+static int compare_by_z(const void *a, const void *b)
+{
+    int ia = *(const int *)a;
+    int ib = *(const int *)b;
+    int za = icons[ia].z_order;
+    int zb = icons[ib].z_order;
+    if (za != zb) return za - zb;
+    // Tiebreak on array index for total ordering — only matters if two
+    // icons somehow share a z_order (shouldn't happen at runtime, but
+    // qsort needs deterministic behavior for equal keys).
+    return ia - ib;
+}
+
+static void rebuild_paint_order(void)
+{
+    paint_order_count = icon_count;
+    for (int i = 0; i < icon_count; i++) paint_order[i] = i;
+    if (paint_order_count > 1) {
+        qsort(paint_order, paint_order_count, sizeof(int), compare_by_z);
+    }
+}
+
+// Promote an icon to the top of the stacking order. Called on every click
+// that selects an icon (single-click) so a click on a buried icon surfaces
+// it — the spatial-workspace promise is "click what you see", and that
+// requires the clicked icon to also become the painted-on-top icon for
+// the next paint pass.
+static void icon_promote_z(DesktopIcon *icon)
+{
+    if (!icon) return;
+    icon->z_order = ++next_z;
+    rebuild_paint_order();
+}
+
+// Build a perimeter hit-mask for an icon's source surface.
+//
+// The rule we want: clicks inside the icon's outer perimeter — even on
+// fully-transparent interior pixels (e.g. a donut's hole, the punched
+// counter inside an "O") — count as hits on this icon. Clicks on the
+// transparent space outside the perimeter fall through to the icon
+// underneath. Per-pixel alpha alone can't tell those two kinds of
+// transparency apart, so we precompute a mask that does.
+//
+// Algorithm: 4-connected flood fill from the four corners. Any
+// transparent pixel reachable from a corner is exterior (mask = 0).
+// Every other pixel — opaque pixels and transparent pixels enclosed by
+// opaque ones — is interior (mask = 1). Threshold 32/255 keeps
+// anti-aliased perimeter edges as opaque so the fill stops there.
+//
+// One mask per icon, computed at scan time, freed on rescan / shutdown.
+// Uses one byte per source pixel — at 256×256 that's 64 KiB per icon,
+// which is fine at MAX_ICONS=512 worst case (32 MiB) but most icons are
+// smaller.
+static uint8_t *build_hit_mask(cairo_surface_t *surface,
+                                int *out_w, int *out_h)
+{
+    if (!surface || !out_w || !out_h) return NULL;
+    if (cairo_surface_get_type(surface) != CAIRO_SURFACE_TYPE_IMAGE) return NULL;
+
+    cairo_format_t fmt = cairo_image_surface_get_format(surface);
+    if (fmt != CAIRO_FORMAT_ARGB32 && fmt != CAIRO_FORMAT_RGB24) return NULL;
+
+    int w = cairo_image_surface_get_width(surface);
+    int h = cairo_image_surface_get_height(surface);
+    if (w <= 0 || h <= 0) return NULL;
+
+    cairo_surface_flush(surface);
+    unsigned char *data = cairo_image_surface_get_data(surface);
+    int stride = cairo_image_surface_get_stride(surface);
+    if (!data || stride <= 0) return NULL;
+
+    // Step 1: seed mask = 1 on opaque, 0 on transparent. RGB24 has no
+    // alpha channel, so every pixel counts as opaque (no fill propagates
+    // and the whole rect is "inside") — fine, since RGB24 icons never
+    // appear in the Aqua theme but the fallback path can hit it.
+    size_t cells = (size_t)w * (size_t)h;
+    uint8_t *mask = (uint8_t *)malloc(cells);
+    if (!mask) return NULL;
+
+    if (fmt == CAIRO_FORMAT_RGB24) {
+        memset(mask, 1, cells);
+        *out_w = w; *out_h = h;
+        return mask;
+    }
+
+    for (int y = 0; y < h; y++) {
+        unsigned char *row = data + y * stride;
+        uint8_t *mrow = mask + y * w;
+        for (int x = 0; x < w; x++) {
+            mrow[x] = (row[x * 4 + 3] >= 32) ? 1 : 0;
+        }
+    }
+
+    // Step 2: flood fill from corners. Stack-based so we don't blow the
+    // call stack on a large icon. Cells touched go from 0 to 2 (sentinel
+    // for "exterior transparent").
+    int *stack = (int *)malloc(cells * sizeof(int));
+    if (!stack) {
+        free(mask);
+        return NULL;
+    }
+    int sp = 0;
+    int corners[4][2] = {{0, 0}, {w - 1, 0}, {0, h - 1}, {w - 1, h - 1}};
+    for (int c = 0; c < 4; c++) {
+        int cx = corners[c][0], cy = corners[c][1];
+        int idx = cy * w + cx;
+        if (mask[idx] == 0) {
+            mask[idx] = 2;
+            stack[sp++] = idx;
+        }
+    }
+
+    while (sp > 0) {
+        int idx = stack[--sp];
+        int x = idx % w;
+        int y = idx / w;
+        static const int dxs[4] = {-1, 1, 0, 0};
+        static const int dys[4] = { 0, 0,-1, 1};
+        for (int k = 0; k < 4; k++) {
+            int nx = x + dxs[k];
+            int ny = y + dys[k];
+            if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+            int nidx = ny * w + nx;
+            if (mask[nidx] == 0) {
+                mask[nidx] = 2;
+                stack[sp++] = nidx;
+            }
+        }
+    }
+    free(stack);
+
+    // Step 3: collapse to a clean 0/1 mask. Exterior (was 2) becomes 0;
+    // interior (opaque was 1, hole was 0-not-reached) becomes 1.
+    for (size_t i = 0; i < cells; i++) {
+        mask[i] = (mask[i] == 2) ? 0 : 1;
+    }
+
+    *out_w = w;
+    *out_h = h;
+    return mask;
+}
+
+// Hit-test against the precomputed perimeter mask. (local_x, local_y) are
+// pixel coordinates inside the rendered icon rect; we map them to the
+// source-surface grid and look up the bit. Returns false if the icon has
+// no mask (degraded fallback) or the click is outside its perimeter.
+static bool icon_pixel_inside_perimeter(const DesktopIcon *icon,
+                                         int local_x, int local_y,
+                                         int target_w, int target_h)
+{
+    if (!icon || !icon->hit_mask || target_w <= 0 || target_h <= 0) return false;
+    int sw = icon->hit_mask_w;
+    int sh = icon->hit_mask_h;
+    if (sw <= 0 || sh <= 0) return false;
+    int sx = (local_x * sw) / target_w;
+    int sy = (local_y * sh) / target_h;
+    if (sx < 0 || sx >= sw || sy < 0 || sy >= sh) return false;
+    return icon->hit_mask[sy * sw + sx] != 0;
+}
+
 // inotify file descriptor and watch descriptor.
 // inotify is a Linux kernel API that notifies us when files are
 // created, deleted, or renamed in a watched directory.
@@ -65,9 +244,34 @@ static bool inotify_pending = false;
 #define INOTIFY_DEBOUNCE_MS 200
 
 // Drag state
+//
+// The drag system has two visible parts:
+//   1. The "original" icon at drag_origin_x/y, painted at 50% alpha by
+//      icons_paint() while drag_visible is true. This is the Snow Leopard
+//      "where it came from" hint.
+//   2. The ghost — a 32-bit ARGB override-redirect popup window created
+//      and mapped on the first icons_drag_update() call (i.e. only after
+//      the drag threshold crosses). It paints once after XMapRaised and
+//      then just gets XMoveWindow'd per motion event, so the per-frame
+//      cost during a drag is one round-trip instead of a full wallpaper
+//      + icon-grid blit.
+//
+// drag_icon->x/y still gets updated by icons_drag_update() so that
+// icons_drag_end()'s final clamp uses the cursor's release point — but
+// icons_paint() reads drag_origin_x/y for the dragged icon while
+// drag_visible is true, so the original stays put and only the ghost
+// follows the cursor.
 static DesktopIcon *drag_icon = NULL;   // Icon being dragged
 static int drag_offset_x = 0;          // Mouse offset from icon origin
 static int drag_offset_y = 0;          // (so the icon doesn't jump to cursor)
+static int drag_origin_x = 0;          // Icon's x at drag_begin time
+static int drag_origin_y = 0;          // Icon's y at drag_begin time
+static bool drag_visible = false;       // True once threshold crossed and
+                                        // ghost is mapped — gates the
+                                        // 50% alpha original render
+static Window ghost_win = None;          // The ARGB override-redirect popup
+static Visual *ghost_visual = NULL;      // Cached 32-bit TrueColor visual
+static Colormap ghost_colormap = 0;      // Colormap matched to ghost_visual
 
 // Cached X display pointer (needed for some operations)
 static Display *cached_dpy = NULL;
@@ -347,9 +551,27 @@ static cairo_surface_t *icons_resolve_icon(const char *path, bool is_dir)
         return icon;
     }
 
+    const char *ext = strrchr(path, '.');
+
+    // PNG files self-preview: paint the file's own pixels as the icon
+    // rather than the generic image-png mimetype glyph. Matches Snow
+    // Leopard's "image files on the desktop look like the image" UX,
+    // and is also what makes hit-test stress tests possible — without
+    // it, three distinct PNGs all render with the same generic mimetype
+    // shape and you can't tell them apart in a stack. Cairo only ships
+    // PNG out of the box, so JPEG/GIF/SVG still fall through to the
+    // theme icon below until a thumbnailer slice lands.
+    if (ext && strcasecmp(ext, ".png") == 0) {
+        cairo_surface_t *thumb = cairo_image_surface_create_from_png(path);
+        if (cairo_surface_status(thumb) == CAIRO_STATUS_SUCCESS) {
+            return thumb;
+        }
+        cairo_surface_destroy(thumb);
+        // Fall through to mimetype lookup if the PNG was unreadable.
+    }
+
     // .desktop files get special treatment: use the Icon= field to find
     // the right theme icon instead of showing a generic script icon.
-    const char *ext = strrchr(path, '.');
     if (ext && strcasecmp(ext, ".desktop") == 0) {
         DesktopEntry entry;
         if (parse_desktop_file(path, &entry) && entry.icon[0]) {
@@ -454,6 +676,15 @@ static void scan_desktop(void)
         // Load the appropriate icon from the theme
         icon->icon = icons_resolve_icon(icon->path, icon->is_directory);
 
+        // Precompute a perimeter hit-mask off the source surface. Used by
+        // icons_handle_click so a click on a transparent corner pixel of
+        // the topmost icon falls through to a lower icon — but a click
+        // on an interior hole (e.g. a donut center) still counts as a
+        // hit on this icon.
+        icon->hit_mask = build_hit_mask(icon->icon,
+                                         &icon->hit_mask_w,
+                                         &icon->hit_mask_h);
+
         // Read the color label from the file's xattr, if any.
         // This is the same per-file metadata that Snow Leopard stores in
         // com.apple.FinderInfo — we use our own key in the "user." namespace.
@@ -468,6 +699,14 @@ static void scan_desktop(void)
     if (icon_count > 1) {
         qsort(icons, icon_count, sizeof(DesktopIcon), compare_icons);
     }
+
+    // Initial z-order: sequential, matching the alphabetical paint order.
+    // Reset next_z so the first click after scan promotes above all initial
+    // values. Rebuild the paint_order index so icons_paint and
+    // icons_handle_click have a valid view on first use.
+    for (int i = 0; i < icon_count; i++) icons[i].z_order = i + 1;
+    next_z = icon_count;
+    rebuild_paint_order();
 
     fprintf(stderr, "[icons] Found %d items in ~/Desktop\n", icon_count);
 }
@@ -575,6 +814,12 @@ void icons_shutdown(void)
             cairo_surface_destroy(icons[i].icon);
             icons[i].icon = NULL;
         }
+        if (icons[i].hit_mask) {
+            free(icons[i].hit_mask);
+            icons[i].hit_mask = NULL;
+            icons[i].hit_mask_w = 0;
+            icons[i].hit_mask_h = 0;
+        }
     }
     icon_count = 0;
 
@@ -628,15 +873,32 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
     // stays in physical pixels without threading the scale through every
     // call site.
     int cell_w  = S(ICON_CELL_W);
-    int cell_h  = S(ICON_CELL_H);
     int icon_px = S(ICON_SIZE);
 
-    for (int i = 0; i < icon_count; i++) {
-        DesktopIcon *icon = &icons[i];
+    // Walk by stacking order so icons clicked more recently render on top
+    // of older ones. paint_order is sorted ascending by z_order — the
+    // last entry is the top of the stack, painted last so its pixels win.
+    if (paint_order_count != icon_count) rebuild_paint_order();
+    for (int p = 0; p < paint_order_count; p++) {
+        DesktopIcon *icon = &icons[paint_order[p]];
+
+        // While the user is dragging, the dragged icon is also being
+        // tracked by a separate ghost popup window that follows the
+        // cursor. The cell painted here stays at the icon's pre-drag
+        // position (drag_origin_x/y), faded to 50% alpha — Snow Leopard's
+        // "this is where it came from" hint. icon->x/y is still valid
+        // (icons_drag_update keeps it pointed at the cursor for the
+        // eventual drop clamp), but reading it during a drag would put
+        // the faded preview under the cursor and the ghost on top of
+        // it, which doubles the visual cell instead of leaving an
+        // origin marker.
+        bool dragging_this = (icon == drag_icon) && drag_visible;
+        int draw_x = dragging_this ? drag_origin_x : icon->x;
+        int draw_y = dragging_this ? drag_origin_y : icon->y;
 
         // Center the icon image within the cell
-        int img_x = icon->x + (cell_w - icon_px) / 2;
-        int img_y = icon->y + S(2);  // Small top padding
+        int img_x = draw_x + (cell_w - icon_px) / 2;
+        int img_y = draw_y + S(2);  // Small top padding
 
         // Y position for the label text (4pt below the icon image)
         int label_y = img_y + icon_px + S(4);
@@ -675,15 +937,17 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
         // since the pill must hug the actual rendered text rectangle.
         int text_w, text_h;
         pango_layout_get_pixel_size(layout, &text_w, &text_h);
-        int text_visible_x = icon->x + (cell_w - text_w) / 2;
+        int text_visible_x = draw_x + (cell_w - text_w) / 2;
 
         // Snow Leopard parity: while an icon is being dragged, render the
         // entire icon cell (image + label pill + filename) at ~50% alpha
         // so the user can see the wallpaper / underlying icons through
         // the moving glyph. We push a group, paint normally below, then
         // pop_group_to_source + paint_with_alpha so every layer of this
-        // cell composites together at one consistent opacity.
-        bool dragging_this = (icon == drag_icon);
+        // cell composites together at one consistent opacity. The cell
+        // is drawn at drag_origin_x/y (the icon's pre-drag spot) — the
+        // ghost popup, mapped by icons_drag_update, follows the cursor
+        // separately.
         if (dragging_this) cairo_push_group(cr);
 
         // ── Step 2: Draw label color rect (behind text) ───────────────
@@ -701,7 +965,11 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
         // taller automatically because pill_h tracks text_h.
         double base_pill_x = text_visible_x - SF(7);
         double base_pill_w = text_w + SF(14);
-        double extra_w     = base_pill_w * 0.20;
+        // Pill widening: 14% on top of the tight text-rect bounds. Was 20%
+        // — narrowed by 5% of the previous overall pill width to bring it
+        // closer to a snug capsule without losing the "more breathing room
+        // than a tight hug" feel that matches Snow Leopard.
+        double extra_w     = base_pill_w * 0.14;
         double pill_x = base_pill_x - extra_w / 2.0;
         double pill_y = label_y - SF(2);
         double pill_w = base_pill_w + extra_w;
@@ -760,8 +1028,10 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
         // ── Step 5: Label text with drop shadow ───────────────────────
         // The cairo origin is the cell's left edge; Pango ALIGN_CENTER
         // + set_width(cell_w) handles horizontal centering inside the
-        // layout, so we move_to icon->x (NOT text_visible_x — that
+        // layout, so we move_to draw_x (NOT text_visible_x — that
         // would double-center and shift the label off to the right).
+        // draw_x equals icon->x normally and drag_origin_x for the
+        // dragged-icon's faded source cell.
         // Multiple passes create the dark halo that makes white text
         // readable on any wallpaper (light, dark, or busy). Offsets are
         // scaled so the halo stays proportional to the rendered text on
@@ -771,14 +1041,14 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
         for (int dy = -halo; dy <= halo * 2; dy += halo) {
             for (int dx = -halo; dx <= halo; dx += halo) {
                 if (dx == 0 && dy == 0) continue;  // Center is the white text itself
-                cairo_move_to(cr, icon->x + dx, label_y + dy);
+                cairo_move_to(cr, draw_x + dx, label_y + dy);
                 cairo_set_source_rgba(cr, 0, 0, 0, 0.6);
                 pango_cairo_show_layout(cr, layout);
             }
         }
 
         // White text on top
-        cairo_move_to(cr, icon->x, label_y);
+        cairo_move_to(cr, draw_x, label_y);
         cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
         pango_cairo_show_layout(cr, layout);
 
@@ -795,16 +1065,77 @@ void icons_paint(cairo_t *cr, int screen_w, int screen_h)
 
 DesktopIcon *icons_handle_click(int x, int y)
 {
-    // Cell size in physical pixels at the current scale — hit-test uses the
-    // same scaled geometry that paint/layout use.
-    int cell_w = S(ICON_CELL_W);
-    int cell_h = S(ICON_CELL_H);
+    // Hit-test against the actual painted regions of an icon, NOT the full
+    // 140×140 cell. The cell is the layout slot; the painted glyph fills only
+    // (a) the icon image rect — icon_px × icon_px centered horizontally,
+    //     S(2) below the cell top
+    // (b) the label band — a strip below the image roughly 2 lines tall,
+    //     spanning the cell width (the label pill itself is narrower but the
+    //     band gives Finder-style generous click targets on short labels).
+    //
+    // Why this matters for stacked icons: with three icons free-form placed
+    // close together, the topmost icon's *empty* cell padding (the gap
+    // between its image and the cell edge, and below the label) used to
+    // capture clicks that visually landed on an exposed corner of a lower
+    // icon. Restricting the hit rect to just the painted pixels lets those
+    // clicks fall through to the icon the user can actually see.
+    //
+    // Snow Leopard parity: clicking empty wallpaper between icons does
+    // nothing; clicking on visible icon art or its filename label selects
+    // the icon you can see.
+    int cell_w  = S(ICON_CELL_W);
+    int icon_px = S(ICON_SIZE);
 
-    // Check each icon to see if the click point is within its cell
-    for (int i = 0; i < icon_count; i++) {
-        if (x >= icons[i].x && x < icons[i].x + cell_w &&
-            y >= icons[i].y && y < icons[i].y + cell_h) {
-            return &icons[i];
+    // Image rect (matches the paint geometry exactly)
+    int img_off_x = (cell_w - icon_px) / 2;
+    int img_off_y = S(2);
+
+    // Label band — tracks the paint geometry. label_y in paint is
+    // img_y + icon_px + S(4); we extend a bit past it to cover a 2-line
+    // label without measuring text. 32pt is a comfortable cap for two lines
+    // of 12pt Lucida Grande at any scale once run through S().
+    int label_off_y = img_off_y + icon_px + S(4);
+    int label_h     = S(32);
+
+    // Walk in reverse stacking order so the visually-topmost icon at
+    // (x, y) wins. paint_order is sorted ascending by z_order, so the
+    // last entry is the top of the stack.
+    if (paint_order_count != icon_count) rebuild_paint_order();
+    for (int p = paint_order_count - 1; p >= 0; p--) {
+        DesktopIcon *icon = &icons[paint_order[p]];
+
+        // (a) icon image rect — pixel-accurate. The icon image fills only
+        // a portion of the icon_px × icon_px rect; the rest is alpha=0
+        // padding the source PNG carries (rounded corners, transparent
+        // borders). A click on those transparent pixels of a topmost
+        // icon must fall through to whatever icon is actually visible
+        // beneath it. icon_pixel_opaque samples the source surface and
+        // returns false on transparent pixels, so the loop continues to
+        // the next-lower icon.
+        int ix = icon->x + img_off_x;
+        int iy = icon->y + img_off_y;
+        if (x >= ix && x < ix + icon_px &&
+            y >= iy && y < iy + icon_px) {
+            int local_x = x - ix;
+            int local_y = y - iy;
+            if (icon_pixel_inside_perimeter(icon, local_x, local_y,
+                                             icon_px, icon_px)) {
+                return icon;
+            }
+            // Fall through to the next-lower icon.
+        }
+
+        // (b) label band (full cell width, fixed height). Kept as a
+        // rect — text has internal gaps (between glyphs, between
+        // ascenders) that pixel-accurate testing would let through, and
+        // a "miss the wrong pixel between two letters" UX is worse than
+        // a slightly generous label-band. The label band only matches
+        // the cell width, not the icon image, so it doesn't fight
+        // pixel-accurate image hits.
+        int ly = icon->y + label_off_y;
+        if (x >= icon->x && x < icon->x + cell_w &&
+            y >= ly && y < ly + label_h) {
+            return icon;
         }
     }
     return NULL;  // Click was on empty space
@@ -894,6 +1225,12 @@ void icons_select(DesktopIcon *icon)
 
     if (icon) {
         icon->selected = true;
+        // Surface the clicked icon — clicking what you see should also
+        // raise it. Without this, a click on the bottom of a stack
+        // selects it but leaves it visually buried, which contradicts
+        // the "click what you see" promise. icon_promote_z bumps the
+        // z_order and rebuilds paint_order for the next paint pass.
+        icon_promote_z(icon);
     }
 }
 
@@ -930,11 +1267,17 @@ bool icons_check_inotify(void)
                 // Debounce period has passed — rescan ~/Desktop
                 inotify_pending = false;
 
-                // Free old icon surfaces before rescanning
+                // Free old icon surfaces and hit masks before rescanning
                 for (int i = 0; i < icon_count; i++) {
                     if (icons[i].icon) {
                         cairo_surface_destroy(icons[i].icon);
                         icons[i].icon = NULL;
+                    }
+                    if (icons[i].hit_mask) {
+                        free(icons[i].hit_mask);
+                        icons[i].hit_mask = NULL;
+                        icons[i].hit_mask_w = 0;
+                        icons[i].hit_mask_h = 0;
                     }
                 }
 
@@ -970,6 +1313,207 @@ int icons_get_count(void)
     return icon_count;
 }
 
+// ── Ghost popup (drag preview) ──────────────────────────────────────
+//
+// While an icon is being dragged we paint two things:
+//   • the original cell at drag_origin_x/y, rendered at 50% alpha by
+//     icons_paint() (Snow Leopard's "this is where it came from" hint);
+//   • the ghost — a small ARGB override-redirect popup that contains the
+//     icon image and filename label, painted once and then moved via
+//     XMoveWindow per cursor motion.
+//
+// Painting the entire desktop wallpaper + icon grid every motion event
+// was the bottleneck on the Legion's 2880×1800 panel. Letting moonrock
+// composite a cached pixmap for the ghost gets us back to a single
+// per-frame X round-trip instead of a full ARGB blit + Pango layout.
+
+// Compute the height the ghost popup needs in physical pixels: enough to
+// fit the icon image plus a two-line filename label without clipping the
+// label's bottom. Used by both ghost_create (window size) and
+// ghost_paint_content (no clipping rect — but the Pango layout naturally
+// fits in this height). Kept as a helper so the two sites can't drift.
+static int ghost_window_height(int icon_px)
+{
+    // Two-line cap on label height in points (12pt × 2 lines + leading).
+    // S() folds in the HiDPI scale so the ghost is tall enough at any DPI.
+    int label_band = S(36);
+    return S(2) + icon_px + S(4) + label_band;
+}
+
+// Paint the dragged icon's image and filename label into the ghost
+// window's content area. Called once after XMapRaised — moonrock
+// redirects the window on map, so this paint goes into the backing
+// pixmap and survives without us having to handle Expose events.
+//
+// The geometry mirrors the cell layout used by icons_paint(): icon image
+// centered horizontally with S(2) top padding, filename label below at
+// label_y = S(2) + icon_px + S(4), centered via Pango ALIGN_CENTER over
+// the full cell width with the same dark halo for legibility.
+//
+// Snow Leopard parity: the moving glyph is rendered at ~50% alpha so the
+// user can see the wallpaper / underlying icons through it. We push a
+// group around the whole cell paint and pop_with_alpha so every layer
+// (icon image + halo + label text) composites at one consistent opacity,
+// matching how icons_paint historically handled the moving cell before
+// this slice split it into ghost + origin.
+static void ghost_paint_content(cairo_t *cr, DesktopIcon *icon,
+                                 int cell_w, int icon_px)
+{
+    int img_x   = (cell_w - icon_px) / 2;
+    int img_y   = S(2);
+    int label_y = img_y + icon_px + S(4);
+
+    cairo_push_group(cr);
+
+    // Icon image — same scale-on-paint approach icons_paint uses.
+    if (icon->icon) {
+        int src_w = cairo_image_surface_get_width(icon->icon);
+        int src_h = cairo_image_surface_get_height(icon->icon);
+
+        cairo_save(cr);
+        double scx = (double)icon_px / src_w;
+        double scy = (double)icon_px / src_h;
+        cairo_translate(cr, img_x, img_y);
+        cairo_scale(cr, scx, scy);
+        cairo_set_source_surface(cr, icon->icon, 0, 0);
+        cairo_paint(cr);
+        cairo_restore(cr);
+    }
+
+    // Filename label with halo. PangoLayout width = cell_w + ALIGN_CENTER
+    // does the horizontal centering, so move_to origin is the cell's
+    // left edge (0), not cell_w/2 — see the matching note in icons_paint.
+    PangoLayout *layout = pango_cairo_create_layout(cr);
+    pango_layout_set_text(layout, icon->name, -1);
+    PangoFontDescription *font = pango_font_description_from_string(
+        icon_scaled_font(12));
+    pango_layout_set_font_description(layout, font);
+    pango_font_description_free(font);
+
+    pango_layout_set_width(layout, cell_w * PANGO_SCALE);
+    pango_layout_set_alignment(layout, PANGO_ALIGN_CENTER);
+    pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+    pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+    pango_layout_set_height(layout, -2 * PANGO_SCALE);
+
+    int halo = S(1);
+    if (halo < 1) halo = 1;
+    for (int dy = -halo; dy <= halo * 2; dy += halo) {
+        for (int dx = -halo; dx <= halo; dx += halo) {
+            if (dx == 0 && dy == 0) continue;
+            cairo_move_to(cr, 0 + dx, label_y + dy);
+            cairo_set_source_rgba(cr, 0, 0, 0, 0.6);
+            pango_cairo_show_layout(cr, layout);
+        }
+    }
+    cairo_move_to(cr, 0, label_y);
+    cairo_set_source_rgba(cr, 1.0, 1.0, 1.0, 1.0);
+    pango_cairo_show_layout(cr, layout);
+
+    g_object_unref(layout);
+
+    cairo_pop_group_to_source(cr);
+    cairo_paint_with_alpha(cr, 0.5);
+}
+
+// Create, paint, and map the ghost popup at the given root-coords
+// top-left. Sized one icon cell wide and tall so there's room for both
+// the icon image and a two-line filename label without clipping.
+//
+// The window is 32-bit ARGB + override-redirect so moonrock leaves it
+// alone (no chrome, no decoration) and lets the icon's PNG alpha bleed
+// through to whatever's behind. Override-redirect does not bypass the
+// compositor — XComposite still redirects on map, so the single direct
+// paint after XMapRaised is captured into the backing pixmap.
+static void ghost_create(Display *dpy, DesktopIcon *icon,
+                         int root_x, int root_y)
+{
+    if (!dpy || !icon || ghost_win != None) return;
+
+    int screen   = DefaultScreen(dpy);
+    Window root  = RootWindow(dpy, screen);
+    int cell_w   = S(ICON_CELL_W);
+    int icon_px  = S(ICON_SIZE);
+    // Ghost window height = enough room for image + 2-line filename label.
+    // Using the full ICON_CELL_H here would clip the bottom of a wrapped
+    // label because cell_h is sized for the layout grid (where label
+    // overflow is fine), not for the ghost's standalone window.
+    int ghost_h  = ghost_window_height(icon_px);
+
+    // Find a 32-bit TrueColor visual on the default screen. Anything less
+    // (e.g. the root visual on a 24-bit display) won't carry the icon's
+    // alpha channel and would render the ghost on a black square.
+    XVisualInfo vinfo;
+    if (!XMatchVisualInfo(dpy, screen, 32, TrueColor, &vinfo)) {
+        fprintf(stderr,
+                "[icons] Ghost popup: no 32-bit TrueColor visual; drag "
+                "will fall back to repaint-only.\n");
+        return;
+    }
+    ghost_visual   = vinfo.visual;
+    ghost_colormap = XCreateColormap(dpy, root, vinfo.visual, AllocNone);
+
+    XSetWindowAttributes sa;
+    sa.colormap          = ghost_colormap;
+    sa.background_pixel  = 0;       // Fully transparent
+    sa.border_pixel      = 0;
+    sa.override_redirect = True;    // No WM management, no decoration
+    sa.event_mask        = NoEventMask;
+    unsigned long mask =
+        CWColormap | CWBackPixel | CWBorderPixel |
+        CWOverrideRedirect | CWEventMask;
+
+    ghost_win = XCreateWindow(dpy, root,
+        root_x, root_y, cell_w, ghost_h,
+        0, 32, InputOutput, vinfo.visual,
+        mask, &sa);
+
+    if (ghost_win == None) {
+        XFreeColormap(dpy, ghost_colormap);
+        ghost_colormap = 0;
+        return;
+    }
+
+    // Map first, then paint directly into the window. moonrock redirects
+    // the window on map, so the cairo paint below lands in the backing
+    // pixmap that the compositor will draw from on every frame —
+    // XMoveWindow per motion event won't trigger a re-paint by us.
+    XMapRaised(dpy, ghost_win);
+
+    cairo_surface_t *xsurf = cairo_xlib_surface_create(
+        dpy, ghost_win, vinfo.visual, cell_w, ghost_h);
+    cairo_t *cr = cairo_create(xsurf);
+
+    // Clear to fully transparent before painting (background_pixel is 0
+    // but explicit CAIRO_OPERATOR_SOURCE makes the alpha state explicit).
+    cairo_save(cr);
+    cairo_set_operator(cr, CAIRO_OPERATOR_CLEAR);
+    cairo_paint(cr);
+    cairo_restore(cr);
+
+    ghost_paint_content(cr, icon, cell_w, icon_px);
+
+    cairo_destroy(cr);
+    cairo_surface_destroy(xsurf);
+    XFlush(dpy);
+}
+
+// Tear down the ghost popup. Safe to call even when no ghost was created
+// (e.g. on a click+release that never crossed the drag threshold).
+static void ghost_destroy(Display *dpy)
+{
+    if (!dpy) return;
+    if (ghost_win != None) {
+        XDestroyWindow(dpy, ghost_win);
+        ghost_win = None;
+    }
+    if (ghost_colormap != 0) {
+        XFreeColormap(dpy, ghost_colormap);
+        ghost_colormap = 0;
+    }
+    ghost_visual = NULL;
+}
+
 // ── Public API: Drag and Drop ───────────────────────────────────────
 
 void icons_drag_begin(DesktopIcon *icon, int x, int y)
@@ -980,15 +1524,39 @@ void icons_drag_begin(DesktopIcon *icon, int x, int y)
     // instead of jumping so its corner is at the cursor.
     drag_offset_x = x - icon->x;
     drag_offset_y = y - icon->y;
+    // Snapshot the icon's pre-drag position. icons_paint() draws the
+    // dragged icon at this point (at 50% alpha, once drag_visible flips)
+    // even though icon->x/y will move with the cursor.
+    drag_origin_x = icon->x;
+    drag_origin_y = icon->y;
+    drag_visible  = false;  // Stays false until threshold crosses
 }
 
-void icons_drag_update(int x, int y)
+void icons_drag_update(int local_x, int local_y, int root_x, int root_y)
 {
     if (!drag_icon) return;
 
-    // Move the icon to follow the cursor, maintaining the grab offset
-    drag_icon->x = x - drag_offset_x;
-    drag_icon->y = y - drag_offset_y;
+    // Move the icon's logical position so icons_drag_end's clamp uses
+    // the cursor's final spot. icons_paint won't actually use this
+    // value while drag_visible is true (it draws the dragged icon at
+    // drag_origin instead) — but the value still has to be right at
+    // drop time for the clamp + xattr save to land in the right place.
+    drag_icon->x = local_x - drag_offset_x;
+    drag_icon->y = local_y - drag_offset_y;
+
+    // Lazy ghost creation — first call after threshold cross. We pass
+    // the ghost's top-left in root coords because override-redirect
+    // windows are positioned in the virtual-screen-root frame.
+    int ghost_x = root_x - drag_offset_x;
+    int ghost_y = root_y - drag_offset_y;
+
+    if (ghost_win == None) {
+        ghost_create(cached_dpy, drag_icon, ghost_x, ghost_y);
+        drag_visible = true;
+    } else {
+        XMoveWindow(cached_dpy, ghost_win, ghost_x, ghost_y);
+        XFlush(cached_dpy);
+    }
 }
 
 void icons_drag_end(int screen_w, int screen_h)
@@ -1025,7 +1593,22 @@ void icons_drag_end(int screen_w, int screen_h)
     // the file; nothing else on disk needs to know the icon moved.
     layout_save_position(drag_icon);
 
-    drag_icon = NULL;
+    icons_drag_cancel();
+}
+
+void icons_drag_cancel(void)
+{
+    // Tear down the ghost popup if one was mapped, then clear all drag
+    // state. Always safe to call — handles simple click+release (no
+    // ghost ever created), XDND-handled drop (we don't clamp), and
+    // ButtonRelease before threshold cross.
+    ghost_destroy(cached_dpy);
+    drag_icon     = NULL;
+    drag_visible  = false;
+    drag_offset_x = 0;
+    drag_offset_y = 0;
+    drag_origin_x = 0;
+    drag_origin_y = 0;
 }
 
 // ── Public API: Rescale ─────────────────────────────────────────────

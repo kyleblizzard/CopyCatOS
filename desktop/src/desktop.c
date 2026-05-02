@@ -774,6 +774,44 @@ void desktop_run(Desktop *d)
                 // Mouse moved while a button is held down.
                 // If we're tracking a potential drag, update the icon position.
                 if (dragging && (ev.xmotion.state & Button1Mask)) {
+                    // Motion-event coalescing — drain every queued MotionNotify
+                    // and keep only the latest position. X delivers many motion
+                    // events per frame on touch / fast cursor movement; without
+                    // this drain the queue grows faster than the per-event
+                    // repaint can run and the dragged icon visibly lags behind
+                    // the cursor. After XGrabPointer (started inside
+                    // dnd_source_begin) all motion routes through the grab so
+                    // there's no risk of pulling motion meant for another
+                    // window. We keep the latest event's coordinates and
+                    // button-state mask; everything else (time, modifiers
+                    // beyond Button1) is fungible during a drag.
+                    //
+                    // Lag instrumentation: while DESKTOP_DRAG_TRACE=1, log
+                    // per-motion-batch timings — drain depth, drain wall, and
+                    // icons_drag_update wall. Lets us measure where motion
+                    // time is actually going on the Legion's 2880×1800 panel
+                    // instead of guessing. Off by default; enable from the
+                    // session script when reproducing lag.
+                    static int trace_inited = 0;
+                    static int trace_drag = 0;
+                    if (!trace_inited) {
+                        const char *t = getenv("DESKTOP_DRAG_TRACE");
+                        trace_drag = (t && t[0] && t[0] != '0');
+                        trace_inited = 1;
+                    }
+                    struct timespec t_drain_start;
+                    if (trace_drag) clock_gettime(CLOCK_MONOTONIC, &t_drain_start);
+
+                    XEvent peek;
+                    int drain_count = 0;
+                    while (XCheckTypedEvent(d->dpy, MotionNotify, &peek)) {
+                        ev = peek;
+                        drain_count++;
+                    }
+
+                    struct timespec t_drain_end;
+                    if (trace_drag) clock_gettime(CLOCK_MONOTONIC, &t_drain_end);
+
                     // Check whether we've moved past the drag threshold.
                     // This prevents accidental drags from sloppy single-clicks.
                     int dx = ev.xmotion.x_root - drag_start_x;
@@ -785,6 +823,39 @@ void desktop_run(Desktop *d)
                         // Past the threshold — activate the visual drag
                         drag_active = true;
 
+                        // Move the visual drag forward. icons_drag_update
+                        // advances the icon's logical position (so the
+                        // eventual ButtonRelease clamp lands at the
+                        // cursor's release point) and either creates +
+                        // maps the override-redirect ghost popup (first
+                        // call after threshold) or XMoveWindows it
+                        // (every subsequent call). Local coords keep
+                        // the icon math in primary-pane space; root
+                        // coords position the ghost in the virtual
+                        // screen frame. We do this BEFORE dispatching
+                        // XDND so the ghost is mapped on the same
+                        // round-trip that XDND begins.
+                        int local_x = ev.xmotion.x_root - primary->x;
+                        int local_y = ev.xmotion.y_root - primary->y;
+
+                        struct timespec t_upd_start;
+                        if (trace_drag) clock_gettime(CLOCK_MONOTONIC, &t_upd_start);
+                        icons_drag_update(local_x, local_y,
+                                          ev.xmotion.x_root,
+                                          ev.xmotion.y_root);
+                        if (trace_drag) {
+                            struct timespec t_upd_end;
+                            clock_gettime(CLOCK_MONOTONIC, &t_upd_end);
+                            long drain_us = (t_drain_end.tv_sec - t_drain_start.tv_sec) * 1000000L +
+                                            (t_drain_end.tv_nsec - t_drain_start.tv_nsec) / 1000L;
+                            long upd_us   = (t_upd_end.tv_sec - t_upd_start.tv_sec) * 1000000L +
+                                            (t_upd_end.tv_nsec - t_upd_start.tv_nsec) / 1000L;
+                            fprintf(stderr,
+                                "[drag-trace] drain=%d depth=%ld us  drag_update=%ld us  pos=(%d,%d)\n",
+                                drain_count, drain_us, upd_us,
+                                ev.xmotion.x_root, ev.xmotion.y_root);
+                        }
+
                         // Start XDND on the first frame that crosses the threshold.
                         // Source window is primary's desktop window, since the
                         // dragged icon lives there.
@@ -794,26 +865,27 @@ void desktop_run(Desktop *d)
                                              dragging->path,
                                              ev.xmotion.x_root,
                                              ev.xmotion.y_root);
+
+                            // One-shot repaint at threshold cross so the
+                            // dragged icon's "origin" cell renders at
+                            // 50% alpha (Snow Leopard parity). After
+                            // this point neither the original nor the
+                            // ghost moves on the primary pane — the
+                            // ghost is its own override-redirect window
+                            // and just gets XMoveWindow'd on each
+                            // motion event, so no per-frame full
+                            // wallpaper + icon-grid repaint is needed.
+                            desktop_repaint_one(d, primary);
+                            XFlush(d->dpy);
                         } else {
-                            // Update XDND position every frame
+                            // Update XDND position once per coalesced batch.
+                            // Sending an XdndPosition per raw motion event was
+                            // also part of the lag — same drain logic above
+                            // collapses that to one ClientMessage per frame.
                             dnd_source_motion(d->dpy,
                                               ev.xmotion.x_root,
                                               ev.xmotion.y_root);
                         }
-
-                        // Also update the visual icon position (grid-snap preview).
-                        // Only do this when the cursor is over our own desktop
-                        // window — when over an external XDND target we don't
-                        // move the icon visually (the target shows its own feedback).
-                        // Convert to primary-pane-local coords because icon
-                        // positions are stored in that space.
-                        if (!dnd_source_active()) {
-                            int mx = ev.xmotion.x_root - primary->x;
-                            int my = ev.xmotion.y_root - primary->y;
-                            icons_drag_update(mx, my);
-                        }
-
-                        desktop_repaint(d);
                     }
                 }
                 break;
@@ -827,16 +899,33 @@ void desktop_run(Desktop *d)
                         // It returns false when the cursor is over our own desktop,
                         // so we do the normal grid-snap.
                         if (!xdnd_started || !dnd_source_drop(d->dpy)) {
-                            // No XDND target — snap icon to nearest free grid cell
+                            // No XDND target — clamp icon and persist xattr.
+                            // icons_drag_end internally tears down the ghost
+                            // and clears icons.c's drag pointer.
                             icons_drag_end(primary->width, primary->height);
+                        } else {
+                            // XDND took it — file moves to another app, our
+                            // copy gets removed by inotify rescan. Don't
+                            // clamp/save, but still cancel so the ghost
+                            // window is destroyed and icons.c's drag
+                            // pointer doesn't dangle into the next rescan.
+                            icons_drag_cancel();
                         }
-                        // else: XDND drop in progress — don't snap yet.
-                        // The icon will snap back via dnd_tick() timeout if needed.
                         desktop_repaint(d);
                     } else if (xdnd_started) {
                         // Threshold was never crossed but we did call source_begin.
                         // Cancel cleanly.
                         dnd_source_cancel(d->dpy);
+                        icons_drag_cancel();
+                    } else {
+                        // Simple click+release — never crossed threshold,
+                        // no XDND, no ghost. icons_drag_begin still ran on
+                        // ButtonPress, so icons.c is holding a drag_icon
+                        // pointer that needs clearing before the next
+                        // click — otherwise the next icons_paint would
+                        // briefly fade this icon at 50% alpha if a drag
+                        // started and exposed drag_visible. Always cancel.
+                        icons_drag_cancel();
                     }
                     dragging     = NULL;
                     drag_active  = false;
