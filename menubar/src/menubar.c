@@ -206,6 +206,41 @@ static void sighup_handler(int sig)
     reload_config = true;
 }
 
+// X errors that are normal during a reparenting window manager's life
+// cycle: BadWindow / BadDrawable land whenever a window we're querying
+// (e.g. the previous _NET_ACTIVE_WINDOW value) was destroyed between
+// the request leaving us and the server processing it. Without our own
+// handler the default Xlib one prints the message and aborts the
+// process — which is what bug #156 looked like at startup, where the
+// stale active-window XID from the killed session triggered an async
+// BadWindow on appmenu's first XGetWindowProperty pass.
+static int menubar_x_error_handler(Display *dpy, XErrorEvent *e)
+{
+    if (e->error_code == BadWindow ||
+        e->error_code == BadDrawable ||
+        e->error_code == BadMatch ||
+        e->error_code == BadValue) {
+        if (getenv("MENUBAR_DEBUG")) {
+            char buf[256];
+            XGetErrorText(dpy, e->error_code, buf, sizeof(buf));
+            fprintf(stderr, "[menubar] X error (ignored): %s "
+                    "(request %d, resource 0x%lx)\n",
+                    buf, e->request_code, e->resourceid);
+        }
+        return 0;
+    }
+    char buf[256];
+    XGetErrorText(dpy, e->error_code, buf, sizeof(buf));
+    fprintf(stderr, "[menubar] X error: %s (request %d, resource 0x%lx)\n",
+            buf, e->request_code, e->resourceid);
+    return 0;
+}
+
+static void install_x_error_handler(void)
+{
+    XSetErrorHandler(menubar_x_error_handler);
+}
+
 // Read [menubar] height from the shared config file
 static void read_menubar_config(void)
 {
@@ -780,6 +815,18 @@ bool menubar_init(MenuBar *mb)
         fprintf(stderr, "menubar: cannot open X display\n");
         return false;
     }
+
+    // Install our X error handler before any property request goes out.
+    // Without it, a stale _NET_ACTIVE_WINDOW (left over when the previous
+    // menubar/desktop pair was killed and the active window's XID has
+    // since been destroyed) causes the very first XGetWindowProperty in
+    // appmenu_update_all_panes to deliver a BadWindow async error, which
+    // the default handler turns into _XError → exit. Observed as #156:
+    // pkill desktop && pkill menubar then restart menubar — first attempt
+    // dies on X_GetProperty serial ~35. The non-Success return path in
+    // update_pane_from_wid is correct in principle but unreachable while
+    // the default handler is killing the process first.
+    install_x_error_handler();
 
     // Get basic screen info — we need the root window to watch for
     // active window changes and the default screen for visual lookup.
