@@ -42,7 +42,15 @@
 // time against the current desktop_hidpi_scale. That means every use site
 // produces correct physical pixels on a 1.0× external or a 1.75× panel,
 // with no per-function local scaling dance.
-#define MENU_WIDTH          S(290)    // Total menu width
+//
+// MENU_WIDTH used to be the *exact* content width. That was brittle:
+// at 1.5× scale the rendered text for "Change Desktop Background…"
+// outgrew the constant and clipped mid-word. It now serves only as a
+// minimum floor — the real width is measured via Pango per-show so the
+// menu always fits its longest item, on every scale, in every locale.
+// Code paths that need the actual width take it as a `menu_w` parameter
+// computed at the top of `contextmenu_show` / `contextmenu_show_icon`.
+#define MENU_WIDTH          S(290)    // Minimum menu content width (floor)
 #define MENU_ITEM_HEIGHT    S(22)     // Height of each menu item
 #define MENU_PAD_H          S(4)      // Horizontal padding inside items
 #define MENU_PAD_V          S(3)      // Vertical padding above/below items
@@ -129,13 +137,65 @@ static int item_height(int index)
     return menu_items[index].is_separator ? MENU_SEP_HEIGHT : MENU_ITEM_HEIGHT;
 }
 
+// Measure the longest non-separator label in a label array using the
+// menu font, then return the content width that would house that label
+// plus the side gutters and arrow space — clamped to MENU_WIDTH as a
+// floor so very short menus still feel like menus, not pills.
+//
+// Pango needs a Cairo context for layout creation but is happy with an
+// off-screen 1×1 image surface — we don't paint, we only ask for the
+// pixel size of the rendered glyph run.
+//
+// `submenu_flags` is a parallel array (one bool per label, NULL ok)
+// that lets the caller reserve trailing arrow space only on items that
+// actually carry a submenu glyph.
+static int calc_menu_content_width(const char *const *labels,
+                                   const bool *submenu_flags,
+                                   size_t count)
+{
+    cairo_surface_t *measure_surf =
+        cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1);
+    cairo_t *cr = cairo_create(measure_surf);
+    PangoLayout *layout = pango_cairo_create_layout(cr);
+    set_menu_font(layout);
+
+    // Width of the submenu glyph (▶) — items that carry it need extra
+    // trailing space. Measured once at the active scale.
+    pango_layout_set_text(layout, "\xe2\x96\xb8", -1);
+    int arrow_w = 0, ah = 0;
+    pango_layout_get_pixel_size(layout, &arrow_w, &ah);
+
+    int max_text_w = 0;
+    int max_text_w_with_arrow = 0;
+    for (size_t i = 0; i < count; i++) {
+        if (!labels[i]) continue;            // separator
+        pango_layout_set_text(layout, labels[i], -1);
+        int tw = 0, th = 0;
+        pango_layout_get_pixel_size(layout, &tw, &th);
+        bool needs_arrow = submenu_flags && submenu_flags[i];
+        int with_arrow = tw + (needs_arrow ? arrow_w + MENU_ARROW_GUTTER : 0);
+        if (tw > max_text_w) max_text_w = tw;
+        if (with_arrow > max_text_w_with_arrow) max_text_w_with_arrow = with_arrow;
+    }
+
+    g_object_unref(layout);
+    cairo_destroy(cr);
+    cairo_surface_destroy(measure_surf);
+
+    // Side gutters in physical px, mirroring the layout in paint_menu:
+    //   left:  MENU_PAD_H + MENU_ICON_GUTTER
+    //   right: MENU_PAD_H (+ arrow space already baked in above)
+    int needed = max_text_w_with_arrow + MENU_ICON_GUTTER + 2 * MENU_PAD_H;
+    return needed > MENU_WIDTH ? needed : MENU_WIDTH;
+}
+
 // Figure out which item the mouse is hovering over.
 // Returns -1 if the mouse is outside all items or over a separator.
-static int hit_test(int mx, int my, int menu_h)
+static int hit_test(int mx, int my, int menu_w, int menu_h)
 {
     (void)menu_h;
 
-    if (mx < 0 || mx >= MENU_WIDTH) return -1;
+    if (mx < 0 || mx >= menu_w) return -1;
 
     int y = MENU_PAD_V;
     for (int i = 0; i < (int)MENU_ITEM_COUNT; i++) {
@@ -266,8 +326,20 @@ int contextmenu_show(Display *dpy, Window root, int root_x, int root_y,
 {
     int menu_content_h = calc_menu_height();
 
+    // Build parallel label/submenu-flag arrays from menu_items so the
+    // measurement helper can size to the longest live label without
+    // knowing about MenuItem internals.
+    const char *labels[MENU_ITEM_COUNT];
+    bool        subflags[MENU_ITEM_COUNT];
+    for (size_t i = 0; i < MENU_ITEM_COUNT; i++) {
+        labels[i]   = menu_items[i].is_separator ? NULL : menu_items[i].label;
+        subflags[i] = menu_items[i].is_submenu;
+    }
+    int menu_content_w =
+        calc_menu_content_width(labels, subflags, MENU_ITEM_COUNT);
+
     // Total window size includes shadow padding on all sides
-    int win_w = MENU_WIDTH + 2 * MENU_SHADOW_SIZE;
+    int win_w = menu_content_w + 2 * MENU_SHADOW_SIZE;
     int win_h = menu_content_h + 2 * MENU_SHADOW_SIZE;
 
     // Position the menu at the click location.
@@ -383,7 +455,7 @@ int contextmenu_show(Display *dpy, Window root, int root_x, int root_y,
             // to account for the shadow padding.
             int mx = ev.xmotion.x - MENU_SHADOW_SIZE;
             int my = ev.xmotion.y - MENU_SHADOW_SIZE;
-            int new_highlight = hit_test(mx, my, menu_content_h);
+            int new_highlight = hit_test(mx, my, menu_content_w, menu_content_h);
 
             if (new_highlight != highlighted) {
                 highlighted = new_highlight;
@@ -401,13 +473,13 @@ int contextmenu_show(Display *dpy, Window root, int root_x, int root_y,
             // Check if the release was on a menu item
             int mx = ev.xbutton.x - MENU_SHADOW_SIZE;
             int my = ev.xbutton.y - MENU_SHADOW_SIZE;
-            int hit = hit_test(mx, my, menu_content_h);
+            int hit = hit_test(mx, my, menu_content_w, menu_content_h);
 
             if (hit >= 0 && !menu_items[hit].is_submenu) {
                 // Selected a regular item — return its index
                 result = hit;
                 menu_open = false;
-            } else if (mx < 0 || mx >= MENU_WIDTH ||
+            } else if (mx < 0 || mx >= menu_content_w ||
                        my < 0 || my >= menu_content_h) {
                 // Clicked outside the menu — dismiss
                 menu_open = false;
@@ -421,7 +493,7 @@ int contextmenu_show(Display *dpy, Window root, int root_x, int root_y,
             // Check if the press was outside the menu (dismiss)
             int mx = ev.xbutton.x - MENU_SHADOW_SIZE;
             int my = ev.xbutton.y - MENU_SHADOW_SIZE;
-            if (mx < 0 || mx >= MENU_WIDTH ||
+            if (mx < 0 || mx >= menu_content_w ||
                 my < 0 || my >= menu_content_h) {
                 menu_open = false;
             }
@@ -513,10 +585,10 @@ static int icon_item_y_offset(int index)
     return y;
 }
 
-static int icon_hit_test(int mx, int my, int menu_h)
+static int icon_hit_test(int mx, int my, int menu_w, int menu_h)
 {
     (void)menu_h;
-    if (mx < 0 || mx >= MENU_WIDTH) return -1;
+    if (mx < 0 || mx >= menu_w) return -1;
 
     int y = MENU_PAD_V;
     for (int i = 0; i < (int)ICON_MENU_ITEM_COUNT; i++) {
@@ -765,6 +837,7 @@ static void paint_picker(cairo_t *cr, int win_w, int win_h, int highlighted)
 // Returns the selected label index (0 = none, 1-7 = color), or -1 if dismissed.
 static int show_label_picker(Display *dpy, Window root,
                              int menu_x, int menu_y,
+                             int parent_menu_content_w,
                              int label_item_y,
                              int screen_w, int screen_h)
 {
@@ -776,7 +849,7 @@ static int show_label_picker(Display *dpy, Window root,
     // Position picker to the right of the menu, aligned with the Label item.
     // If it would go off-screen, flip to the left.
     int edge_nudge = S(4);  // visual overlap into the menu's shadow
-    int win_x = menu_x + MENU_WIDTH + 2 * MENU_SHADOW_SIZE - edge_nudge;
+    int win_x = menu_x + parent_menu_content_w + 2 * MENU_SHADOW_SIZE - edge_nudge;
     int win_y = menu_y + label_item_y;
 
     if (win_x + win_w > screen_w) {
@@ -937,7 +1010,19 @@ int contextmenu_show_icon(Display *dpy, Window root,
     (void)icon;  // Used by caller to apply the returned action
 
     int menu_content_h = calc_icon_menu_height();
-    int win_w = MENU_WIDTH + 2 * MENU_SHADOW_SIZE;
+
+    // Measure-driven width — same pattern as contextmenu_show.
+    const char *labels[ICON_MENU_ITEM_COUNT];
+    bool        subflags[ICON_MENU_ITEM_COUNT];
+    for (size_t i = 0; i < ICON_MENU_ITEM_COUNT; i++) {
+        labels[i]   = icon_menu_items[i].is_separator ? NULL
+                                                      : icon_menu_items[i].label;
+        subflags[i] = icon_menu_items[i].is_submenu;
+    }
+    int menu_content_w =
+        calc_menu_content_width(labels, subflags, ICON_MENU_ITEM_COUNT);
+
+    int win_w = menu_content_w + 2 * MENU_SHADOW_SIZE;
     int win_h = menu_content_h + 2 * MENU_SHADOW_SIZE;
 
     int win_x = root_x;
@@ -1028,7 +1113,7 @@ int contextmenu_show_icon(Display *dpy, Window root,
         {
             int mx = ev.xmotion.x - MENU_SHADOW_SIZE;
             int my = ev.xmotion.y - MENU_SHADOW_SIZE;
-            int new_hl = icon_hit_test(mx, my, menu_content_h);
+            int new_hl = icon_hit_test(mx, my, menu_content_w, menu_content_h);
             if (new_hl != highlighted) {
                 highlighted = new_hl;
                 paint_icon_menu(cr, win_w, win_h, highlighted);
@@ -1042,11 +1127,11 @@ int contextmenu_show_icon(Display *dpy, Window root,
             if (!seen_press_in_loop) break;
             int mx = ev.xbutton.x - MENU_SHADOW_SIZE;
             int my = ev.xbutton.y - MENU_SHADOW_SIZE;
-            int hit = icon_hit_test(mx, my, menu_content_h);
+            int hit = icon_hit_test(mx, my, menu_content_w, menu_content_h);
 
             if (hit < 0) {
                 // Outside all items — dismiss
-                if (mx < 0 || mx >= MENU_WIDTH ||
+                if (mx < 0 || mx >= menu_content_w ||
                     my < 0 || my >= menu_content_h) {
                     menu_open = false;
                 }
@@ -1076,7 +1161,7 @@ int contextmenu_show_icon(Display *dpy, Window root,
             seen_press_in_loop = true;
             int mx = ev.xbutton.x - MENU_SHADOW_SIZE;
             int my = ev.xbutton.y - MENU_SHADOW_SIZE;
-            if (mx < 0 || mx >= MENU_WIDTH ||
+            if (mx < 0 || mx >= menu_content_w ||
                 my < 0 || my >= menu_content_h) {
                 menu_open = false;
             }
@@ -1109,6 +1194,7 @@ int contextmenu_show_icon(Display *dpy, Window root,
     if (want_label) {
         int picked = show_label_picker(dpy, root,
                                        win_x, label_item_screen_y,
+                                       menu_content_w,
                                        0,       // label_item_y already absolute
                                        screen_w, screen_h);
         if (picked >= 0) {
